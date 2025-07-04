@@ -2,7 +2,6 @@ import os
 import importlib.util
 import time
 import torch
-import math
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -22,7 +21,9 @@ target_spawn_y = [0.28, 0.68]
 target_spawn_z = [0.9, 1.7]
 
 director_pkg_path = get_package_share_directory("aegis_director")
-robot_director_path = os.path.join(director_pkg_path, "aegis_director", "robot_director.py")
+robot_director_path = os.path.join(
+    director_pkg_path, "aegis_director", "robot_director.py"
+)
 
 spec = importlib.util.spec_from_file_location("robot_director", robot_director_path)
 robot_director = importlib.util.module_from_spec(spec)
@@ -30,32 +31,41 @@ spec.loader.exec_module(robot_director)
 
 RobotDirector = robot_director.RobotDirector
 
+
 class ROSInterface:
     def __init__(self):
         self.robot_director = RobotDirector(synchronous=True)
         self.joint_names = self.robot_director.joint_names
         self.dof_home = {
-            name: value for name, value in zip(self.joint_names, [0.0, -1.57, 1.57, 0.0, 0.0, 0.0])
+            name: value
+            for name, value in zip(self.joint_names, [0.0, -1.57, 1.57, 0.0, 0.0, 0.0])
         }
 
     def get_joint_positions(self) -> torch.Tensor:
         js = self.robot_director.get_joint_states()
-        return torch.tensor([js[name] for name in self.joint_names], dtype=torch.float32)
+        return torch.tensor(
+            [js[name] for name in self.joint_names], dtype=torch.float32
+        )
 
     def get_joint_velocities(self) -> torch.Tensor:
         jv = self.robot_director.get_joint_velocities()
-        return torch.tensor([jv[name] for name in self.joint_names], dtype=torch.float32)
+        return torch.tensor(
+            [jv[name] for name in self.joint_names], dtype=torch.float32
+        )
 
     def get_tcp_position(self) -> torch.Tensor:
         tcp = self.robot_director.get_tcp_pose()
         return torch.tensor(tcp["position"], dtype=torch.float32)
 
-    def control_dofs_position(self, target_pos: torch.Tensor, max_vel: float = 0.3, max_accel: float = 0.3):
+    def control_dofs_position(
+        self, target_pos: torch.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ):
         joint_dict = {
-            name: float(pos)
-            for name, pos in zip(self.joint_names, target_pos)
+            name: float(pos) for name, pos in zip(self.joint_names, target_pos)
         }
-        self.robot_director.joint_move(joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel)
+        self.robot_director.joint_move(
+            joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel
+        )
 
     def move_to_home(self, dof_pos):
         self.robot_director.joint_move(
@@ -78,11 +88,15 @@ class AegisReacherEnv(gym.Env):
         self.device = device
 
         self.num_obs = num_obs
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
+        )
         self.obs_scales = obs_scales
-    
+
         self.num_actions = num_actions
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32)
+        self.action_space = spaces.Box(
+            low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
+        )
         self.action_scale = action_scale
 
         self.reward_scales = reward_scales
@@ -105,7 +119,9 @@ class AegisReacherEnv(gym.Env):
 
     def step(self, action):
         action = np.clip(action, -clip_action, clip_action)
-        self.actions.copy_(torch.tensor(action, dtype=torch.float32, device=self.device))
+        self.actions.copy_(
+            torch.tensor(action, dtype=torch.float32, device=self.device)
+        )
 
         dof_pos = self.robot.get_joint_positions()
         delta = torch.tensor(self.actions, dtype=torch.float32) * self.action_scale
@@ -146,10 +162,7 @@ class AegisReacherEnv(gym.Env):
             info[f"reward_{key}"] = value.item()
 
         if terminated or truncated:
-            info["episode"] = {
-                "r": float(reward),
-                "l": self.episode_step
-            }
+            info["episode"] = {"r": float(reward), "l": self.episode_step}
 
         return self._get_obs(), reward, terminated, truncated, info
 
@@ -164,11 +177,14 @@ class AegisReacherEnv(gym.Env):
         y_range = target_spawn_y
         z_range = target_spawn_z
 
-        self.target_pos = torch.tensor([
-            np.random.uniform(x_range[0], x_range[1]),
-            np.random.uniform(y_range[0], y_range[1]),
-            np.random.uniform(z_range[0], z_range[1]),
-        ], device=self.device)
+        self.target_pos = torch.tensor(
+            [
+                np.random.uniform(x_range[0], x_range[1]),
+                np.random.uniform(y_range[0], y_range[1]),
+                np.random.uniform(z_range[0], z_range[1]),
+            ],
+            device=self.device,
+        )
 
         self.actions[:] = 0.0
         self.episode_step = 0
@@ -178,7 +194,7 @@ class AegisReacherEnv(gym.Env):
         self.episode_start_time = time.time()
 
         return self._get_obs(), {}
-    
+
     def _get_obs(self):
         dof_pos = self.robot.get_joint_positions()
         dof_vel = self.robot.get_joint_velocities()
@@ -189,7 +205,7 @@ class AegisReacherEnv(gym.Env):
         return self.dist
 
     def _reward_control(self):
-        return torch.sum(self.actions ** 2)
+        return torch.sum(self.actions**2)
 
     def render(self):
         pass
