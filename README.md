@@ -9,7 +9,16 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 
 ---
 
-# TODO
+# Build & install
+```bash
+poetry build
+pip3 install ./dist/aegis_gym-*.whl
+```
+
+# Run tests
+```bash
+poetry run test
+```
 
 ---
 ## Development notes
