@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "aegis_gym"
+version = "0.0.1"
+description = "The collection of gymnasium environments for the Aegis UR5e station."
+authors = ["AGH Center of Excellence in Artificial Intelligence <ceai@agh.edu.pl>"]
+license = "Apache-2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+gymnasium = "^0.29.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
