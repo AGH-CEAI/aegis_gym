@@ -1,6 +1,6 @@
 # aegis_gym
 
-The collection of [Gymnasium](https://gymnasium.farama.org/) environements for the Aegis station.
+The collection of [Gymnasium](https://gymnasium.farama.org/) environments for the Aegis station.
 
 ---
 
