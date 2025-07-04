@@ -1,2 +1,2 @@
 def test_import():
-    pass
+    import aegis_gym  # noqa: F401
