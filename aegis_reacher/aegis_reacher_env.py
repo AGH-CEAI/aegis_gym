@@ -50,7 +50,7 @@ class ROSInterface:
         self.joint_names = self.robot_director.joint_names
         self.dof_home = {
             name: value
-            for name, value in zip(self.joint_names, [0.0, -1.57, 1.57, 0.0, 0.0, 0.0])
+            for name, value in zip(self.joint_names, [0.0, -2.09, 2.09, -1.57, -1.57, 1.57])
         }
         self._initialized = True
 
