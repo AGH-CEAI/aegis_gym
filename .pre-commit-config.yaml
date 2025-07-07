@@ -19,7 +19,6 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
       - id: check-yaml
-        exclude: joint_limits.yaml # uses custom macro for deg<->rad transformation
       - id: pretty-format-json
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
