@@ -12,7 +12,7 @@ ENV_IDS = []
 for task in ["Reacher"]:
     control_suffix = "Joints"
     reward_suffix = "Dense"
-    env_id = f"Panda{task}{control_suffix}{reward_suffix}-v1"
+    env_id = f"Aegis{task}{control_suffix}{reward_suffix}-v1"
 
     register(
         id=env_id,
