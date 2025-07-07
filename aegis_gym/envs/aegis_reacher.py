@@ -1,6 +1,5 @@
 from typing import Optional
 
-import torch
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -16,7 +15,7 @@ Truncated = bool
 class AegisReacherEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
-    def __init__(self, device: str = "cuda", render_mode: str = None):
+    def __init__(self, device: str = "cpu", render_mode: str = None):
         super().__init__()
         self.device = device
 
@@ -35,8 +34,8 @@ class AegisReacherEnv(gym.Env):
         self.episode_step = 0.0
         self.episode_start_time = 0.0
 
-        self.actions = torch.zeros(self.num_actions, device=self.device)
-        self.target_pos = torch.zeros(3, device=self.device)
+        self.actions = np.zeros(self.num_actions)
+        self.target_pos = np.zeros(3)
 
         self.reward_functions = {
             "dist": lambda: 1.0,

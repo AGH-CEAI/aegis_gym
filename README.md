@@ -17,7 +17,7 @@ pip3 install ./dist/aegis_gym-*.whl
 
 # Run tests
 ```bash
-poetry run test
+poetry run pytest -v -s
 ```
 
 ---

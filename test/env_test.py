@@ -20,7 +20,7 @@ def test_step_AegisReacherEnv():
 
     env = AegisReacherEnv()
     env.reset()
-    env.step()
+    env.step(None)
 
 
 def test_render_AegisReacherEnv():
