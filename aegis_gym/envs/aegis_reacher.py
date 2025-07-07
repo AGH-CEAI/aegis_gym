@@ -15,7 +15,13 @@ Truncated = bool
 class AegisReacherEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
-    def __init__(self, device: str = "cpu", render_mode: str = None):
+    def __init__(
+        self,
+        device: str = "cpu",
+        render_mode: str = None,
+        reward_type: str = "dense",
+        control_type: str = "joints",
+    ):
         super().__init__()
         self.device = device
 
@@ -44,7 +50,10 @@ class AegisReacherEnv(gym.Env):
 
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
 
-        assert render_mode is None or render_mode in self.metadata["render_modes"]
+        assert (
+            render_mode is None
+            or render_mode in AegisReacherEnv.metadata["render_modes"]
+        )
         self.render_mode = render_mode
 
     def step(

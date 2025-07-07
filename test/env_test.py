@@ -5,7 +5,8 @@ def test_import_AegisReacherEnv():
 def test_env_AegisReacherEnv():
     from aegis_gym.envs import AegisReacherEnv
 
-    env = AegisReacherEnv()  # noqa: F841
+    kwargs = {"reward_type": "dense", "control_type": "joints"}
+    env = AegisReacherEnv(**kwargs)  # noqa: F841
 
 
 def test_reset_AegisReacherEnv():
