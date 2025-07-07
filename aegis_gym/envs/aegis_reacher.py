@@ -4,7 +4,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-Observation = dict[str, np.ndarray]
+Observation = np.ndarray
 Info = dict[str, float]
 Reward = float
 Terminated = bool
@@ -61,11 +61,11 @@ class AegisReacherEnv(gym.Env):
     ) -> tuple[Observation, Reward, Terminated, Truncated, Info]:
         return self._get_obs(), 0.0, False, False, self._get_info()
 
-    def reset(self, seed=None, options=None) -> tuple[Observation, Info]:
+    def reset(self, seed=None, options=None) -> np.ndarray:
         return self._get_obs(), self._get_info()
 
-    def _get_obs(self) -> Observation:
-        return {"obs": np.random.rand(self.num_obs).astype(np.float32)}
+    def _get_obs(self) -> np.ndarray:
+        return np.random.rand(self.num_obs).astype(np.float32)
 
     def _get_info(self) -> Info:
         return {"distance": 0.0}
