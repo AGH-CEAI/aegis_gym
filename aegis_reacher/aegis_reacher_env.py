@@ -3,8 +3,10 @@ import importlib.util
 import time
 import torch
 import numpy as np
+import rclpy
 import gymnasium as gym
 from gymnasium import spaces
+from typing import Optional
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -33,18 +35,29 @@ RobotDirector = robot_director.RobotDirector
 
 
 class ROSInterface:
+    _instance: Optional["ROSInterface"] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ROSInterface, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
+        if hasattr(self, "_initialized") and self._initialized:
+            return
+        rclpy.init()
         self.robot_director = RobotDirector(synchronous=True)
         self.joint_names = self.robot_director.joint_names
         self.dof_home = {
             name: value
             for name, value in zip(self.joint_names, [0.0, -1.57, 1.57, 0.0, 0.0, 0.0])
         }
+        self._initialized = True
 
     def get_joint_positions(self) -> torch.Tensor:
-        js = self.robot_director.get_joint_states()
+        jp = self.robot_director.get_joint_positions()
         return torch.tensor(
-            [js[name] for name in self.joint_names], dtype=torch.float32
+            [jp[name] for name in self.joint_names], dtype=torch.float32
         )
 
     def get_joint_velocities(self) -> torch.Tensor:
@@ -67,15 +80,18 @@ class ROSInterface:
             joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel
         )
 
-    def move_to_home(self, dof_pos):
+    def move_to_home(self):
         self.robot_director.joint_move(
             joint_positions=self.dof_home,
             max_vel=0.5,
             max_accel=0.5,
         )
 
+    def shutdown(self):
+        rclpy.shutdown()
+
     def __del__(self):
-        pass
+        self.shutdown()
 
 
 class AegisReacherEnv(gym.Env):
