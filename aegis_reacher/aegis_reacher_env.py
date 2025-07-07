@@ -18,9 +18,9 @@ clip_action = 1
 obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
 action_scale = 0.5
 reward_scales = {"dist": -1.0, "control": -0.1}
-target_spawn_x = [-0.3, 0.3]
-target_spawn_y = [0.28, 0.68]
-target_spawn_z = [0.9, 1.7]
+target_spawn_x = [-0.26, 0.26]
+target_spawn_y = [0.36, 1.0]
+target_spawn_z = [0.98, 1.78]
 
 director_pkg_path = get_package_share_directory("aegis_director")
 robot_director_path = os.path.join(
