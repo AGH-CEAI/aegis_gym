@@ -1,10 +1,24 @@
 # aegis_gym
 
-The collection of [Gymnasium](https://gymnasium.farama.org/) environments for the Aegis station.
+The collection of [Gymnasium](https://gymnasium.farama.org/) environments for the Aegis UR5e station.
+
+[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Licence](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 ---
 
-# TODO
+# Build & install
+```bash
+poetry build
+pip3 install ./dist/aegis_gym-*.whl
+```
+
+# Run tests
+```bash
+poetry run pytest -v -s
+```
 
 ---
 ## Development notes
