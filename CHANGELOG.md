@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-1](https://github.com/AGH-CEAI/aegis_docker/pull/1) - Initial package with boilerplate and gymnasium API.
+- [PR-1](https://github.com/AGH-CEAI/aegis_gym/pull/1) - Initial package with boilerplate and gymnasium API.
 
 ### Changed
 
