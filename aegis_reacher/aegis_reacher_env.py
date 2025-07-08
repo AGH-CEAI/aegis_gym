@@ -143,7 +143,7 @@ class AegisReacherEnv(gym.Env):
         )
 
         dof_pos = self.robot.get_joint_positions()
-        delta = torch.tensor(self.actions, dtype=torch.float32) * self.action_scale
+        delta = self.actions.clone().detach() * self.action_scale
         dof_pos_target = dof_pos + delta
         self.robot.control_dofs_position(dof_pos_target)
         tcp_pos = self.robot.get_tcp_position()
