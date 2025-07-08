@@ -10,13 +10,13 @@ from typing import Optional
 from ament_index_python.packages import get_package_share_directory
 
 
-episode_length = 20
+episode_length = 10000
 num_obs = 18
 num_actions = 6
 target_threshold = 0.01
 clip_action = 1
 obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
-action_scale = 0.5
+action_scale = 0.1
 reward_scales = {"dist": -1.0, "control": -0.1}
 target_spawn_x = [-0.26, 0.26]
 target_spawn_y = [0.36, 1.0]
@@ -52,7 +52,7 @@ class ROSInterface:
         self.dof_home = {
             name: value
             for name, value in zip(
-                self.joint_names, [0.0, -2.09, 2.09, -1.57, -1.57, 1.57]
+                self.joint_names, [0.0, -2.09, 2.09, -1.57, -1.57, 0]
             )
         }
         self._initialized = True
