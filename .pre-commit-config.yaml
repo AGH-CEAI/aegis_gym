@@ -19,7 +19,6 @@ repos:
       - id: mixed-line-ending
       - id: trailing-whitespace
       - id: check-yaml
-        exclude: joint_limits.yaml # uses custom macro for deg<->rad transformation
       - id: pretty-format-json
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
@@ -27,7 +26,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: [-w]
+        args: [-w, --ignore-words=.codespell-ignore-words]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.5
