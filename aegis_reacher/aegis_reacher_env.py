@@ -47,7 +47,8 @@ class ROSInterface:
             return
         rclpy.init()
         self.robot_director = RobotDirector(synchronous=True)
-        self.joint_names = self.robot_director.joint_names
+        joint_state = self.robot_director._get_joint_states()
+        self.joint_names = list(joint_state.name)[1:]
         self.dof_home = {
             name: value
             for name, value in zip(
