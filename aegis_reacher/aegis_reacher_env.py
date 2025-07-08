@@ -122,7 +122,7 @@ class AegisReacherEnv(gym.Env):
         self.target_threshold = target_threshold
 
         self.episode_step = 0.0
-        self.episode_start_time = 0.0
+        self.episode_start_time = time.time()
 
         self.actions = torch.zeros(self.num_actions, device=self.device)
         self.target_pos = torch.zeros(3, device=self.device)
@@ -209,8 +209,6 @@ class AegisReacherEnv(gym.Env):
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
-
-        self.episode_start_time = time.time()
 
         return self._get_obs(), {}
 
