@@ -5,6 +5,9 @@ import rclpy
 import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional
+from visualization_msgs.msg import Marker
+from rclpy.clock import Clock
+from std_msgs.msg import ColorRGBA
 from aegis_director.robot_director import RobotDirector
 
 
@@ -46,6 +49,8 @@ class ROSInterface:
             'wrist_3_joint': 0.0,
             'robotiq_hande_left_finger_joint': 0.025,
         }
+        self.marker_node = rclpy.create_node("marker_publisher") 
+        self.target_pub = self.node.create_publisher(Marker, "/target_marker", 10)
         self._initialized = True
 
     def get_joint_positions(self) -> torch.Tensor:
@@ -81,8 +86,30 @@ class ROSInterface:
             max_accel=0.5,
         )
 
+    def publish_target_pos(self, pos):
+        msg = Marker()
+        msg.header.frame_id = "world"
+        msg.header.stamp = Clock().now().to_msg()
+
+        msg.ns = "target"
+        msg.id = 0
+        msg.type = Marker.SPHERE
+        msg.action = Marker.ADD
+
+        msg.pose.position.x = float(pos[0])
+        msg.pose.position.y = float(pos[1])
+        msg.pose.position.z = float(pos[2])
+        msg.pose.orientation.w = 1.0
+
+        msg.scale.x = 0.04
+        msg.scale.y = 0.04
+        msg.scale.z = 0.04
+
+        msg.color = ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
+
+        self.target_pub.publish(msg)
+
     def shutdown(self):
-        self.node.destroy_node()
         rclpy.shutdown()
 
     def __del__(self):
@@ -119,7 +146,6 @@ class AegisReacherEnv(gym.Env):
         self.target_threshold = target_threshold
 
         self.episode_step = 0.0
-        self.episode_start_time = time.time()
 
         self.actions = torch.zeros(self.num_actions, device=self.device)
         self.target_pos = torch.zeros(3, device=self.device)
@@ -198,6 +224,7 @@ class AegisReacherEnv(gym.Env):
             ],
             device=self.device,
         )
+        self.robot.publish_target_pos(self.target_pos)
 
         self.actions[:] = 0.0
         self.episode_step = 0
