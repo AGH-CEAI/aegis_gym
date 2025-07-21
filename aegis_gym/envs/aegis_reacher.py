@@ -41,15 +41,15 @@ class ROSInterface:
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
         self.dof_home = {
-            'shoulder_pan_joint': 0.0,
-            'shoulder_lift_joint': -2.09,
-            'elbow_joint': 2.09,
-            'wrist_1_joint': -1.57,
-            'wrist_2_joint': -1.57,
-            'wrist_3_joint': 0.0,
-            'robotiq_hande_left_finger_joint': 0.025,
+            "shoulder_pan_joint": 0.0,
+            "shoulder_lift_joint": -2.09,
+            "elbow_joint": 2.09,
+            "wrist_1_joint": -1.57,
+            "wrist_2_joint": -1.57,
+            "wrist_3_joint": 0.0,
+            "robotiq_hande_left_finger_joint": 0.025,
         }
-        self.marker_node = rclpy.create_node("marker_publisher") 
+        self.marker_node = rclpy.create_node("marker_publisher")
         self.target_pub = self.node.create_publisher(Marker, "/target_marker", 10)
         self._initialized = True
 
@@ -120,7 +120,8 @@ class AegisReacherEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
     def __init__(
-        self, device="cuda",
+        self,
+        device="cuda",
         render_mode=None,
         reward_type="dense",
         control_type="joints",
@@ -240,9 +241,13 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        return torch.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos]).cpu().numpy()
-    
-    def _get_info(self, reward = 0.0, terminated= False, truncated = False, success = False):
+        return (
+            torch.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
+            .cpu()
+            .numpy()
+        )
+
+    def _get_info(self, reward=0.0, terminated=False, truncated=False, success=False):
         info = {
             "success": success,
             "dist_to_target": self.dist.item(),
@@ -255,10 +260,7 @@ class AegisReacherEnv(gym.Env):
             info[f"reward_{key}"] = float(value)
 
         if terminated or truncated:
-            info["episode"] = {
-                "r": float(reward),
-                "l": self.episode_step
-            }
+            info["episode"] = {"r": float(reward), "l": self.episode_step}
 
         return info
 
