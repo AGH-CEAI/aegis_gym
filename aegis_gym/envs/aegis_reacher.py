@@ -50,7 +50,7 @@ class ROSInterface:
             "robotiq_hande_left_finger_joint": 0.025,
         }
         self.marker_node = rclpy.create_node("marker_publisher")
-        self.target_pub = self.node.create_publisher(Marker, "/target_marker", 10)
+        self.target_pub = self.marker_node.create_publisher(Marker, "/target_marker", 10)
         self._initialized = True
 
     def get_joint_positions(self) -> torch.Tensor:
