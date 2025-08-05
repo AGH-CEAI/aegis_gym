@@ -1,4 +1,4 @@
-import torch
+import numpy as np
 from typing import Optional
 import rclpy
 from rclpy.clock import Clock
@@ -37,25 +37,19 @@ class ROSInterface:
         )
         self._initialized = True
 
-    def get_joint_positions(self) -> torch.Tensor:
+    def get_joint_positions(self):
         jp = self.robot_director.get_joint_positions()
-        return torch.tensor(
-            [jp[name] for name in self.joint_names], dtype=torch.float32
-        )
+        return np.array([jp[name] for name in self.joint_names], dtype=np.float32)
 
-    def get_joint_velocities(self) -> torch.Tensor:
+    def get_joint_velocities(self):
         jv = self.robot_director.get_joint_velocities()
-        return torch.tensor(
-            [jv[name] for name in self.joint_names], dtype=torch.float32
-        )
+        return np.array([jv[name] for name in self.joint_names], dtype=np.float32)
 
-    def get_tcp_position(self) -> torch.Tensor:
+    def get_tcp_position(self):
         tcp = self.robot_director.get_tcp_pose()
-        return torch.tensor(tcp["position"], dtype=torch.float32)
+        return np.array(tcp["position"], dtype=np.float32)
 
-    def control_dofs_position(
-        self, target_pos: torch.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
-    ):
+    def control_dofs_position(self, target_pos, max_vel=0.3, max_accel=0.3):
         joint_dict = {
             name: float(pos) for name, pos in zip(self.joint_names, target_pos)
         }

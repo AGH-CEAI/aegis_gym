@@ -1,6 +1,5 @@
-import time
 import numpy as np
-import torch
+import time
 import gymnasium as gym
 from gymnasium import spaces
 from .ros_interface import ROSInterface
@@ -48,11 +47,11 @@ class AegisReacherEnv(gym.Env):
 
         self.episode_step = 0.0
 
-        self.actions = torch.zeros(self.num_actions)
-        self.target_pos = torch.zeros(3)
-        self.dof_pos = torch.zeros(6)
-        self.dof_vel = torch.zeros(6)
-        self.tcp_pos = torch.zeros(3)
+        self.actions = np.zeros(self.num_actions, dtype=np.float32)
+        self.target_pos = np.zeros(3, dtype=np.float32)
+        self.dof_pos = np.zeros(6, dtype=np.float32)
+        self.dof_vel = np.zeros(6, dtype=np.float32)
+        self.tcp_pos = np.zeros(3, dtype=np.float32)
 
         self.reward_functions = {
             "dist": self._reward_dist,
@@ -71,25 +70,24 @@ class AegisReacherEnv(gym.Env):
 
     def step(self, action):
         action = np.clip(action, -clip_action, clip_action)
-        self.actions.copy_(torch.tensor(action, dtype=torch.float32))
+        self.actions = np.array(action, dtype=np.float32)
 
         self.dof_pos = self.robot.get_joint_positions()
-        delta = self.actions.clone().detach() * self.action_scale
+        delta = self.actions * self.action_scale
         dof_pos_target = self.dof_pos + delta
         self.robot.control_dofs_position(dof_pos_target)
         self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
-
-        self.dist = torch.norm(self.tcp_pos - self.target_pos)
-        success = bool((self.dist < self.target_threshold).item())
+        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
+        success = bool(self.dist < self.target_threshold)
 
         reward = 0.0
         for name, func in self.reward_functions.items():
             r = func() * self.reward_scales[name]
             self.episode_sums[name] += r
             reward += r
-        reward = float(reward.item())
+        reward = float(reward)
         self.episode_return += reward
 
         current_time = time.time()
@@ -97,7 +95,6 @@ class AegisReacherEnv(gym.Env):
 
         terminated = bool(success)
         truncated = elapsed_time >= episode_length
-
         info = self._get_info(reward, terminated, truncated, success)
 
         return self._get_obs(), reward, terminated, truncated, info
@@ -105,20 +102,19 @@ class AegisReacherEnv(gym.Env):
     def reset(self, seed=None, options=None):
         if seed is not None:
             np.random.seed(seed)
-            torch.manual_seed(seed)
 
         self.robot.move_to_home()
 
         x_range = target_spawn_x
         y_range = target_spawn_y
         z_range = target_spawn_z
-
-        self.target_pos = torch.tensor(
+        self.target_pos = np.array(
             [
                 np.random.uniform(x_range[0], x_range[1]),
                 np.random.uniform(y_range[0], y_range[1]),
                 np.random.uniform(z_range[0], z_range[1]),
-            ]
+            ],
+            dtype=np.float32,
         )
         self.robot.publish_target_pos(self.target_pos)
 
@@ -127,7 +123,7 @@ class AegisReacherEnv(gym.Env):
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
         self.tcp_pos = self.robot.get_tcp_position()
-        self.dist = torch.norm(self.tcp_pos - self.target_pos)
+        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
         return self._get_obs(), self._get_info()
@@ -136,16 +132,14 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        return (
-            torch.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
-            .cpu()
-            .numpy()
+        return np.concatenate(
+            [self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos]
         )
 
     def _get_info(self, reward=0.0, terminated=False, truncated=False, success=False):
         info = {
             "success": success,
-            "dist_to_target": self.dist.item(),
+            "dist_to_target": self.dist,
             "episode_step": self.episode_step,
             "is_truncated": truncated,
             "is_success": success,
@@ -163,7 +157,7 @@ class AegisReacherEnv(gym.Env):
         return self.dist
 
     def _reward_control(self):
-        return torch.sum(self.actions**2)
+        return np.sum(self.actions**2)
 
     def render(self):
         pass
