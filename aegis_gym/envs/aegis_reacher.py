@@ -1,13 +1,16 @@
 import time
-import torch
-import numpy as np
-import rclpy
-import gymnasium as gym
-from gymnasium import spaces
 from typing import Optional
-from visualization_msgs.msg import Marker
+
+import gymnasium as gym
+import numpy as np
+import torch
+import rclpy
+from gymnasium import spaces
+
 from rclpy.clock import Clock
 from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import Marker
+
 from aegis_director.robot_director import RobotDirector
 
 
