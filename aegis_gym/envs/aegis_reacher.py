@@ -71,9 +71,7 @@ class AegisReacherEnv(gym.Env):
 
     def step(self, action):
         action = np.clip(action, -clip_action, clip_action)
-        self.actions.copy_(
-            torch.tensor(action, dtype=torch.float32)
-        )
+        self.actions.copy_(torch.tensor(action, dtype=torch.float32))
 
         self.dof_pos = self.robot.get_joint_positions()
         delta = self.actions.clone().detach() * self.action_scale
