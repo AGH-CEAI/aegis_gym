@@ -24,7 +24,6 @@ class AegisReacherEnv(gym.Env):
 
     def __init__(
         self,
-        device="cuda",
         render_mode=None,
         reward_type="dense",
         control_type="joints",
@@ -32,8 +31,6 @@ class AegisReacherEnv(gym.Env):
         super().__init__()
 
         self.robot = ROSInterface()
-        self.device = device
-
         self.num_obs = num_obs
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
@@ -51,11 +48,11 @@ class AegisReacherEnv(gym.Env):
 
         self.episode_step = 0.0
 
-        self.actions = torch.zeros(self.num_actions, device=self.device)
-        self.target_pos = torch.zeros(3, device=self.device)
-        self.dof_pos = torch.zeros(6, device=self.device)
-        self.dof_vel = torch.zeros(6, device=self.device)
-        self.tcp_pos = torch.zeros(3, device=self.device)
+        self.actions = torch.zeros(self.num_actions)
+        self.target_pos = torch.zeros(3)
+        self.dof_pos = torch.zeros(6)
+        self.dof_vel = torch.zeros(6)
+        self.tcp_pos = torch.zeros(3)
 
         self.reward_functions = {
             "dist": self._reward_dist,
@@ -75,7 +72,7 @@ class AegisReacherEnv(gym.Env):
     def step(self, action):
         action = np.clip(action, -clip_action, clip_action)
         self.actions.copy_(
-            torch.tensor(action, dtype=torch.float32, device=self.device)
+            torch.tensor(action, dtype=torch.float32)
         )
 
         self.dof_pos = self.robot.get_joint_positions()
@@ -123,8 +120,7 @@ class AegisReacherEnv(gym.Env):
                 np.random.uniform(x_range[0], x_range[1]),
                 np.random.uniform(y_range[0], y_range[1]),
                 np.random.uniform(z_range[0], z_range[1]),
-            ],
-            device=self.device,
+            ]
         )
         self.robot.publish_target_pos(self.target_pos)
 

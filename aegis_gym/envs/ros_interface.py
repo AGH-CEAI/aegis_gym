@@ -6,6 +6,7 @@ from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 from aegis_director.robot_director import RobotDirector
 
+
 class ROSInterface:
     _instance: Optional["ROSInterface"] = None
 
@@ -14,11 +15,10 @@ class ROSInterface:
             cls._instance = super(ROSInterface, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, device="cuda"):
+    def __init__(self):
         if hasattr(self, "_initialized") and self._initialized:
             return
         rclpy.init()
-        self.device = device
         self.robot_director = RobotDirector(synchronous=True)
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
@@ -41,17 +41,17 @@ class ROSInterface:
         jp = self.robot_director.get_joint_positions()
         return torch.tensor(
             [jp[name] for name in self.joint_names], dtype=torch.float32
-        ).to(self.device)
+        )
 
     def get_joint_velocities(self) -> torch.Tensor:
         jv = self.robot_director.get_joint_velocities()
         return torch.tensor(
             [jv[name] for name in self.joint_names], dtype=torch.float32
-        ).to(self.device)
+        )
 
     def get_tcp_position(self) -> torch.Tensor:
         tcp = self.robot_director.get_tcp_pose()
-        return torch.tensor(tcp["position"], dtype=torch.float32).to(self.device)
+        return torch.tensor(tcp["position"], dtype=torch.float32)
 
     def control_dofs_position(
         self, target_pos: torch.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
