@@ -2,7 +2,11 @@ import numpy as np
 import time
 import gymnasium as gym
 from gymnasium import spaces
-from .ros_interface import ROSInterface
+try:
+    from .ros_interface import ROSInterface
+except ImportError:
+    print("ROS not available\nUsing mock interface for testing")
+    from .ros_interface_mock import ROSInterfaceMock as ROSInterface
 
 
 episode_length = 30
