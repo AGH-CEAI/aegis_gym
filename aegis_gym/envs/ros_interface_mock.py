@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class ROSInterfaceMock:
     def __init__(self):
         self.joint_names = [
