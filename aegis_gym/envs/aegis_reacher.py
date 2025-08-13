@@ -4,23 +4,10 @@ import gymnasium as gym
 from gymnasium import spaces
 
 try:
-    from .ros_interface import ROSInterface
+    from ..ros_interface import ROSInterface
 except ImportError:
     print("ROS not available\nUsing mock interface for testing")
-    from .ros_interface_mock import ROSInterfaceMock as ROSInterface
-
-
-episode_length = 30
-num_obs = 18
-num_actions = 6
-target_threshold = 0.02
-clip_action = 1
-obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
-action_scale = 0.1
-reward_scales = {"dist": -1.0, "control": -0.1}
-target_spawn_x = [-0.26, 0.26]
-target_spawn_y = [0.36, 1.0]
-target_spawn_z = [0.98, 1.78]
+    from ..ros_interface_mock import ROSInterfaceMock as ROSInterface
 
 
 class AegisReacherEnv(gym.Env):
@@ -34,24 +21,27 @@ class AegisReacherEnv(gym.Env):
     ):
         super().__init__()
 
+        self.episode_length = 30
+        self.num_obs = 18
+        self.num_actions = 6
+        self.target_threshold = 0.02
+        self.clip_action = 1
+        self.obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
+        self.action_scale = 0.1
+        self.reward_scales = {"dist": -1.0, "control": -0.1}
+        self.target_spawn_x = [-0.26, 0.26]
+        self.target_spawn_y = [0.36, 1.0]
+        self.target_spawn_z = [0.98, 1.78]
         self.robot = ROSInterface()
-        self.num_obs = num_obs
+
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
-        self.obs_scales = obs_scales
-
-        self.num_actions = num_actions
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
-        self.action_scale = action_scale
-
-        self.reward_scales = reward_scales
-        self.target_threshold = target_threshold
 
         self.episode_step = 0.0
-
         self.actions = np.zeros(self.num_actions, dtype=np.float32)
         self.target_pos = np.zeros(3, dtype=np.float32)
         self.dof_pos = np.zeros(6, dtype=np.float32)
@@ -62,7 +52,6 @@ class AegisReacherEnv(gym.Env):
             "dist": self._reward_dist,
             "control": self._reward_control,
         }
-
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
 
         assert (
@@ -74,7 +63,7 @@ class AegisReacherEnv(gym.Env):
         self.reset()
 
     def step(self, action):
-        action = np.clip(action, -clip_action, clip_action)
+        action = np.clip(action, -self.clip_action, self.clip_action)
         self.actions = np.array(action, dtype=np.float32)
 
         self.dof_pos = self.robot.get_joint_positions()
@@ -99,7 +88,7 @@ class AegisReacherEnv(gym.Env):
         elapsed_time = current_time - self.episode_start_time
 
         terminated = bool(success)
-        truncated = elapsed_time >= episode_length
+        truncated = elapsed_time >= self.episode_length
         info = self._get_info(reward, terminated, truncated, success)
 
         return self._get_obs(), reward, terminated, truncated, info
@@ -110,14 +99,11 @@ class AegisReacherEnv(gym.Env):
 
         self.robot.move_to_home()
 
-        x_range = target_spawn_x
-        y_range = target_spawn_y
-        z_range = target_spawn_z
         self.target_pos = np.array(
             [
-                np.random.uniform(x_range[0], x_range[1]),
-                np.random.uniform(y_range[0], y_range[1]),
-                np.random.uniform(z_range[0], z_range[1]),
+                np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
+                np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
+                np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
             ],
             dtype=np.float32,
         )
