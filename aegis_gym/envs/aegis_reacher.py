@@ -1,5 +1,7 @@
-import numpy as np
 import time
+from typing import Optional, Tuple, Dict, Any
+
+import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -15,10 +17,10 @@ class AegisReacherEnv(gym.Env):
 
     def __init__(
         self,
-        render_mode=None,
-        reward_type="dense",
-        control_type="joints",
-    ):
+        render_mode: Optional[str] = None,
+        reward_type: str = "dense",
+        control_type: str = "joints",
+    ) -> None:
         super().__init__()
 
         self.episode_length = 30
@@ -62,7 +64,9 @@ class AegisReacherEnv(gym.Env):
 
         self.reset()
 
-    def step(self, action):
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         action = np.clip(action, -self.clip_action, self.clip_action)
         self.actions = np.array(action, dtype=np.float32)
 
@@ -93,7 +97,9 @@ class AegisReacherEnv(gym.Env):
 
         return self._get_obs(), reward, terminated, truncated, info
 
-    def reset(self, seed=None, options=None):
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[Dict] = None
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
 
@@ -119,7 +125,7 @@ class AegisReacherEnv(gym.Env):
 
         return self._get_obs(), self._get_info()
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.ndarray:
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
@@ -127,7 +133,13 @@ class AegisReacherEnv(gym.Env):
             [self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos]
         )
 
-    def _get_info(self, reward=0.0, terminated=False, truncated=False, success=False):
+    def _get_info(
+        self,
+        reward: float = 0.0,
+        terminated: bool = False,
+        truncated: bool = False,
+        success: bool = False,
+    ) -> Dict[str, Any]:
         info = {
             "success": success,
             "dist_to_target": self.dist,
@@ -144,11 +156,11 @@ class AegisReacherEnv(gym.Env):
 
         return info
 
-    def _reward_dist(self):
+    def _reward_dist(self) -> float:
         return self.dist
 
-    def _reward_control(self):
+    def _reward_control(self) -> float:
         return np.sum(self.actions**2)
 
-    def render(self):
+    def render(self) -> None:
         pass

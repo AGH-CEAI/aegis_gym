@@ -2,7 +2,7 @@ import numpy as np
 
 
 class ROSInterfaceMock:
-    def __init__(self):
+    def __init__(self) -> None:
         self.joint_names = [
             "shoulder_pan_joint",
             "shoulder_lift_joint",
@@ -13,26 +13,28 @@ class ROSInterfaceMock:
         ]
         self.dof_home = {name: 0.0 for name in self.joint_names}
 
-    def get_joint_positions(self):
+    def get_joint_positions(self) -> np.ndarray:
         return np.zeros(len(self.joint_names), dtype=np.float32)
 
-    def get_joint_velocities(self):
+    def get_joint_velocities(self) -> np.ndarray:
         return np.zeros(len(self.joint_names), dtype=np.float32)
 
-    def get_tcp_position(self):
+    def get_tcp_position(self) -> np.ndarray:
         return np.array([0.0, 0.0, 0.0], dtype=np.float32)
 
-    def control_dofs_position(self, target_pos, max_vel=0.3, max_accel=0.3):
+    def control_dofs_position(
+        self, target_pos: np.ndarray, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
         pass
 
-    def move_to_home(self):
+    def move_to_home(self) -> None:
         pass
 
-    def publish_target_pos(self, pos):
+    def publish_target_pos(self, pos: np.ndarray) -> None:
         pass
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         pass
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.shutdown()

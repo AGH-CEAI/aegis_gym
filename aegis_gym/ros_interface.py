@@ -1,21 +1,23 @@
 import numpy as np
 from typing import Optional
+
 import rclpy
 from rclpy.clock import Clock
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
+
 from aegis_director.robot_director import RobotDirector
 
 
 class ROSInterface:
     _instance: Optional["ROSInterface"] = None
 
-    def __new__(cls):
+    def __new__(cls) -> "ROSInterface":
         if cls._instance is None:
             cls._instance = super(ROSInterface, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
         rclpy.init()
@@ -37,19 +39,21 @@ class ROSInterface:
         )
         self._initialized = True
 
-    def get_joint_positions(self):
+    def get_joint_positions(self) -> np.ndarray:
         jp = self.robot_director.get_joint_positions()
         return np.array([jp[name] for name in self.joint_names], dtype=np.float32)
 
-    def get_joint_velocities(self):
+    def get_joint_velocities(self) -> np.ndarray:
         jv = self.robot_director.get_joint_velocities()
         return np.array([jv[name] for name in self.joint_names], dtype=np.float32)
 
-    def get_tcp_position(self):
+    def get_tcp_position(self) -> np.ndarray:
         tcp = self.robot_director.get_tcp_pose()
         return np.array(tcp["position"], dtype=np.float32)
 
-    def control_dofs_position(self, target_pos, max_vel=0.3, max_accel=0.3):
+    def control_dofs_position(
+        self, target_pos: np.ndarray, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
         joint_dict = {
             name: float(pos) for name, pos in zip(self.joint_names, target_pos)
         }
@@ -57,14 +61,14 @@ class ROSInterface:
             joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel
         )
 
-    def move_to_home(self):
+    def move_to_home(self) -> None:
         self.robot_director.joint_move(
             joint_positions=self.dof_home,
             max_vel=0.5,
             max_accel=0.5,
         )
 
-    def publish_target_pos(self, pos):
+    def publish_target_pos(self, pos: np.ndarray) -> None:
         msg = Marker()
         msg.header.frame_id = "world"
         msg.header.stamp = Clock().now().to_msg()
@@ -87,8 +91,8 @@ class ROSInterface:
 
         self.target_pub.publish(msg)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         rclpy.shutdown()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.shutdown()
