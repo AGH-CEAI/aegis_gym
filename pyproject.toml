@@ -10,6 +10,7 @@ readme = "README.md"
 python = "^3.10"
 gymnasium = "^0.29.1"
 numpy = "^1.26"
+torch = "^2.5.1"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.4.0"
