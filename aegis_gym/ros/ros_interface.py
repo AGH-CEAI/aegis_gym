@@ -7,9 +7,10 @@ from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 
 from aegis_director.robot_director import RobotDirector
+from .base_ros_interface import BaseROSInterface
 
 
-class ROSInterface:
+class ROSInterface(BaseROSInterface):
     _instance: Optional["ROSInterface"] = None
 
     def __new__(cls) -> "ROSInterface":

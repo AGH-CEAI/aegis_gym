@@ -1,7 +1,8 @@
+from .base_ros_interface import BaseROSInterface
 import numpy as np
 
 
-class ROSInterfaceMock:
+class ROSInterfaceMock(BaseROSInterface):
     def __init__(self) -> None:
         self.joint_names = [
             "shoulder_pan_joint",

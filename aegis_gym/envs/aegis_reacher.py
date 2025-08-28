@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Optional, Tuple, Dict, Any
 
@@ -5,11 +6,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-try:
-    from ..ros_interface import ROSInterface
-except ImportError:
-    print("ROS not available\nUsing mock interface for testing")
-    from ..ros_interface_mock import ROSInterfaceMock as ROSInterface
+from aegis_gym.ros import BaseROSInterface, get_ros_interface
 
 
 class AegisReacherEnv(gym.Env):
@@ -34,7 +31,12 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_x = [-0.26, 0.26]
         self.target_spawn_y = [0.36, 1.0]
         self.target_spawn_z = [0.98, 1.78]
-        self.robot = ROSInterface()
+        
+        ros_interface: str = "real"
+        if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+            print("> Deteceted pytest env, using mock ROS interface")
+            ros_interface = "mock"
+        self.robot: BaseROSInterface = get_ros_interface(ros_interface)
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
