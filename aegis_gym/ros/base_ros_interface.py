@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
+
 class BaseROSInterface(ABC):
     @abstractmethod
     def get_joint_positions(self) -> np.ndarray:
@@ -15,7 +16,9 @@ class BaseROSInterface(ABC):
         pass
 
     @abstractmethod
-    def control_dofs_position(self, target_pos: np.ndarray, max_vel: float = 0.3, max_accel: float = 0.3) -> None:
+    def control_dofs_position(
+        self, target_pos: np.ndarray, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
         pass
 
     @abstractmethod

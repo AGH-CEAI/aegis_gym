@@ -31,7 +31,7 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_x = [-0.26, 0.26]
         self.target_spawn_y = [0.36, 1.0]
         self.target_spawn_z = [0.98, 1.78]
-        
+
         ros_interface: str = "real"
         if os.environ.get("PYTEST_CURRENT_TEST") is not None:
             print("> Deteceted pytest env, using mock ROS interface")
