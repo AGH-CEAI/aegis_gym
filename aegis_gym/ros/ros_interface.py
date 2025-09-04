@@ -9,7 +9,9 @@ from visualization_msgs.msg import Marker
 try:
     from aegis_director.robot_director import RobotDirector
 except ImportError:
-    print("Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project.")
+    print(
+        "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
+    )
     raise ImportError
 
 from .base_ros_interface import BaseROSInterface

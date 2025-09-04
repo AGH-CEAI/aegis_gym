@@ -1,6 +1,7 @@
 import numpy as np
 from aegis_gym.envs import AegisReacherEnv
 
+
 def test_env_AegisReacherEnv():
     kwargs = {"reward_type": "dense", "control_type": "joints"}
     env = AegisReacherEnv(**kwargs)  # noqa: F841
