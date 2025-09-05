@@ -1,7 +1,7 @@
 import warnings
 from enum import auto
 
-# Python 3.11+: Change to builtin StrEnum in
+# Python 3.11+: Change to builtin StrEnum
 from strenum import StrEnum
 
 from .robot_commander_interface import RobotCommanderInterface
