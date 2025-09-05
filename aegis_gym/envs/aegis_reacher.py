@@ -6,7 +6,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from aegis_gym.ros import ROSInterfaceType, get_ros_interface
+from aegis_gym.robot import ROSInterfaceType, get_ros_interface
 
 
 class AegisReacherEnv(gym.Env):
