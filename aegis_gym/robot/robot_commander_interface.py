@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 
-class BaseROSInterface(ABC):
+class RobotCommanderInterface(ABC):
     @abstractmethod
     def get_joint_positions(self) -> np.ndarray:
         pass

@@ -6,7 +6,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from aegis_gym.robot import ROSInterfaceType, get_ros_interface
+from aegis_gym.robot import RobotCommanderType, get_ros_interface
 
 
 class AegisReacherEnv(gym.Env):
@@ -32,10 +32,10 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = [0.36, 1.0]
         self.target_spawn_z = [0.98, 1.78]
 
-        ros_interface = ROSInterfaceType.REAL
+        ros_interface = RobotCommanderType.REAL
         if os.environ.get("PYTEST_CURRENT_TEST") is not None:
             print("\n> Deteceted pytest env, using mock ROS interface")
-            ros_interface = ROSInterfaceType.MOCK
+            ros_interface = RobotCommanderType.MOCK
         self.robot = get_ros_interface(ros_interface)
 
         self.observation_space = spaces.Box(

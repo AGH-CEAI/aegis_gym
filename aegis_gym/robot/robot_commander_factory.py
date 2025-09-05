@@ -4,29 +4,29 @@ from enum import auto
 # TODO for Python 3.11: change to build in StrEnum
 from strenum import StrEnum
 
-from .robot_commander_interface import BaseROSInterface
-from .robot_commander_mock import ROSInterfaceMock
+from .robot_commander_interface import RobotCommanderInterface
+from .robot_commander_mock import RobotCommanderMock
 
 try:
-    from .robot_commander import ROSInterface
+    from .robot_commander import RobotCommander
 except ImportError:
-    ROSInterface = None
+    RobotCommander = None
 
 
-class ROSInterfaceType(StrEnum):
+class RobotCommanderType(StrEnum):
     MOCK = auto()
     REAL = auto()
 
 
 def get_ros_interface(
-    mode: ROSInterfaceType = ROSInterfaceType.REAL,
-) -> BaseROSInterface:
+    mode: RobotCommanderType = RobotCommanderType.REAL,
+) -> RobotCommanderInterface:
     match mode:
-        case ROSInterfaceType.MOCK:
-            return ROSInterfaceMock()
-        case ROSInterfaceType.REAL:
-            if ROSInterface:
-                return ROSInterface()
+        case RobotCommanderType.MOCK:
+            return RobotCommanderMock()
+        case RobotCommanderType.REAL:
+            if RobotCommander:
+                return RobotCommander()
             warnings.warn(
                 "\nFailed to import ROSInterface. Double check if the ROS is sourced properly via `source /opt/ros/ROS_DISTRO/setup.sh`."
             )

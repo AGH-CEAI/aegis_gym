@@ -14,15 +14,15 @@ except ImportError:
     )
     raise ImportError
 
-from .robot_commander_interface import BaseROSInterface
+from .robot_commander_interface import RobotCommanderInterface
 
 
-class ROSInterface(BaseROSInterface):
-    _instance: Optional["ROSInterface"] = None
+class RobotCommander(RobotCommanderInterface):
+    _instance: Optional["RobotCommander"] = None
 
-    def __new__(cls) -> "ROSInterface":
+    def __new__(cls) -> "RobotCommander":
         if cls._instance is None:
-            cls._instance = super(ROSInterface, cls).__new__(cls)
+            cls._instance = super(RobotCommander, cls).__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
