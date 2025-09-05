@@ -7,6 +7,8 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
+from aegis_gym.sim import generate_aegis_urdf
+
 ENV_CFG = {
     "num_actions": 6,
     "default_joint_angles": {
@@ -120,7 +122,7 @@ class AegisGenesisPusherEnv(gym.Env):
 
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="rl_zoo3/envs/aegis/description/aegis.urdf",
+                file=generate_aegis_urdf(),
                 fixed=True,
                 pos=ENV_CFG["robot_pos"],
             ),
