@@ -1,4 +1,4 @@
-from .base_ros_interface import BaseROSInterface
+from .robot_commander_interface import BaseROSInterface
 import numpy as np
 
 

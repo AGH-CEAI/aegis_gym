@@ -14,7 +14,7 @@ except ImportError:
     )
     raise ImportError
 
-from .base_ros_interface import BaseROSInterface
+from .robot_commander_interface import BaseROSInterface
 
 
 class ROSInterface(BaseROSInterface):

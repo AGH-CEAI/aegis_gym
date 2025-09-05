@@ -4,11 +4,11 @@ from enum import auto
 # TODO for Python 3.11: change to build in StrEnum
 from strenum import StrEnum
 
-from .base_ros_interface import BaseROSInterface
-from .ros_interface_mock import ROSInterfaceMock
+from .robot_commander_interface import BaseROSInterface
+from .robot_commander_mock import ROSInterfaceMock
 
 try:
-    from .ros_interface import ROSInterface
+    from .robot_commander import ROSInterface
 except ImportError:
     ROSInterface = None
 
