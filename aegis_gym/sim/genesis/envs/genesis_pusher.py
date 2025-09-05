@@ -62,12 +62,19 @@ def gs_rand_float(lower, upper, shape, device):
 class AegisGenesisPusherEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
 
-    def __init__(self, show_viewer=False, device="cuda", render_mode=None):
+    def __init__(
+        self,
+        render_mode=None,
+        reward_type: str = "dense",
+        control_type: str = "joints",
+        device="cuda",
+    ):
         super().__init__()
 
         if not gs._initialized:
             gs.init(precision="32", backend=gs.gpu, logging_level="warning")
 
+        show_viewer = False
         if render_mode == "human":
             show_viewer = True
 

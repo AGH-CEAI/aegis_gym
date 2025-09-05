@@ -17,10 +17,11 @@ env_id = f"Aegis{sim_name}{task}{control_suffix}{reward_suffix}-v1"
 
 register(
     id=env_id,
-    entry_point=f"aegis_gym.sim.genesis.envs:Aegis{task}Env",
+    entry_point=f"aegis_gym.sim.genesis.envs:Aegis{sim_name}{task}Env",
     kwargs={
         "reward_type": reward_suffix.lower(),
         "control_type": control_suffix.lower(),
+        "device": "cuda",
     },
     max_episode_steps=50,
 )
