@@ -1,7 +1,8 @@
+from .robot_commander_interface import RobotCommanderInterface
 import numpy as np
 
 
-class ROSInterfaceMock:
+class RobotCommanderMock(RobotCommanderInterface):
     def __init__(self) -> None:
         self.joint_names = [
             "shoulder_pan_joint",

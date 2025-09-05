@@ -6,15 +6,23 @@ from rclpy.clock import Clock
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 
-from aegis_director.robot_director import RobotDirector
+try:
+    from aegis_director.robot_director import RobotDirector
+except ImportError:
+    print(
+        "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
+    )
+    raise ImportError
+
+from .robot_commander_interface import RobotCommanderInterface
 
 
-class ROSInterface:
-    _instance: Optional["ROSInterface"] = None
+class RobotCommander(RobotCommanderInterface):
+    _instance: Optional["RobotCommander"] = None
 
-    def __new__(cls) -> "ROSInterface":
+    def __new__(cls) -> "RobotCommander":
         if cls._instance is None:
-            cls._instance = super(ROSInterface, cls).__new__(cls)
+            cls._instance = super(RobotCommander, cls).__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
