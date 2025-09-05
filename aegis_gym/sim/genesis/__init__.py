@@ -1,0 +1,27 @@
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("aegis_gym")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
+from gymnasium.envs.registration import register
+
+ENV_IDS = []
+
+sim_name = "Genesis"
+task = "Pusher"
+control_suffix = "Joints"
+reward_suffix = "Dense"
+env_id = f"Aegis{sim_name}{task}{control_suffix}{reward_suffix}-v1"
+
+register(
+    id=env_id,
+    entry_point=f"aegis_gym.sim.genesis.envs:Aegis{task}Env",
+    kwargs={
+        "reward_type": reward_suffix.lower(),
+        "control_type": control_suffix.lower(),
+    },
+    max_episode_steps=50,
+)
+ENV_IDS.append(env_id)
