@@ -9,7 +9,7 @@ except ImportError:
     print(
         ">>> To run this SB3 integration test, you need SB3: pip install stable-baselines3"
     )
-    raise ImportError
+    PPO = None
 
 
 def main():
@@ -29,4 +29,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if PPO:
+        main()
