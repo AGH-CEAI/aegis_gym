@@ -28,10 +28,12 @@ class RobotCommander(RobotCommanderInterface):
     def __init__(self) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
+        super().__init__()
         rclpy.init()
         self.robot_director = RobotDirector(synchronous=True)
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
+        # TODO Take HOME position from SRDF file.
         self.dof_home = {
             "shoulder_pan_joint": 0.0,
             "shoulder_lift_joint": -2.09,
@@ -76,6 +78,7 @@ class RobotCommander(RobotCommanderInterface):
             max_accel=0.5,
         )
 
+    # TODO remove this AegisReacher ROS only related feature
     def publish_target_pos(self, pos: np.ndarray) -> None:
         msg = Marker()
         msg.header.frame_id = "world"

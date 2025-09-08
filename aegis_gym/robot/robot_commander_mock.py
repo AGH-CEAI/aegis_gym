@@ -4,6 +4,7 @@ import numpy as np
 
 class RobotCommanderMock(RobotCommanderInterface):
     def __init__(self) -> None:
+        super().__init__()
         self.joint_names = [
             "shoulder_pan_joint",
             "shoulder_lift_joint",
@@ -29,6 +30,7 @@ class RobotCommanderMock(RobotCommanderInterface):
         pass
 
     def move_to_home(self) -> None:
+        # TODO implement home movement
         pass
 
     def publish_target_pos(self, pos: np.ndarray) -> None:
