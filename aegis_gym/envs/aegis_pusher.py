@@ -1,5 +1,6 @@
 # Original implementation by Jakub Płachno (sivral) 2025
 import math
+from typing import Literal, Optional
 
 import genesis as gs
 import gymnasium as gym
@@ -7,7 +8,6 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
-from ..sim import generate_aegis_urdf
 from ..robot import RobotCommanderType
 
 
@@ -68,80 +68,37 @@ class AegisGenesisPusherEnv(gym.Env):
 
     def __init__(
         self,
-        render_mode=None,
+        render_mode: Optional[Literal["human", "rgb_array"]] = None,
         reward_type: str = "dense",
         control_type: str = "joints",
-        device="cuda",
+        device: str = "cuda",
         robot_interface: RobotCommanderType = RobotCommanderType.REAL,
+        cfg: dict = ENV_CFG,
     ):
         super().__init__()
-
-        if not gs._initialized:
-            gs.init(precision="32", backend=gs.gpu, logging_level="warning")
+        self.render_mode = render_mode
+        self.device = th.device(device)
 
         show_viewer = False
         if render_mode == "human":
             show_viewer = True
 
-        self.render_mode = render_mode
-        self.device = th.device(device)
+        self.max_episode_length = math.ceil(cfg["episode_length_s"] / cfg["dt"])
 
-        self.dt = ENV_CFG["dt"]
-        self.max_episode_length = math.ceil(ENV_CFG["episode_length_s"] / self.dt)
-
-        self.num_obs = ENV_CFG["num_obs"]
+        self.num_obs = cfg["num_obs"]
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
-        self.num_actions = ENV_CFG["num_actions"]
+        self.num_actions = cfg["num_actions"]
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
-        self.target_threshold = ENV_CFG["target_threshold"]
+        self.target_threshold = cfg["target_threshold"]
 
-        self.obs_scales = ENV_CFG["obs_scales"]
-        self.reward_scales = ENV_CFG["reward_scales"]
+        self.obs_scales = cfg["obs_scales"]
+        self.reward_scales = cfg["reward_scales"]
 
-        self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=5),
-            viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(1.0 / self.dt),
-                camera_pos=(2.0, 0.0, 2.5),
-                camera_lookat=(0.0, 0.0, 0.5),
-                camera_fov=40,
-            ),
-            vis_options=gs.options.VisOptions(),
-            rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
-                constraint_solver=gs.constraint_solver.Newton,
-                enable_collision=True,
-                # enable_self_collision=True,
-                enable_joint_limit=True,
-            ),
-            show_viewer=show_viewer,
-        )
-
-        self.scene.add_entity(gs.morphs.Plane())
-
-        self.robot = self.scene.add_entity(
-            gs.morphs.URDF(
-                file=generate_aegis_urdf(),
-                fixed=True,
-                pos=ENV_CFG["robot_pos"],
-            ),
-            material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
-        )
-
-        self.table = self.scene.add_entity(
-            gs.morphs.Box(
-                size=(0.84, 0.55, 0.82),
-                pos=ENV_CFG["table_pos"],
-                fixed=True,
-            ),
-            surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
-            material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
-        )
-
+        # TODO apply this to Simulation/Real
         self.target = self.scene.add_entity(
             gs.morphs.Cylinder(
                 height=0.00001, radius=0.04, pos=(-0.1, 0.76, 0.82), fixed=True

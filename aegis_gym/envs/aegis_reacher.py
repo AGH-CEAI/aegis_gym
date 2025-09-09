@@ -32,7 +32,7 @@ class AegisReacherEnv(gym.Env):
 
     def __init__(
         self,
-        render_mode: Optional[str] = None,
+        render_mode: Optional[Literal["human", "rgb_array"]] = None,
         reward_type: str = "dense",
         control_type: str = "joints",
         device: str = "cuda",
