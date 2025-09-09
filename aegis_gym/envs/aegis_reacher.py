@@ -12,6 +12,20 @@ from ..robot import (
     get_robot_commander,
 )
 
+ENV_CFG = {
+    "episode_length": 30,
+    "num_obs": 18,
+    "num_actions": 6,
+    "target_threshold": 0.02,
+    "clip_action": 1,
+    "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
+    "action_scale": 0.1,
+    "reward_scales": {"dist": -1.0, "control": -0.1},
+    "target_spawn_x": [-0.26, 0.26],
+    "target_spawn_y": [0.36, 1.0],
+    "target_spawn_z": [0.98, 1.78],
+}
+
 
 class AegisReacherEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
@@ -21,22 +35,25 @@ class AegisReacherEnv(gym.Env):
         render_mode: Optional[str] = None,
         reward_type: str = "dense",
         control_type: str = "joints",
-        device="cuda",
+        device: str = "cuda",
         robot_interface: RobotCommanderType = RobotCommanderType.REAL,
+        cfg: dict = ENV_CFG,
     ) -> None:
         super().__init__()
+        self.cfg = cfg
+        self.device = device
 
-        self.episode_length = 30
-        self.num_obs = 18
-        self.num_actions = 6
-        self.target_threshold = 0.02
-        self.clip_action = 1
-        self.obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
-        self.action_scale = 0.1
-        self.reward_scales = {"dist": -1.0, "control": -0.1}
-        self.target_spawn_x = [-0.26, 0.26]
-        self.target_spawn_y = [0.36, 1.0]
-        self.target_spawn_z = [0.98, 1.78]
+        self.episode_length = cfg["episode_length"]
+        self.num_obs = cfg["num_obs"]
+        self.num_actions = cfg["num_actions"]
+        self.target_threshold = cfg["target_threshold"]
+        self.clip_action = cfg["clip_action"]
+        self.obs_scales = cfg["obs_scales"]
+        self.action_scale = cfg["action_scale"]
+        self.reward_scales = cfg["reward_scales"]
+        self.target_spawn_x = cfg["target_spawn_x"]
+        self.target_spawn_y = cfg["target_spawn_y"]
+        self.target_spawn_z = cfg["target_spawn_z"]
 
         if os.environ.get("PYTEST_CURRENT_TEST") is not None:
             print("\n> Deteceted pytest env, using RobotCommanderMock")
