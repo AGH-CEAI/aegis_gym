@@ -1,4 +1,5 @@
 import warnings
+from enum import auto
 
 # Python 3.11+: Change to builtin StrEnum
 from strenum import StrEnum
@@ -8,8 +9,8 @@ from .robot_commander_mock import RobotCommanderMock
 
 
 class RobotCommanderType(StrEnum):
-    MOCK = "Mock"
-    ROS = "ROS"
+    MOCK = auto()
+    ROS = auto()
     SIM_GENESIS = "SimGenesis"
 
 
