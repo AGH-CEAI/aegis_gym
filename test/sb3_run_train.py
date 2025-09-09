@@ -1,7 +1,9 @@
 import time
 
 import gymnasium as gym
-import aegis_gym.sim.genesis as sim_genesis
+
+# import aegis_gym.sim.genesis as sim_genesis
+import aegis_gym
 
 try:
     from stable_baselines3 import PPO
@@ -13,10 +15,11 @@ except ImportError:
 
 
 def main():
-    env_name = sim_genesis.ENV_IDS[0]
+    # env_name = sim_genesis.ENV_IDS[0]
+    env_name = aegis_gym.ENV_IDS[0]
     print(f"Training on environment: {env_name}")
 
-    env = gym.make(env_name, render_mode="rgb_array")
+    env = gym.make(env_name)
 
     # Sleep 5 seconds and print countdown
     for i in range(5, 0, -1):
