@@ -10,7 +10,7 @@ from ...robot.robot_commander_factory import RobotCommanderType
 
 ENV_IDS = []
 
-sim_name = "SimGenesis"
+sim_name = RobotCommanderType.SIM_GENESIS.name
 tasks = ["Reacher", "Pusher"]
 control_suffix = "Joints"
 reward_suffix = "Dense"
@@ -24,7 +24,7 @@ for task in tasks:
             "reward_type": reward_suffix.lower(),
             "control_type": control_suffix.lower(),
             "device": "cuda",
-            "robot_interface": RobotCommanderType(sim_name),
+            "robot_interface": RobotCommanderType.SIM_GENESIS,
         },
         max_episode_steps=50,
     )

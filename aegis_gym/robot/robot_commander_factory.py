@@ -34,7 +34,7 @@ def get_robot_commander(
             )
             raise ImportError
 
-        case RobotCommanderType.SIMGENESIS:
+        case RobotCommanderType.SIM_GENESIS:
             try:
                 from ..sim.genesis.robots_commander_genesis import (
                     RobotCommanderSimGenesis,
