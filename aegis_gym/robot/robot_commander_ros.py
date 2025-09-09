@@ -17,12 +17,12 @@ except ImportError:
 from .robot_commander_interface import RobotCommanderInterface
 
 
-class RobotCommander(RobotCommanderInterface):
-    _instance: Optional["RobotCommander"] = None
+class RobotCommanderROS(RobotCommanderInterface):
+    _instance: Optional["RobotCommanderROS"] = None
 
-    def __new__(cls) -> "RobotCommander":
+    def __new__(cls) -> "RobotCommanderROS":
         if cls._instance is None:
-            cls._instance = super(RobotCommander, cls).__new__(cls)
+            cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:

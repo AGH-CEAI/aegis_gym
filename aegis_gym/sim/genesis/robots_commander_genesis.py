@@ -1,11 +1,11 @@
 import numpy as np
 import torch as th
 
-from aegis_gym.robot.robot_commander_interface import SimulationCommanderInterface
+from aegis_gym.robot.robot_commander_interface import RobotCommanderInterface
 from aegis_gym.sim.genesis.sim_manager_genesis import SimManagerGenesis
 
 
-class GenesisCommander(SimulationCommanderInterface):
+class RobotCommanderSimGenesis(RobotCommanderInterface):
     def __init__(self):
         super().__init__()
 

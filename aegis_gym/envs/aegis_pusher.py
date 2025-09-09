@@ -8,6 +8,8 @@ import torch as th
 from gymnasium import spaces
 
 from aegis_gym.sim import generate_aegis_urdf
+from aegis_gym.robot import RobotCommanderType
+
 
 ENV_CFG = {
     "num_actions": 6,
@@ -70,6 +72,7 @@ class AegisGenesisPusherEnv(gym.Env):
         reward_type: str = "dense",
         control_type: str = "joints",
         device="cuda",
+        robot_interface: RobotCommanderType = RobotCommanderType.REAL,
     ):
         super().__init__()
 

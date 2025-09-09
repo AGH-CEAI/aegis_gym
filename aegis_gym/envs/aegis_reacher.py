@@ -6,9 +6,11 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from aegis_gym.robot import RobotCommanderType
-
-from aegis_gym.sim.genesis.genesis_commander import GenesisCommander
+from aegis_gym.robot import (
+    RobotCommanderType,
+    RobotCommanderInterface,
+    get_ros_interface,
+)
 
 
 class AegisReacherEnv(gym.Env):
@@ -19,6 +21,8 @@ class AegisReacherEnv(gym.Env):
         render_mode: Optional[str] = None,
         reward_type: str = "dense",
         control_type: str = "joints",
+        device="cuda",
+        robot_interface: RobotCommanderType = RobotCommanderType.REAL,
     ) -> None:
         super().__init__()
 
@@ -34,13 +38,10 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = [0.36, 1.0]
         self.target_spawn_z = [0.98, 1.78]
 
-        ros_interface = RobotCommanderType.REAL
         if os.environ.get("PYTEST_CURRENT_TEST") is not None:
             print("\n> Deteceted pytest env, using mock ROS interface")
-            ros_interface = RobotCommanderType.MOCK
-        # self.robot = get_ros_interface(ros_interface)
-        print(f"Unused {ros_interface}")
-        self.robot = GenesisCommander()
+            robot_interface = RobotCommanderType.MOCK
+        self.robot: RobotCommanderInterface = get_ros_interface(robot_interface)
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32

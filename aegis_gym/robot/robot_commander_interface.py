@@ -33,11 +33,6 @@ class RobotCommanderInterface(ABC):
     def shutdown(self) -> None:
         pass
 
-    def step(self) -> None:
-        pass
-
-
-class SimulationCommanderInterface(RobotCommanderInterface, ABC):
-    @abstractmethod
-    def teleport_to_home(self) -> None:
+    # Used for simulation integration only
+    def sim_step(self) -> None:
         pass
