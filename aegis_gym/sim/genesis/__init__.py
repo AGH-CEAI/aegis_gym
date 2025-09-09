@@ -6,7 +6,7 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 from gymnasium.envs.registration import register
-from aegis_gym.robot.robot_commander_factory import RobotCommanderType
+from ...robot.robot_commander_factory import RobotCommanderType
 
 ENV_IDS = []
 

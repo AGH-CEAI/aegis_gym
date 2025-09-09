@@ -1,8 +1,8 @@
 import numpy as np
 import torch as th
 
-from aegis_gym.robot.robot_commander_interface import RobotCommanderInterface
-from aegis_gym.sim.genesis.sim_manager_genesis import SimManagerGenesis
+from ...robot.robot_commander_interface import RobotCommanderInterface
+from .sim_manager_genesis import SimManagerGenesis
 
 
 class RobotCommanderSimGenesis(RobotCommanderInterface):

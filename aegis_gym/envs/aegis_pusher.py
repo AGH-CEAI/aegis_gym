@@ -7,8 +7,8 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
-from aegis_gym.sim import generate_aegis_urdf
-from aegis_gym.robot import RobotCommanderType
+from ..sim import generate_aegis_urdf
+from ..robot import RobotCommanderType
 
 
 ENV_CFG = {

@@ -1,5 +1,4 @@
-from aegis_gym.sim import generate_aegis_urdf
-from aegis_gym.sim.sim_manager_interface import SimManagerInterface
+from ...sim import generate_aegis_urdf, SimManagerInterface
 import genesis as gs
 import torch as th
 

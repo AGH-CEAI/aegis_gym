@@ -6,7 +6,7 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 from gymnasium.envs.registration import register
-from aegis_gym.robot.robot_commander_factory import RobotCommanderType
+from .robot.robot_commander_factory import RobotCommanderType
 
 ENV_IDS = []
 
@@ -23,7 +23,7 @@ for task in tasks:
             "reward_type": reward_suffix.lower(),
             "control_type": control_suffix.lower(),
             "device": "cuda",
-            "robot_interface": RobotCommanderType("ROS"),
+            "robot_interface": RobotCommanderType.ROS,
         },
         max_episode_steps=50,
     )
