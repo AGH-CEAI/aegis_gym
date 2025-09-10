@@ -39,5 +39,5 @@ class RobotCommanderMock(RobotCommanderInterface):
     def shutdown(self) -> None:
         pass
 
-    def __del__(self) -> None:
-        self.shutdown()
+    def step(self) -> None:
+        pass

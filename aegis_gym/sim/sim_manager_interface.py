@@ -5,20 +5,20 @@ from typing import Any
 class SimManagerInterface(ABC):
     @abstractmethod
     def add_entity(self, entity: Any, **kwargs) -> Any:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def build(self) -> None:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def step(self) -> None:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def get_robot(self) -> Any:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def get_scene(self) -> Any:
-        pass
+        raise NotImplementedError
