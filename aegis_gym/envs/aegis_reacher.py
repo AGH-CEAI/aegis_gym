@@ -1,16 +1,21 @@
-import os
+# Original implementation by Jakub Płachno (sivral) 2025
+# Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 import time
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Any
 
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..robot import (
-    RobotCommanderType,
+from ..scene import (
+    SceneDirectorType,
+    SceneDirectorInterface,
     RobotCommanderInterface,
-    get_robot_commander,
+    get_scene_director,
+    EntityType,
+    Target,
 )
+from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 ENV_CFG = {
     "episode_length": 30,
@@ -32,16 +37,22 @@ class AegisReacherEnv(gym.Env):
 
     def __init__(
         self,
-        render_mode: Optional[Literal["human", "rgb_array"]] = None,
-        reward_type: str = "dense",
-        control_type: str = "joints",
+        render_mode: str = EnvRenderMode.NONE.name,
+        observation_type: str = EnvObservationType.STATE.name,
+        reward_type: str = EnvRewardType.DENSE.name,
+        control_type: str = EnvControlType.JOINTS.name,
+        scene_type: SceneDirectorType = SceneDirectorType.REAL,
         device: str = "cuda",
-        robot_interface: RobotCommanderType = RobotCommanderType.REAL,
         cfg: dict = ENV_CFG,
     ) -> None:
         super().__init__()
         self.cfg = cfg
         self.device = device
+
+        self.render_mode = EnvRenderMode(render_mode)
+        self.reward_type = EnvRewardType(reward_type)
+        self.control_type = EnvControlType(control_type)
+        self.observation_type = EnvObservationType(observation_type)
 
         self.episode_length = cfg["episode_length"]
         self.num_obs = cfg["num_obs"]
@@ -55,10 +66,12 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = cfg["target_spawn_y"]
         self.target_spawn_z = cfg["target_spawn_z"]
 
-        if os.environ.get("PYTEST_CURRENT_TEST") is not None:
-            print("\n> Deteceted pytest env, using RobotCommanderMock")
-            robot_interface = RobotCommanderType.MOCK
-        self.robot: RobotCommanderInterface = get_robot_commander(robot_interface)
+        self.scene: SceneDirectorInterface = get_scene_director(scene_type)
+        self.target: Target = self.scene.add_entity(EntityType.TARGET)
+        self.target.create()
+
+        self.scene.build()
+        self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
@@ -79,18 +92,11 @@ class AegisReacherEnv(gym.Env):
             "control": self._reward_control,
         }
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
-
-        assert (
-            render_mode is None
-            or render_mode in AegisReacherEnv.metadata["render_modes"]
-        )
-        self.render_mode = render_mode
-
         self.reset()
 
     def step(
         self, action: np.ndarray
-    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         action = np.clip(action, -self.clip_action, self.clip_action)
         self.actions = np.array(action, dtype=np.float32)
 
@@ -98,7 +104,9 @@ class AegisReacherEnv(gym.Env):
         delta = self.actions * self.action_scale
         dof_pos_target = self.dof_pos + delta
         self.robot.control_dofs_position(dof_pos_target)
-        self.robot.step()  # for simulation
+
+        self.scene.step()
+
         self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
@@ -113,6 +121,8 @@ class AegisReacherEnv(gym.Env):
         reward = float(reward)
         self.episode_return += reward
 
+        # TODO validate if we should truncate on timeout
+        # TODO reimage timeouts in ROS and simulations
         current_time = time.time()
         elapsed_time = current_time - self.episode_start_time
 
@@ -123,22 +133,23 @@ class AegisReacherEnv(gym.Env):
         return self._get_obs(), reward, terminated, truncated, info
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[Dict] = None
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        self, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
 
         self.robot.move_to_home()
 
-        self.target_pos = np.array(
-            [
-                np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
-                np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
-                np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
-            ],
-            dtype=np.float32,
+        self.target.set_pose(
+            np.array(
+                [
+                    np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
+                    np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
+                    np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
+                ],
+                dtype=np.float32,
+            )
         )
-        self.robot.publish_target_pos(self.target_pos)
 
         self.actions[:] = 0.0
         self.episode_step = 0
@@ -164,7 +175,7 @@ class AegisReacherEnv(gym.Env):
         terminated: bool = False,
         truncated: bool = False,
         success: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         info = {
             "success": success,
             "dist_to_target": self.dist,
@@ -188,4 +199,5 @@ class AegisReacherEnv(gym.Env):
         return np.sum(self.actions**2)
 
     def render(self) -> None:
+        print("AegisReacher Render not implemented yet.")
         pass
