@@ -30,14 +30,4 @@ class RobotCommanderMock(RobotCommanderInterface):
         pass
 
     def move_to_home(self) -> None:
-        # TODO implement home movement
-        pass
-
-    def publish_target_pos(self, pos: np.ndarray) -> None:
-        pass
-
-    def shutdown(self) -> None:
-        pass
-
-    def step(self) -> None:
         pass

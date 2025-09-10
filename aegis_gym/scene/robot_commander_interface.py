@@ -24,15 +24,3 @@ class RobotCommanderInterface(ABC):
     @abstractmethod
     def move_to_home(self) -> None:
         raise NotImplementedError
-
-    @abstractmethod
-    def publish_target_pos(self, pos: np.ndarray) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def shutdown(self) -> None:
-        raise NotImplementedError
-
-    # Used for simulations
-    def sim_step(self) -> None:
-        raise NotImplementedError

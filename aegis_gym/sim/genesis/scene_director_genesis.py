@@ -1,6 +1,14 @@
-from ...sim import generate_aegis_urdf, SimManagerInterface
 import genesis as gs
 import torch as th
+from ...scene import (
+    SceneDirectorInterface,
+    RobotCommanderInterface,
+    EntityType,
+    SceneEntity,
+)
+from ...sim import generate_aegis_urdf
+from .robot_commander_genesis import RobotCommanderSimGenesis
+from .scene_entities_genesis import EntityTypeSimGenesis
 
 SIM_CFG = {
     "dt": 0.05,
@@ -18,21 +26,14 @@ SIM_CFG = {
     ],
     "kp": [600, 600, 400, 400, 200, 200],
     "kd": [60, 60, 40, 40, 20, 20],
-    # TODO Take HOME position from SRDF file.
-    "default_joint_angles": {
-        "shoulder_pan_joint": 0.0,
-        "shoulder_lift_joint": -2.10,
-        "elbow_joint": 2.10,
-        "wrist_1_joint": -1.57,
-        "wrist_2_joint": -1.57,
-        "wrist_3_joint": 0.0,
-        # "robotiq_hande_left_finger_joint": 0.025,
-        # "robotiq_hande_right_finger_joint": 0.025,
-    },
 }
 
 
-class SimManagerGenesis(SimManagerInterface):
+def gs_rand_float(lower, upper, shape, device):
+    return (upper - lower) * th.rand(size=shape, device=device) + lower
+
+
+class SceneDirectorSimGenesis(SceneDirectorInterface):
     def __init__(
         self,
         show_viewer: bool = False,
@@ -42,18 +43,13 @@ class SimManagerGenesis(SimManagerInterface):
         super().__init__()
         self.device = device
         self.cfg = cfg
+        self.motor_dofs: tuple[str] = None
 
         if not gs._initialized:
             # TODO make it more flexible
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
             gs.init(precision="32", backend=backend, logging_level="warning")
         self.dt = cfg["dt"]
-
-        self.dof_home = th.tensor(
-            [cfg["default_joint_angles"][name] for name in cfg["dof_names"]],
-            device=device,
-        )
-
         self._create_scene(show_viewer)
 
     def _create_scene(self, show_viewer: bool) -> None:
@@ -97,25 +93,23 @@ class SimManagerGenesis(SimManagerInterface):
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
 
-    def add_entity(
-        self, entity: gs.morphs.Morph, **kwargs
-    ) -> gs.engine.entities.base_entity.Entity:
-        return self.scene.add_entity(entity, **kwargs)
+    def get_robot_commander(self) -> RobotCommanderInterface:
+        return RobotCommanderSimGenesis(self.robot, self.motor_dofs, self.device)
+
+    def shutdown(self) -> None:
+        pass
+
+    def add_entity(self, entity: EntityType) -> SceneEntity:
+        return EntityTypeSimGenesis[entity](self.scene)
 
     def build(self) -> None:
         self.scene.build()
 
-        self.motor_dofs = [
-            self.robot.get_joint(name).dof_idx_local for name in self.cfg["dof_names"]
-        ]
+        self.motor_dofs = tuple(
+            [self.robot.get_joint(name).dof_idx_local for name in self.cfg["dof_names"]]
+        )
         self.robot.set_dofs_kp(self.cfg["kp"], self.motor_dofs)
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)
 
     def step(self) -> None:
         self.scene.step()
-
-    def get_robot(self) -> gs.engine.entities.base_entity.Entity:
-        return self.robot
-
-    def get_scene(self) -> gs.engine.entities.base_entity.Entity:
-        return self.scene

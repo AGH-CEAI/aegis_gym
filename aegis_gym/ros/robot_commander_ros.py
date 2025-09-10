@@ -1,11 +1,6 @@
 import numpy as np
 from typing import Optional
 
-import rclpy
-from rclpy.clock import Clock
-from std_msgs.msg import ColorRGBA
-from visualization_msgs.msg import Marker
-
 try:
     from aegis_director.robot_director import RobotDirector
 except ImportError:
@@ -14,7 +9,7 @@ except ImportError:
     )
     raise ImportError
 
-from .robot_commander_interface import RobotCommanderInterface
+from ..scene import RobotCommanderInterface
 
 
 class RobotCommanderROS(RobotCommanderInterface):
@@ -25,12 +20,10 @@ class RobotCommanderROS(RobotCommanderInterface):
             cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self) -> None:
+    def __init__(self, robot_director: RobotDirector) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
-        super().__init__()
-        rclpy.init()
-        self.robot_director = RobotDirector(synchronous=True)
+        self.robot_director = robot_director
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
 
@@ -44,10 +37,6 @@ class RobotCommanderROS(RobotCommanderInterface):
             "wrist_3_joint": 0.0,
             "robotiq_hande_left_finger_joint": 0.025,
         }
-        self.marker_node = rclpy.create_node("marker_publisher")
-        self.target_pub = self.marker_node.create_publisher(
-            Marker, "/target_marker", 10
-        )
         self._initialized = True
 
     def get_joint_positions(self) -> np.ndarray:
@@ -78,36 +67,3 @@ class RobotCommanderROS(RobotCommanderInterface):
             max_vel=0.5,
             max_accel=0.5,
         )
-
-    # TODO consider moving this into more fitting interface
-    def publish_target_pos(self, pos: np.ndarray) -> None:
-        msg = Marker()
-        msg.header.frame_id = "world"
-        msg.header.stamp = Clock().now().to_msg()
-
-        msg.ns = "target"
-        msg.id = 0
-        msg.type = Marker.SPHERE
-        msg.action = Marker.ADD
-
-        msg.pose.position.x = float(pos[0])
-        msg.pose.position.y = float(pos[1])
-        msg.pose.position.z = float(pos[2])
-        msg.pose.orientation.w = 1.0
-
-        msg.scale.x = 0.04
-        msg.scale.y = 0.04
-        msg.scale.z = 0.04
-
-        msg.color = ColorRGBA(r=1.0, g=0.0, b=0.0, a=1.0)
-
-        self.target_pub.publish(msg)
-
-    def shutdown(self) -> None:
-        rclpy.shutdown()
-
-    def step(self) -> None:
-        pass
-
-    def __del__(self) -> None:
-        self.shutdown()
