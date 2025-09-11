@@ -1,7 +1,6 @@
 # Original implementation by Jakub Płachno (sivral) 2025
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
-import math
-from typing import Any
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -22,17 +21,16 @@ from ..scene import (
 from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 ENV_CFG = {
+    "episode_length": 30,
+    "num_obs": 21,
     "num_actions": 6,
+    "target_pos": [-0.1, 0.76, 0.84],
+    "target_threshold": 0.04,
     "object_spawn_x": [-0.36, -0.24],
     "object_spawn_y": [0.34, 0.66],
     "object_spawn_z": [0.84, 0.85],
-    "target_pos": [-0.1, 0.76, 0.84],
-    "target_threshold": 0.04,
-    "episode_length_s": 5.0,
-    "dt": 0.05,
+    "clip_action": 100.0,
     "action_scale": 0.5,
-    "clip_actions": 100.0,
-    "num_obs": 21,
     "obs_scales": {
         "dof_pos": 1.0,
         "dof_vel": 0.1,
@@ -80,7 +78,8 @@ class AegisPusherEnv(gym.Env):
 
         # TODO consider unifcation for ROS and simulation
         # TODO split cfg params between SIM and ENV
-        self.max_episode_length = math.ceil(cfg["episode_length_s"] / cfg["dt"])
+        # self.max_episode_length = math.ceil(cfg["episode_length_s"] / cfg["dt"])
+        self.max_episode_length = cfg["episode_length"]
         self.num_actions = cfg["num_actions"]
         self.num_obs = cfg["num_obs"]
         self.obs_scales = cfg["obs_scales"]
@@ -115,8 +114,10 @@ class AegisPusherEnv(gym.Env):
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
         self.reset()
 
-    def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        action = np.clip(action, -self.cfg["clip_actions"], self.cfg["clip_actions"])
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
+        action = np.clip(action, -self.cfg["clip_action"], self.cfg["clip_action"])
         self.actions.copy_(th.from_numpy(action).to(self.device))
 
         target_dof_pos = self.dof_pos + self.actions * ENV_CFG["action_scale"]
@@ -179,7 +180,9 @@ class AegisPusherEnv(gym.Env):
 
         return obs, reward, terminated, truncated, info
 
-    def reset(self, seed=None, options=None):
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> tuple[th.Tensor, dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
             th.manual_seed(seed)
@@ -238,14 +241,15 @@ class AegisPusherEnv(gym.Env):
 
         return obs, {}
 
-    def _reward_near(self):
+    def _reward_near(self) -> th.Tensor:
         return th.norm(self.tcp_pos - self.object_pos)
 
-    def _reward_dist(self):
+    def _reward_dist(self) -> th.Tensor:
         return th.norm(self.target_pos - self.object_pos)
 
-    def _reward_control(self):
+    def _reward_control(self) -> th.Tensor:
         return th.sum(self.actions**2)
 
-    def render(self):
+    def render(self) -> None:
+        print("AegisPusher Render not implemented yet.")
         pass

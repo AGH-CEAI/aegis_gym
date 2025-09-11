@@ -22,13 +22,13 @@ ENV_CFG = {
     "num_obs": 18,
     "num_actions": 6,
     "target_threshold": 0.02,
-    "clip_action": 1,
-    "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
-    "action_scale": 0.1,
-    "reward_scales": {"dist": -1.0, "control": -0.1},
     "target_spawn_x": [-0.26, 0.26],
     "target_spawn_y": [0.36, 1.0],
     "target_spawn_z": [0.98, 1.78],
+    "clip_action": 1,
+    "action_scale": 0.1,
+    "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
+    "reward_scales": {"dist": -1.0, "control": -0.1},
 }
 
 
