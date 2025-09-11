@@ -1,9 +1,10 @@
 # Original implementation by Jakub Płachno (sivral) 2025
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 import time
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 import numpy as np
+import torch as th
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -73,19 +74,19 @@ class AegisReacherEnv(gym.Env):
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        self.observation_space = spaces.Box(
+        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
-        self.action_space = spaces.Box(
+        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
 
         self.episode_step = 0.0
-        self.actions = np.zeros(self.num_actions, dtype=np.float32)
-        self.target_pos = np.zeros(3, dtype=np.float32)
-        self.dof_pos = np.zeros(6, dtype=np.float32)
-        self.dof_vel = np.zeros(6, dtype=np.float32)
-        self.tcp_pos = np.zeros(3, dtype=np.float32)
+        self.actions = th.zeros(self.num_actions, device=self.device)
+        self.target_pos = th.zeros(3, device=self.device)
+        self.dof_pos = th.zeros(6, device=self.device)
+        self.dof_vel = th.zeros(6, device=self.device)
+        self.tcp_pos = th.zeros(3, device=self.device)
 
         self.reward_functions = {
             "dist": self._reward_dist,
@@ -95,22 +96,26 @@ class AegisReacherEnv(gym.Env):
         self.reset()
 
     def step(
-        self, action: np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        action = np.clip(action, -self.clip_action, self.clip_action)
-        self.actions = np.array(action, dtype=np.float32)
+        self, action: Union[th.Tensor, np.ndarray]
+    ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
+        # Convert action to torch.Tensor if needed
+        if isinstance(action, np.ndarray):
+            action = th.from_numpy(action)
+        action = action.to(self.device)
+        action = th.clamp(action, -self.clip_action, self.clip_action)
+        self.actions = action.clone()
 
-        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_pos = th.from_numpy(self.robot.get_joint_positions()).to(self.device)
         delta = self.actions * self.action_scale
         dof_pos_target = self.dof_pos + delta
-        self.robot.control_dofs_position(dof_pos_target)
+        self.robot.control_dofs_position(dof_pos_target.cpu().numpy())
 
         self.scene.step()
 
-        self.tcp_pos = self.robot.get_tcp_position()
+        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
 
         self.episode_step += 1
-        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
+        self.dist = th.norm(self.tcp_pos - self.target_pos)
         success = bool(self.dist < self.target_threshold)
 
         reward = 0.0
@@ -119,6 +124,7 @@ class AegisReacherEnv(gym.Env):
             self.episode_sums[name] += r
             reward += r
         reward = float(reward)
+
         self.episode_return += reward
 
         # TODO validate if we should truncate on timeout
@@ -134,39 +140,45 @@ class AegisReacherEnv(gym.Env):
 
     def reset(
         self, seed: Optional[int] = None, options: Optional[dict] = None
-    ) -> tuple[np.ndarray, dict[str, Any]]:
+    ) -> tuple[th.Tensor, dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
+            th.manual_seed(seed)
 
         self.robot.move_to_home()
 
         self.target.set_pose(
-            np.array(
+            th.tensor(
                 [
                     np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
                     np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
                     np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
                 ],
-                dtype=np.float32,
+                device=self.device,
+                dtype=th.float32,
             )
+            .cpu()
+            .numpy()
         )
 
         self.actions[:] = 0.0
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
-        self.tcp_pos = self.robot.get_tcp_position()
-        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
+        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
+        self.dist = th.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
         return self._get_obs(), self._get_info()
 
-    def _get_obs(self) -> np.ndarray:
-        self.dof_pos = self.robot.get_joint_positions()
-        self.dof_vel = self.robot.get_joint_velocities()
-        self.tcp_pos = self.robot.get_tcp_position()
-        return np.concatenate(
-            [self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos]
+    def _get_obs(self) -> th.Tensor:
+        self.dof_pos = th.from_numpy(self.robot.get_joint_positions()).to(self.device)
+        self.dof_vel = th.from_numpy(self.robot.get_joint_velocities()).to(self.device)
+        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
+        return (
+            th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
+            .clone()
+            .detach()
         )
 
     def _get_info(
@@ -178,7 +190,7 @@ class AegisReacherEnv(gym.Env):
     ) -> dict[str, Any]:
         info = {
             "success": success,
-            "dist_to_target": self.dist,
+            "dist_to_target": float(self.dist),
             "episode_step": self.episode_step,
             "is_truncated": truncated,
             "is_success": success,
@@ -193,10 +205,10 @@ class AegisReacherEnv(gym.Env):
         return info
 
     def _reward_dist(self) -> float:
-        return self.dist
+        return float(self.dist)
 
     def _reward_control(self) -> float:
-        return np.sum(self.actions**2)
+        return float(th.sum(self.actions**2))
 
     def render(self) -> None:
         print("AegisReacher Render not implemented yet.")

@@ -1,5 +1,5 @@
-import numpy as np
 from typing import Optional
+import torch as th
 
 try:
     from aegis_director.robot_director import RobotDirector
@@ -39,23 +39,36 @@ class RobotCommanderROS(RobotCommanderInterface):
         }
         self._initialized = True
 
-    def get_joint_positions(self) -> np.ndarray:
+    def get_joint_positions(self) -> th.Tensor:
         jp = self.robot_director.get_joint_positions()
-        return np.array([jp[name] for name in self.joint_names], dtype=np.float32)
+        return th.tensor([jp[name] for name in self.joint_names], dtype=th.float32)
 
-    def get_joint_velocities(self) -> np.ndarray:
+    def get_joint_velocities(self) -> th.Tensor:
         jv = self.robot_director.get_joint_velocities()
-        return np.array([jv[name] for name in self.joint_names], dtype=np.float32)
+        return th.tensor([jv[name] for name in self.joint_names], dtype=th.float32)
 
-    def get_tcp_position(self) -> np.ndarray:
+    def get_tcp_position(self) -> th.Tensor:
+        return self.get_tcp_pose()[:3]
+
+    def get_tcp_orientation(self) -> th.Tensor:
+        # TODO: decide on Euler vs Quaterion orientation!
+        return self.get_tcp_pose()[3:]
+
+    def get_tcp_pose(self) -> th.Tensor:
         tcp = self.robot_director.get_tcp_pose()
-        return np.array(tcp["position"], dtype=np.float32)
+        return th.cat(
+            [
+                th.tensor(tcp["position"], dtype=th.float32),
+                th.tensor(tcp["orientation"], dtype=th.float32),
+            ]
+        )
 
     def control_dofs_position(
-        self, target_pos: np.ndarray, max_vel: float = 0.3, max_accel: float = 0.3
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
+        target_pos_np = target_pos.detach().cpu().numpy()
         joint_dict = {
-            name: float(pos) for name, pos in zip(self.joint_names, target_pos)
+            name: float(pos) for name, pos in zip(self.joint_names, target_pos_np)
         }
         self.robot_director.joint_move(
             joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel

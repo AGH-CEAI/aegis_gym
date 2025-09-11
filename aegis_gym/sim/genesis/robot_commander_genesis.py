@@ -1,4 +1,3 @@
-import numpy as np
 import torch as th
 import genesis as gs
 
@@ -34,20 +33,23 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
             device=device,
         )
 
-    # TODO consider changing interface types to th.Tensor
-    # def get_joint_positions(self) -> gs.Tensor:
-    def get_joint_positions(self) -> np.ndarray:
-        return self.robot.get_dofs_position(self.motor_dofs).cpu().numpy()
+    def get_joint_positions(self) -> th.Tensor:
+        return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
 
-    # TODO consider changing interface types to th.Tensor
-    # def get_joint_velocities(self) -> gs.Tensor:
-    def get_joint_velocities(self) -> np.ndarray:
-        return self.robot.get_dofs_velocity(self.motor_dofs).cpu().numpy()
+    def get_joint_velocities(self) -> th.Tensor:
+        return self.robot.get_dofs_velocity(self.motor_dofs).clone().detach()
 
-    # TODO consider changing interface types to th.Tensor
-    # def get_tcp_position(self) -> gs.Tensor:
-    def get_tcp_position(self) -> np.ndarray:
-        return self.robot.get_links_pos()[7, :].cpu().numpy()
+    def get_tcp_position(self) -> th.Tensor:
+        return self.robot.get_links_pos()[7, :].clone().detach()
+
+    def get_tcp_orientation(self) -> th.Tensor:
+        # TODO: decide on Euler vs Quaterion orientation!
+        return self.robot.get_links_quat()[7, :].clone().detach()
+
+    def get_tcp_pose(self) -> th.Tensor:
+        pos = self.get_tcp_position()
+        ori = self.get_tcp_orientation()
+        return th.cat([pos, ori])
 
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3

@@ -1,11 +1,9 @@
 # Original implementation by Jakub Płachno (sivral) 2025
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import gymnasium as gym
 import numpy as np
-
-# TODO refactor, consider to use TORCH in whole project to simplify interfaces
 import torch as th
 from gymnasium import spaces
 
@@ -86,10 +84,10 @@ class AegisPusherEnv(gym.Env):
         self.reward_scales = cfg["reward_scales"]
         self.target_threshold = cfg["target_threshold"]
 
-        self.observation_space = spaces.Box(
+        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
-        self.action_space = spaces.Box(
+        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
 
@@ -115,22 +113,25 @@ class AegisPusherEnv(gym.Env):
         self.reset()
 
     def step(
-        self, action: np.ndarray
+        self, action: Union[th.Tensor, np.ndarray]
     ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
-        action = np.clip(action, -self.cfg["clip_action"], self.cfg["clip_action"])
-        self.actions.copy_(th.from_numpy(action).to(self.device))
+        if isinstance(action, np.ndarray):
+            action = th.from_numpy(action)
+        action = action.to(self.device)
+        action = th.clamp(action, -self.cfg["clip_action"], self.cfg["clip_action"])
+        self.actions = action.clone()
 
-        target_dof_pos = self.dof_pos + self.actions * ENV_CFG["action_scale"]
-        self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
+        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_vel = self.robot.get_joint_velocities()
+        self.tcp_pos = self.robot.get_tcp_position()
+        # self.tcp_vel = self.robot.get_tcp_velocity()  # If available
+        self.object_pos = self.object.get_pos()
+
+        target_dof_pos = self.dof_pos + self.actions * self.cfg["action_scale"]
+        self.robot.control_dofs_position(target_dof_pos)
 
         self.scene.step()
         self.episode_step += 1
-
-        self.dof_pos = self.robot.get_dofs_position(self.motor_dofs)
-        self.dof_vel = self.robot.get_dofs_velocity(self.motor_dofs)
-        self.tcp_pos = self.robot.get_links_pos()[7, :]
-        # self.tcp_vel = self.robot.get_links_vel()[7, :]
-        self.object_pos = self.object.get_pos()
 
         dist_to_target = th.norm(self.target_pos - self.object_pos)
         success = bool((dist_to_target < self.target_threshold).item())
@@ -174,8 +175,8 @@ class AegisPusherEnv(gym.Env):
                     self.target_pos,
                 ]
             )
-            .cpu()
-            .numpy()
+            .clone()
+            .detach()
         )
 
         return obs, reward, terminated, truncated, info
@@ -189,19 +190,15 @@ class AegisPusherEnv(gym.Env):
 
         self.dof_pos = self.default_dof_pos.clone()
         self.dof_vel = th.zeros_like(self.dof_vel)
-        self.robot.set_dofs_position(
-            position=self.dof_pos,
-            dofs_idx_local=self.motor_dofs,
-            zero_velocity=True,
-        )
-        self.robot.zero_all_dofs_velocity()
+        self.robot.move_to_home()
+        self.tcp_pos = self.robot.get_tcp_position()
+        # self.tcp_vel = self.robot.get_tcp_velocity().float()  # If available
 
-        self.tcp_pos = self.robot.get_links_pos()[7, :].float()
-        # self.tcp_vel = self.robot.get_links_vel()[7, :].float()
-
-        x_range = ENV_CFG["object_spawn_x"]
-        y_range = ENV_CFG["object_spawn_y"]
-        z_range = ENV_CFG["object_spawn_z"]
+        # ---------------------------------------------
+        # TODO extract this to simulation logic
+        x_range = self.cfg["object_spawn_x"]
+        y_range = self.cfg["object_spawn_y"]
+        z_range = self.cfg["object_spawn_z"]
 
         rand_pos = th.tensor(
             [
@@ -215,6 +212,7 @@ class AegisPusherEnv(gym.Env):
 
         self.object.set_pos(rand_pos, zero_velocity=True)
         self.object.set_quat(default_quat, zero_velocity=True)
+        # ---------------------------------------------
         self.object_pos[:] = self.object.get_pos()
 
         self.actions[:] = 0.0
@@ -235,8 +233,8 @@ class AegisPusherEnv(gym.Env):
                     self.target_pos,
                 ]
             )
-            .cpu()
-            .numpy()
+            .clone()
+            .detach()
         )
 
         return obs, {}
