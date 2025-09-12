@@ -48,8 +48,8 @@ class AegisPusherEnv(gym.Env):
         self,
         render_mode: str = EnvRenderMode.NONE.name,
         observation_type: str = EnvObservationType.STATE.name,
-        reward_type: str = EnvRewardType.DENSE.name,
         control_type: str = EnvControlType.JOINTS.name,
+        reward_type: str = EnvRewardType.DENSE.name,
         scene_type: SceneDirectorType = SceneDirectorType.REAL,
         device: str = "cuda",
         cfg: dict = ENV_CFG,
@@ -59,9 +59,9 @@ class AegisPusherEnv(gym.Env):
         self.device = device
 
         self.render_mode = EnvRenderMode(render_mode)
-        self.reward_type = EnvRewardType(reward_type)
-        self.control_type = EnvControlType(control_type)
         self.observation_type = EnvObservationType(observation_type)
+        self.control_type = EnvControlType(control_type)
+        self.reward_type = EnvRewardType(reward_type)
         # TODO enable show_viewer for genesis
         # show_viewer = True if self.render_mode == EnvRenderMode.HUMAN else False
 
@@ -75,7 +75,6 @@ class AegisPusherEnv(gym.Env):
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
         # TODO consider unifcation for ROS and simulation
-        # TODO split cfg params between SIM and ENV
         # self.max_episode_length = math.ceil(cfg["episode_length_s"] / cfg["dt"])
         self.max_episode_length = cfg["episode_length"]
         self.num_actions = cfg["num_actions"]

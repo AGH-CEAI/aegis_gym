@@ -6,25 +6,34 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 from gymnasium.envs.registration import register
-from ...robot.robot_commander_factory import RobotCommanderType
+from ...scene.scene_director_factory import SceneDirectorType
+from ...envs.env_types import (
+    EnvControlType,
+    EnvObservationType,
+    EnvRewardType,
+    EnvRenderMode,
+)
 
 ENV_IDS = []
 
-sim_name = RobotCommanderType.SIM_GENESIS.name
 tasks = ["Reacher", "Pusher"]
-control_suffix = "Joints"
-reward_suffix = "Dense"
+sim_name = EnvRewardType.SIM_GENESIS.name
+obs_type = EnvObservationType.STATE.name.capitalize()
+reward_type = EnvRewardType.DENSE.name.capitalize()
+control_type = EnvControlType.JOINTS.name.capitalize()
 
 for task in tasks:
-    env_id = f"Aegis{sim_name}{task}{control_suffix}{reward_suffix}-v1"
+    env_id = f"Aegis{sim_name}{obs_type}{task}{control_type}{reward_type}-v1"
     register(
         id=env_id,
         entry_point=f"aegis_gym.envs:Aegis{task}Env",
         kwargs={
-            "reward_type": reward_suffix.lower(),
-            "control_type": control_suffix.lower(),
+            "render_mode": EnvRenderMode.NONE.name,
+            "observation_type": obs_type.upper(),
+            "control_type": control_type.upper(),
+            "reward_type": reward_type.upper(),
+            "scene_type": SceneDirectorType.SIM_GENESIS,
             "device": "cuda",
-            "robot_interface": RobotCommanderType.SIM_GENESIS,
         },
         max_episode_steps=50,
     )

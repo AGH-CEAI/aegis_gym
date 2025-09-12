@@ -40,8 +40,8 @@ class AegisReacherEnv(gym.Env):
         self,
         render_mode: str = EnvRenderMode.NONE.name,
         observation_type: str = EnvObservationType.STATE.name,
-        reward_type: str = EnvRewardType.DENSE.name,
         control_type: str = EnvControlType.JOINTS.name,
+        reward_type: str = EnvRewardType.DENSE.name,
         scene_type: SceneDirectorType = SceneDirectorType.REAL,
         device: str = "cuda",
         cfg: dict = ENV_CFG,
@@ -51,9 +51,9 @@ class AegisReacherEnv(gym.Env):
         self.device = device
 
         self.render_mode = EnvRenderMode(render_mode)
-        self.reward_type = EnvRewardType(reward_type)
-        self.control_type = EnvControlType(control_type)
         self.observation_type = EnvObservationType(observation_type)
+        self.control_type = EnvControlType(control_type)
+        self.reward_type = EnvRewardType(reward_type)
 
         self.episode_length = cfg["episode_length"]
         self.num_obs = cfg["num_obs"]
