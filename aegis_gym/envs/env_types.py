@@ -2,6 +2,7 @@ from enum import auto
 from strenum import StrEnum
 
 
+# TODO Test wbultin from strenum library for LowerCaseStrEnum
 class LowerStrEnum(StrEnum):
     def _generate_next_value_(name, start, count, last_values):
         return name.lower()

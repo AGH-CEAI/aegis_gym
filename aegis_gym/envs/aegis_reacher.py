@@ -42,7 +42,7 @@ class AegisReacherEnv(gym.Env):
         observation_type: str = EnvObservationType.STATE.name,
         control_type: str = EnvControlType.JOINTS.name,
         reward_type: str = EnvRewardType.DENSE.name,
-        scene_type: SceneDirectorType = SceneDirectorType.REAL,
+        scene_type: SceneDirectorType = SceneDirectorType.MOCK,
         device: str = "cuda",
         cfg: dict = ENV_CFG,
     ) -> None:

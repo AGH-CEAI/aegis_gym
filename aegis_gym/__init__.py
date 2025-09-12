@@ -17,9 +17,9 @@ from .envs.env_types import (
 ENV_IDS = []
 
 tasks = ["Reacher", "Pusher"]
-obs_type = EnvObservationType.STATE.name.capitalize()
-reward_type = EnvRewardType.DENSE.name.capitalize()
-control_type = EnvControlType.JOINTS.name.capitalize()
+obs_type = EnvObservationType.STATE.value.capitalize()
+reward_type = EnvRewardType.DENSE.value.capitalize()
+control_type = EnvControlType.JOINTS.value.capitalize()
 
 for task in tasks:
     env_id = f"Aegis{task}{obs_type}{control_type}{reward_type}-v1"
@@ -27,10 +27,10 @@ for task in tasks:
         id=env_id,
         entry_point=f"aegis_gym.envs:Aegis{task}Env",
         kwargs={
-            "render_mode": EnvRenderMode.NONE.name,
-            "observation_type": obs_type.upper(),
-            "control_type": control_type.upper(),
-            "reward_type": reward_type.upper(),
+            "render_mode": EnvRenderMode.NONE.value,
+            "observation_type": obs_type.lower(),
+            "control_type": control_type.lower(),
+            "reward_type": reward_type.lower(),
             "scene_type": SceneDirectorType.ROS,
             "device": "cuda",
         },
