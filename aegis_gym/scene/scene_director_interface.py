@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from ..robot import RobotCommanderInterface
+from .robot_commander_interface import RobotCommanderInterface
 from .scene_entities import EntityType, SceneEntity
 
 
