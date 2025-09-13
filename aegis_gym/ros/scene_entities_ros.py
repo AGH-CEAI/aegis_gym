@@ -1,4 +1,4 @@
-import numpy as np
+import torch as th
 
 from rclpy.node import Node
 from rclpy.clock import Clock
@@ -11,14 +11,18 @@ from ..scene import EntityType, Target, Box
 class TargetROS(Target):
     def __init__(self, node: Node):
         super().__init__()
+        # TODO set the device properly
+        self.device = "cuda"
         self._node = node
-        self._pose = None
+        # TODO: update the pose to th.Tensor
+        self._pose: th.Tensor = None
 
     def create(self, topic: str = "/target_marker") -> None:
         self._target_pub = self._node.create_publisher(Marker, topic, 10)
 
-    def set_pose(self, pose: np.ndarray) -> None:
+    def set_pose(self, pose: th.Tensor) -> None:
         self._pose = pose
+        p = pose.clone().cpu().numpy()
 
         msg = Marker()
         msg.header.frame_id = "world"
@@ -29,15 +33,15 @@ class TargetROS(Target):
         msg.type = Marker.SPHERE
         msg.action = Marker.ADD
 
-        msg.pose.position.x = float(pose[0])
-        msg.pose.position.y = float(pose[1])
-        msg.pose.position.z = float(pose[2])
+        msg.pose.position.x = float(p[0])
+        msg.pose.position.y = float(p[1])
+        msg.pose.position.z = float(p[2])
         msg.pose.orientation.w = 1.0
-        if len(pose) > 3:
-            msg.pose.orientation.x = float(pose[3])
-            msg.pose.orientation.y = float(pose[4])
-            msg.pose.orientation.z = float(pose[5])
-            msg.pose.orientation.w = float(pose[6])
+        if len(p) > 3:
+            msg.pose.orientation.x = float(p[3])
+            msg.pose.orientation.y = float(p[4])
+            msg.pose.orientation.z = float(p[5])
+            msg.pose.orientation.w = float(p[6])
 
         msg.scale.x = 0.04
         msg.scale.y = 0.04
@@ -47,13 +51,15 @@ class TargetROS(Target):
 
         self._target_pub.publish(msg)
 
-    def get_pose(self) -> np.ndarray:
+    def get_pose(self) -> th.Tensor:
         return self._pose
 
 
 class BoxROS(Box):
     def __init__(self, node: Node):
         super().__init__()
+        # TODO pass the device cfg
+        self.device = "cuda"
         self._node = node
         raise NotImplementedError(
             "The Box scene object is not implemented for ROS usage."
@@ -62,10 +68,10 @@ class BoxROS(Box):
     def create(self) -> None:
         pass
 
-    def set_pose(self, pose: np.ndarray) -> None:
+    def set_pose(self, pose: th.Tensor) -> None:
         pass
 
-    def get_pose(self) -> np.ndarray:
+    def get_pose(self) -> th.Tensor:
         pass
 
 
