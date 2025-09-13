@@ -3,7 +3,8 @@ import time
 import gymnasium as gym
 
 # import aegis_gym.sim.genesis as sim_genesis
-import aegis_gym
+import aegis_gym.sim.genesis as sim_genesis
+from aegis_gym.sim.utils import TorchToNumpyWrapper
 
 try:
     from stable_baselines3 import PPO
@@ -15,11 +16,14 @@ except ImportError:
 
 
 def main():
-    # env_name = sim_genesis.ENV_IDS[0]
-    env_name = aegis_gym.ENV_IDS[0]
+    env_name = sim_genesis.ENV_IDS[0]
+    # env_name = aegis_gym.ENV_IDS[0]
+
     print(f"Training on environment: {env_name}")
 
+    # TODO add an issue to SB3 to change underlying numpy.array type to th.Tensor
     env = gym.make(env_name)
+    env = TorchToNumpyWrapper(env)
 
     # Sleep 5 seconds and print countdown
     for i in range(5, 0, -1):

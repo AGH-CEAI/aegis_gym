@@ -105,14 +105,14 @@ class AegisReacherEnv(gym.Env):
         action = th.clamp(action, -self.clip_action, self.clip_action)
         self.actions = action.clone()
 
-        self.dof_pos = th.from_numpy(self.robot.get_joint_positions()).to(self.device)
+        self.dof_pos = self.robot.get_joint_positions()
         delta = self.actions * self.action_scale
         dof_pos_target = self.dof_pos + delta
-        self.robot.control_dofs_position(dof_pos_target.cpu().numpy())
+        self.robot.control_dofs_position(dof_pos_target)
 
         self.scene.step()
 
-        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
+        self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
         self.dist = th.norm(self.tcp_pos - self.target_pos)
@@ -165,16 +165,16 @@ class AegisReacherEnv(gym.Env):
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
-        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
+        self.tcp_pose = self.robot.get_tcp_position()
         self.dist = th.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
         return self._get_obs(), self._get_info()
 
     def _get_obs(self) -> th.Tensor:
-        self.dof_pos = th.from_numpy(self.robot.get_joint_positions()).to(self.device)
-        self.dof_vel = th.from_numpy(self.robot.get_joint_velocities()).to(self.device)
-        self.tcp_pos = th.from_numpy(self.robot.get_tcp_position()).to(self.device)
+        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_vel = self.robot.get_joint_velocities()
+        self.tcp_pos = self.robot.get_tcp_position()
         return (
             th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
             .clone()

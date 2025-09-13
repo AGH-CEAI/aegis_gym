@@ -29,7 +29,8 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
             },
         }
         self.dof_home = th.tensor(
-            [cfg["default_joint_angles"][name] for name in cfg["dof_names"]],
+            [val for val in cfg["default_joint_angles"].values()],
+            # [cfg["default_joint_angles"][name] for name in cfg["dof_names"]],
             device=device,
         )
 

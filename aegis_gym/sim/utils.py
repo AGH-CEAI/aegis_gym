@@ -5,6 +5,27 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 
+import gymnasium as gym
+import torch
+import numpy as np
+
+
+class TorchToNumpyWrapper(gym.ObservationWrapper, gym.ActionWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def observation(self, obs):
+        # Convert torch.Tensor observation to numpy array
+        if isinstance(obs, torch.Tensor):
+            return obs.cpu().numpy()
+        return obs
+
+    def action(self, action):
+        # Convert numpy array action to torch.Tensor
+        if isinstance(action, np.ndarray):
+            return torch.from_numpy(action)
+        return action
+
 
 def generate_aegis_urdf() -> Path:
     pkg_share = Path(get_package_share_directory("aegis_description"))
