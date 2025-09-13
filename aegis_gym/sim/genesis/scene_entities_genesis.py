@@ -1,5 +1,5 @@
-import numpy as np
 import genesis as gs
+import torch as th
 
 from ...scene import EntityType, Target, Box
 
@@ -7,24 +7,29 @@ from ...scene import EntityType, Target, Box
 class TargetSimGenesis(Target):
     def __init__(self, scene: gs.Scene):
         super().__init__()
+        # TODO: setup device properly
+        self.device = "cuda"
         self._scene = scene
         # TODO: set the typings for these vars
-        self._pose: np.ndarray = None
+        self._pose: th.Tensor = None
         self._obj = None
 
     def create(self) -> None:
-        pose = (-0.1, 0.76, 0.82)
+        pos = (-0.1, 0.76, 0.82)
         self._obj = self._scene.add_entity(
-            gs.morphs.Cylinder(height=0.00001, radius=0.04, pos=pose, fixed=True),
+            gs.morphs.Cylinder(height=0.00001, radius=0.04, pos=pos, fixed=True),
             surface=gs.surfaces.Default(color=(1.0, 0.0, 0.0)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
-        self._pose = np.array(pose)
+        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        self._pose = th.tensor(pose, device=self.device)
 
-    def set_pose(self, pose: np.ndarray) -> None:
-        print("TODO: set_pose() for TargetSimGensis is not yet implemented.")
+    def set_pose(self, pose: th.Tensor) -> None:
+        self._obj.set_pos(pose[:3].view(3), zero_velocity=True)
+        self._obj.set_quat(pose[3:].view(4), zero_velocity=True)
+        self._pose = pose.clone()
 
-    def get_pose(self) -> np.ndarray:
+    def get_pose(self) -> th.Tensor:
         return self._pose
 
 
@@ -33,27 +38,30 @@ class BoxSimGenesis(Box):
         super().__init__()
         self._scene = scene
         # TODO: set the typings for these vars
-        self._pose: np.ndarray = None
+        self._pose: th.Tensor = None
         self._obj = None
 
     def create(self) -> None:
-        pose = (0.0, 0.7, 0.84)
+        pos = (0.0, 0.7, 0.84)
         size = (0.04, 0.04, 0.04)
 
         self._obj = self._scene.add_entity(
             gs.morphs.Box(
                 size=size,
-                pos=pose,
+                pos=pos,
             ),
             surface=gs.surfaces.Default(color=(1.0, 1.0, 1.0)),
             material=gs.materials.Rigid(rho=8000.0, friction=0.6, coup_friction=0.6),
         )
-        self._pose = np.array(pose)
+        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        self._pose = th.Tensor(pose, device=self.device)
 
-    def set_pose(self, pose: np.ndarray) -> None:
-        print("TODO: set_pose() for BoxSimGensis is not yet implemented.")
+    def set_pose(self, pose: th.Tensor) -> None:
+        self._obj.set_pos(pose[:3].view(3), zero_velocity=True)
+        self._obj.set_quat(pose[3:].view(4), zero_velocity=True)
+        self._pose = pose.clone()
 
-    def get_pose(self) -> np.ndarray:
+    def get_pose(self) -> th.Tensor:
         return self._pose
 
 

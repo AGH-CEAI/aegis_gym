@@ -153,12 +153,14 @@ class AegisReacherEnv(gym.Env):
                     np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
                     np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
                     np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
                 ],
                 device=self.device,
                 dtype=th.float32,
             )
-            .cpu()
-            .numpy()
         )
 
         self.actions[:] = 0.0
