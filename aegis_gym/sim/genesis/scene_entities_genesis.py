@@ -36,6 +36,8 @@ class TargetSimGenesis(Target):
 class BoxSimGenesis(Box):
     def __init__(self, scene: gs.Scene):
         super().__init__()
+        # TODO setup device properly
+        self.device = "cuda"
         self._scene = scene
         # TODO: set the typings for these vars
         self._pose: th.Tensor = None
@@ -54,7 +56,7 @@ class BoxSimGenesis(Box):
             material=gs.materials.Rigid(rho=8000.0, friction=0.6, coup_friction=0.6),
         )
         pose = [*pos, 0.0, 0.0, 0.0, 1.0]
-        self._pose = th.Tensor(pose, device=self.device)
+        self._pose = th.tensor(pose, device=self.device)
 
     def set_pose(self, pose: th.Tensor) -> None:
         self._obj.set_pos(pose[:3].view(3), zero_velocity=True)

@@ -124,7 +124,7 @@ class AegisPusherEnv(gym.Env):
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
         # self.tcp_vel = self.robot.get_tcp_velocity()  # If available
-        self.object_pos = self.object.get_pos()
+        self.object_pos = self.object.get_pose()[:3].clone()
 
         target_dof_pos = self.dof_pos + self.actions * self.cfg["action_scale"]
         self.robot.control_dofs_position(target_dof_pos)
@@ -187,9 +187,9 @@ class AegisPusherEnv(gym.Env):
             np.random.seed(seed)
             th.manual_seed(seed)
 
-        self.dof_pos = self.default_dof_pos.clone()
-        self.dof_vel = th.zeros_like(self.dof_vel)
         self.robot.move_to_home()
+        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_vel = th.zeros_like(self.dof_vel)
         self.tcp_pos = self.robot.get_tcp_position()
         # self.tcp_vel = self.robot.get_tcp_velocity().float()  # If available
 
@@ -199,20 +199,23 @@ class AegisPusherEnv(gym.Env):
         y_range = self.cfg["object_spawn_y"]
         z_range = self.cfg["object_spawn_z"]
 
-        rand_pos = th.tensor(
+        rand_pose = th.tensor(
             [
                 np.random.uniform(x_range[0], x_range[1]),
                 np.random.uniform(y_range[0], y_range[1]),
                 np.random.uniform(z_range[0], z_range[1]),
+                0.0,
+                0.0,
+                0.0,
+                1.0,
             ],
             device=self.device,
         )
-        default_quat = th.tensor([0.0, 0.0, 0.0, 1.0], device=self.device)
+        # default_quat = th.tensor([0.0, 0.0, 0.0, 1.0], device=self.device)
 
-        self.object.set_pos(rand_pos, zero_velocity=True)
-        self.object.set_quat(default_quat, zero_velocity=True)
+        self.object.set_pose(rand_pose)
         # ---------------------------------------------
-        self.object_pos[:] = self.object.get_pos()
+        self.object_pos = self.object.get_pose()[:3].clone()
 
         self.actions[:] = 0.0
         self.last_actions[:] = 0.0
