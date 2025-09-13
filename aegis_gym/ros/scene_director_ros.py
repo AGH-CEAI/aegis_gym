@@ -42,7 +42,7 @@ class SceneDirectorROS(SceneDirectorInterface):
         return RobotCommanderROS(self.robot_director)
 
     def add_entity(self, entity: EntityType) -> SceneEntity:
-        return EntityTypeROS[entity](self._node)
+        return EntityTypeROS[entity](self._scene_node)
 
     def build(self) -> None:
         pass

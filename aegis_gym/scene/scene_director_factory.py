@@ -41,7 +41,7 @@ def get_scene_director(
             if SceneDirectorROS:
                 return SceneDirectorROS()
             warnings.warn(
-                "\nFailed to import SceneDirectorROS. Double check if the ROS is sourced properly via `source /opt/ros/ROS_DISTRO/setup.sh`."
+                "\n[IMPORT ERROR] Failed to import SceneDirectorROS. Double check if the ROS is sourced properly via `source /opt/ros/ROS_DISTRO/setup.sh`."
             )
             raise ImportError
 
@@ -54,10 +54,10 @@ def get_scene_director(
             if SceneDirectorSimGenesis:
                 return SceneDirectorSimGenesis()
             warnings.warn(
-                "\nFailed to import SceneDirectorSimGenesis. Double check if the 'aegis_gym' is instatalled with optional dependencies: 'pip3 install ./aegis_gym.whl[sim-genesis]'."
+                "\n[IMPORT ERROR] Failed to import SceneDirectorSimGenesis. Double check if the 'aegis_gym' is instatalled with optional dependencies: 'pip3 install ./aegis_gym.whl[sim-genesis]'."
             )
             raise ImportError
 
         case _:
-            print(f"Not defined RobotCommanderInterface '{mode.name}'.")
+            print(f"[VALUE ERROR] Not defined RobotCommanderInterface '{mode.name}'.")
             raise ValueError

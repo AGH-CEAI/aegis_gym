@@ -1,6 +1,6 @@
 import numpy as np
 
-from rclpy import Node
+from rclpy.node import Node
 from rclpy.clock import Clock
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker

@@ -15,7 +15,7 @@ from ..scene import RobotCommanderInterface
 class RobotCommanderROS(RobotCommanderInterface):
     _instance: Optional["RobotCommanderROS"] = None
 
-    def __new__(cls) -> "RobotCommanderROS":
+    def __new__(cls, *args, **kwargs) -> "RobotCommanderROS":
         if cls._instance is None:
             cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
