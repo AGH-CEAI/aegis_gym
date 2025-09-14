@@ -1,3 +1,4 @@
+from typing import Optional
 import torch as th
 
 from rclpy.node import Node
@@ -9,13 +10,10 @@ from ..scene import EntityType, Target, Box
 
 
 class TargetROS(Target):
-    def __init__(self, node: Node):
-        super().__init__()
-        # TODO set the device properly
-        self.device = "cuda"
+    def __init__(self, node: Node, device: str = "cuda"):
+        super().__init__(device)
         self._node = node
-        # TODO: update the pose to th.Tensor
-        self._pose: th.Tensor = None
+        self._pose: Optional[th.Tensor] = None
 
     def create(self, topic: str = "/target_marker") -> None:
         self._target_pub = self._node.create_publisher(Marker, topic, 10)
@@ -56,10 +54,8 @@ class TargetROS(Target):
 
 
 class BoxROS(Box):
-    def __init__(self, node: Node):
-        super().__init__()
-        # TODO pass the device cfg
-        self.device = "cuda"
+    def __init__(self, node: Node, device: str = "cuda"):
+        super().__init__(device)
         self._node = node
         raise NotImplementedError(
             "The Box scene object is not implemented for ROS usage."

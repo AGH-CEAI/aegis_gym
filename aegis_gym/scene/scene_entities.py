@@ -13,6 +13,9 @@ class EntityType(StrEnum):
 
 
 class SceneEntity(ABC):
+    def __init__(self, device: str):
+        self._device = device
+
     @abstractmethod
     def create(self) -> None:
         raise NotImplementedError
