@@ -1,4 +1,3 @@
-from typing import Optional
 import torch as th
 
 from rclpy.node import Node
@@ -13,7 +12,7 @@ class TargetROS(Target):
     def __init__(self, node: Node, device: str = "cuda"):
         super().__init__(device)
         self._node = node
-        self._pose: Optional[th.Tensor] = None
+        self._pose: th.Tensor = th.zeros()
 
     def create(self, topic: str = "/target_marker") -> None:
         self._target_pub = self._node.create_publisher(Marker, topic, 10)
@@ -68,7 +67,7 @@ class BoxROS(Box):
         pass
 
     def get_pose(self) -> th.Tensor:
-        pass
+        return th.zeros()
 
 
 EntityTypeROS = {
