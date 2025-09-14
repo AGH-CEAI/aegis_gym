@@ -28,7 +28,7 @@ repos:
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
 -   repo: https://github.com/python-poetry/poetry
-    rev: "2.1.4"
+    rev: "2.2.0"
     hooks:
     -   id: poetry-check
     -   id: poetry-lock
