@@ -81,7 +81,6 @@ class AegisReacherEnv(gym.Env):
             delta = self.actions * self.action_scale
             dof_pos_target = self.dof_pos + delta
             self.robot.control_dofs_position(dof_pos_target)
-            self.tcp_pos = self.robot.get_tcp_position()
         elif self.control_type == "cartesian":
             self.tcp_pos = self.robot.get_tcp_position()
             delta = self.actions * self.action_scale
@@ -90,7 +89,7 @@ class AegisReacherEnv(gym.Env):
             self.robot.control_tcp_position(
                 position=tcp_pos_target, orientation=tcp_ori
             )
-            self.tcp_pos = self.robot.get_tcp_position()
+        self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
         self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
