@@ -62,8 +62,6 @@ class AegisPusherEnv(gym.Env):
         self.observation_type = EnvObservationType(observation_type)
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
-        # TODO enable show_viewer for genesis
-        # show_viewer = True if self.render_mode == EnvRenderMode.HUMAN else False
 
         self.scene: SceneDirectorInterface = get_scene_director(scene_type)
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
@@ -74,8 +72,7 @@ class AegisPusherEnv(gym.Env):
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        # TODO consider unifcation for ROS and simulation
-        # self.max_episode_length = math.ceil(cfg["episode_length_s"] / cfg["dt"])
+        # TODO(issue#7) Rconsider unifcation for ROS and simulation
         self.max_episode_length = cfg["episode_length"]
         self.num_actions = cfg["num_actions"]
         self.num_obs = cfg["num_obs"]
@@ -193,8 +190,6 @@ class AegisPusherEnv(gym.Env):
         self.tcp_pos = self.robot.get_tcp_position()
         # self.tcp_vel = self.robot.get_tcp_velocity().float()  # If available
 
-        # ---------------------------------------------
-        # TODO extract this to simulation logic
         x_range = self.cfg["object_spawn_x"]
         y_range = self.cfg["object_spawn_y"]
         z_range = self.cfg["object_spawn_z"]
@@ -211,10 +206,8 @@ class AegisPusherEnv(gym.Env):
             ],
             device=self.device,
         )
-        # default_quat = th.tensor([0.0, 0.0, 0.0, 1.0], device=self.device)
 
         self.object.set_pose(rand_pose)
-        # ---------------------------------------------
         self.object_pos = self.object.get_pose()[:3].clone()
 
         self.actions[:] = 0.0

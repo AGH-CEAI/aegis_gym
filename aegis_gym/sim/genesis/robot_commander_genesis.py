@@ -22,7 +22,6 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         return self.robot.get_links_pos()[7, :].clone().detach()
 
     def get_tcp_orientation(self) -> th.Tensor:
-        # TODO: decide on Euler vs Quaterion orientation!
         return self.robot.get_links_quat()[7, :].clone().detach()
 
     def get_tcp_pose(self) -> th.Tensor:

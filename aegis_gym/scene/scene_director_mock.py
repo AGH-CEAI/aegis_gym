@@ -1,6 +1,7 @@
-import numpy as np
 from typing import Any
+import torch as th
 
+from ..envs.env_types import EnvRenderMode
 from .robot_commander_mock import RobotCommanderMock
 from .scene_director_interface import SceneDirectorInterface
 from .scene_entities import EntityType, SceneEntity, Target, Box
@@ -8,7 +9,7 @@ from .scene_entities import EntityType, SceneEntity, Target, Box
 
 class TargetMock(Target):
     def __init__(self):
-        super().__init__()
+        super().__init__(device="cpu")
 
     def create(self) -> None:
         pass
@@ -16,13 +17,13 @@ class TargetMock(Target):
     def set_pose(self, pose: Any) -> None:
         pass
 
-    def get_pose(self) -> np.ndarray:
-        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
+    def get_pose(self) -> th.Tensor:
+        return th.tensor([0.0, 0.0, 0.0], dtype=th.float32, device=self._device)
 
 
 class BoxMock(Box):
     def __init__(self):
-        super().__init__()
+        super().__init__(device="cpu")
 
     def create(self) -> None:
         pass
@@ -30,8 +31,8 @@ class BoxMock(Box):
     def set_pose(self, pose: Any) -> None:
         pass
 
-    def get_pose(self) -> np.ndarray:
-        return np.array([0.0, 0.0, 0.0], dtype=np.float32)
+    def get_pose(self) -> th.Tensor:
+        return th.tensor([0.0, 0.0, 0.0], dtype=th.float32, device=self._device)
 
 
 EntityTypeMock = {
@@ -42,10 +43,10 @@ EntityTypeMock = {
 
 class SceneDirectorMock(SceneDirectorInterface):
     def __init__(self):
-        super().__init__()
+        super().__init__(device="cpu", render_mode=EnvRenderMode.NONE)
 
     def get_robot_commander(self) -> RobotCommanderMock:
-        return RobotCommanderMock()
+        return RobotCommanderMock(self.device)
 
     def shutdown(self) -> None:
         pass

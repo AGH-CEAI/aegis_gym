@@ -1,5 +1,7 @@
 import genesis as gs
 import torch as th
+
+from ...envs import EnvRenderMode
 from ...scene import (
     SceneDirectorInterface,
     RobotCommanderInterface,
@@ -36,12 +38,11 @@ def gs_rand_float(lower, upper, shape, device):
 class SceneDirectorSimGenesis(SceneDirectorInterface):
     def __init__(
         self,
-        show_viewer: bool = False,
         device: str = "cuda",
+        render_mode=EnvRenderMode.RGB_ARRAY,
         cfg: dict = SIM_CFG,
     ):
-        super().__init__()
-        self.device = device
+        super().__init__(device, render_mode)
         self.cfg = cfg
         self.motor_dofs: tuple[str] = None
 
@@ -50,9 +51,11 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
             gs.init(precision="32", backend=backend, logging_level="warning")
         self.dt = cfg["dt"]
-        self._create_scene(show_viewer)
 
-    def _create_scene(self, show_viewer: bool) -> None:
+        self._create_scene()
+
+    def _create_scene(self) -> None:
+        show_viewer = True if self.render_mode == EnvRenderMode.HUMAN else False
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=5),
             viewer_options=gs.options.ViewerOptions(

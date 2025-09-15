@@ -55,7 +55,8 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        self.episode_length = cfg["episode_length"]
+        # TODO(issue#7) Rconsider unifcation for ROS and simulation
+        self.max_episode_length = cfg["episode_length"]
         self.num_obs = cfg["num_obs"]
         self.num_actions = cfg["num_actions"]
         self.target_threshold = cfg["target_threshold"]
@@ -133,7 +134,7 @@ class AegisReacherEnv(gym.Env):
         elapsed_time = current_time - self.episode_start_time
 
         terminated = bool(success)
-        truncated = elapsed_time >= self.episode_length
+        truncated = elapsed_time >= self.max_episode_length
         info = self._get_info(reward, terminated, truncated, success)
 
         return self._get_obs(), reward, terminated, truncated, info

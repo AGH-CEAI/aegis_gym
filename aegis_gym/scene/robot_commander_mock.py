@@ -3,8 +3,8 @@ import torch as th
 
 
 class RobotCommanderMock(RobotCommanderInterface):
-    def __init__(self) -> None:
-        super().__init__(device="cpu")
+    def __init__(self, device: str) -> None:
+        super().__init__(device)
         self.joint_names = [
             "shoulder_pan_joint",
             "shoulder_lift_joint",

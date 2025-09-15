@@ -2,6 +2,7 @@ from typing import Optional
 
 import rclpy
 
+
 try:
     from aegis_director.robot_director import RobotDirector
 except ImportError:
@@ -10,6 +11,7 @@ except ImportError:
     )
     raise ImportError
 
+from ..envs import EnvRenderMode
 from ..scene import SceneDirectorInterface, EntityType, SceneEntity
 from .robot_commander_ros import RobotCommanderROS
 from .scene_entities_ros import EntityTypeROS
@@ -26,10 +28,10 @@ class SceneDirectorROS(SceneDirectorInterface):
     def __del__(self) -> None:
         self.shutdown()
 
-    def __init__(self) -> None:
+    def __init__(self, device: str, render_mode=EnvRenderMode.NONE) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
-        super().__init__()
+        super().__init__(device, render_mode)
         rclpy.init()
         self.robot_director = RobotDirector(synchronous=True)
         self._scene_node = rclpy.create_node("scene_director")
@@ -39,7 +41,7 @@ class SceneDirectorROS(SceneDirectorInterface):
         rclpy.shutdown()
 
     def get_robot_commander(self) -> RobotCommanderROS:
-        return RobotCommanderROS(self.robot_director)
+        return RobotCommanderROS(self.robot_director, self.device)
 
     def add_entity(self, entity: EntityType) -> SceneEntity:
         return EntityTypeROS[entity](self._scene_node)
