@@ -1,98 +1,132 @@
-import os
+# Original implementation by Jakub Płachno (sivral) 2025
+# Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 import time
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Any, Union
 
 import numpy as np
+import torch as th
 import gymnasium as gym
 from gymnasium import spaces
 
-from aegis_gym.robot import RobotCommanderType, get_ros_interface
+from ..scene import (
+    SceneDirectorType,
+    SceneDirectorInterface,
+    RobotCommanderInterface,
+    get_scene_director,
+    EntityType,
+    Target,
+)
+from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
+
+ENV_CFG = {
+    "max_episode_length": 1000,
+    "num_obs": 18,
+    "target_threshold": 0.02,
+    "target_spawn_x": [-0.26, 0.26],
+    "target_spawn_y": [0.36, 1.0],
+    "target_spawn_z": [0.98, 1.78],
+    "clip_action": 1,
+    "action_scale": 0.1,
+    "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
+    "reward_scales": {"dist": -1.0, "control": -0.1},
+}
 
 
 class AegisReacherEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
+    metadata = {"render_modes": ["none", "human", "rgb_array"], "render_fps": 20}
 
     def __init__(
         self,
-        render_mode: Optional[str] = None,
-        reward_type: str = "dense",
-        control_type: str = "joints",
+        render_mode: str = EnvRenderMode.NONE.name,
+        observation_type: str = EnvObservationType.STATE.name,
+        control_type: str = EnvControlType.JOINTS.name,
+        reward_type: str = EnvRewardType.DENSE.name,
+        scene_type: SceneDirectorType = SceneDirectorType.MOCK,
+        device: str = "cuda",
+        cfg: dict = ENV_CFG,
     ) -> None:
         super().__init__()
+        self.cfg = cfg
+        self.device = device
 
-        self.episode_length = 30
-        if control_type == "joints":
+        self.render_mode = EnvRenderMode(render_mode)
+        self.observation_type = EnvObservationType(observation_type)
+        self.control_type = EnvControlType(control_type)
+        self.reward_type = EnvRewardType(reward_type)
+
+        self.num_actions = None
+        if self.control_type == EnvControlType.JOINTS:
             self.num_actions = 6
-        if control_type == "cartesian":
+        if self.control_type == EnvControlType.CARTESIAN_POSITION:
             self.num_actions = 3
-        self.num_obs = 18
-        self.num_actions = 6
-        self.target_threshold = 0.02
-        self.clip_action = 1
-        self.obs_scales = {"dof_pos": 1.0, "dof_vel": 0.1}
-        self.action_scale = 0.1
-        self.reward_scales = {"dist": -1.0, "control": -0.1}
-        self.target_spawn_x = [-0.26, 0.26]
-        self.target_spawn_y = [0.36, 1.0]
-        self.target_spawn_z = [0.98, 1.78]
 
-        ros_interface = RobotCommanderType.REAL
-        if os.environ.get("PYTEST_CURRENT_TEST") is not None:
-            print("\n> Deteceted pytest env, using mock ROS interface")
-            ros_interface = RobotCommanderType.MOCK
-        self.robot = get_ros_interface(ros_interface)
+        # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
+        self.max_episode_length = cfg["max_episode_length"]
+        self.num_obs = cfg["num_obs"]
+        self.target_threshold = cfg["target_threshold"]
+        self.clip_action = cfg["clip_action"]
+        self.obs_scales = cfg["obs_scales"]
+        self.action_scale = cfg["action_scale"]
+        self.reward_scales = cfg["reward_scales"]
+        self.target_spawn_x = cfg["target_spawn_x"]
+        self.target_spawn_y = cfg["target_spawn_y"]
+        self.target_spawn_z = cfg["target_spawn_z"]
 
-        self.observation_space = spaces.Box(
+        self.scene: SceneDirectorInterface = get_scene_director(scene_type)
+        self.target: Target = self.scene.add_entity(EntityType.TARGET)
+        self.target.create()
+
+        self.scene.build()
+        self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
+
+        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
-        self.action_space = spaces.Box(
+        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
 
         self.episode_step = 0.0
-        self.actions = np.zeros(self.num_actions, dtype=np.float32)
-        self.target_pos = np.zeros(3, dtype=np.float32)
-        self.dof_pos = np.zeros(6, dtype=np.float32)
-        self.dof_vel = np.zeros(6, dtype=np.float32)
-        self.tcp_pos = np.zeros(3, dtype=np.float32)
+        self.actions = th.zeros(self.num_actions, dtype=th.float32, device=self.device)
+        self.target_pos = th.zeros(3, dtype=th.float32, device=self.device)
+        self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
+        self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
+        self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
 
         self.reward_functions = {
             "dist": self._reward_dist,
             "control": self._reward_control,
         }
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
-
-        assert (
-            render_mode is None
-            or render_mode in AegisReacherEnv.metadata["render_modes"]
-        )
-        self.render_mode = render_mode
-
         self.reset()
 
     def step(
-        self, action: np.ndarray
-    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        action = np.clip(action, -self.clip_action, self.clip_action)
-        self.actions = np.array(action, dtype=np.float32)
+        self, action: Union[th.Tensor, np.ndarray]
+    ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
+        if isinstance(action, np.ndarray):
+            action = th.from_numpy(action)
+        action = action.to(self.device)
+        action = th.clamp(action, -self.clip_action, self.clip_action)
+        self.actions = action.clone()
 
-        if self.control_type == "joints":
+        if self.control_type == EnvControlType.JOINTS:
             self.dof_pos = self.robot.get_joint_positions()
             delta = self.actions * self.action_scale
             dof_pos_target = self.dof_pos + delta
             self.robot.control_dofs_position(dof_pos_target)
-        elif self.control_type == "cartesian":
+        elif self.control_type == EnvControlType.CARTESIAN_POSITION:
             self.tcp_pos = self.robot.get_tcp_position()
             delta = self.actions * self.action_scale
             tcp_pos_target = self.tcp_pos + delta
             tcp_ori = self.robot.get_tcp_orientation()
             self.robot.control_tcp_position(
-                position=tcp_pos_target, orientation=tcp_ori
+                target_pos=tcp_pos_target, target_ori=tcp_ori
             )
+        self.scene.step()
         self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
-        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
+        self.dist = th.norm(self.tcp_pos - self.target_pos)
         success = bool(self.dist < self.target_threshold)
 
         reward = 0.0
@@ -101,51 +135,60 @@ class AegisReacherEnv(gym.Env):
             self.episode_sums[name] += r
             reward += r
         reward = float(reward)
+
         self.episode_return += reward
 
-        current_time = time.time()
-        elapsed_time = current_time - self.episode_start_time
-
+        # TODO(issue#10) introduce timeouts in ROS and simulations
+        # truncated = elapsed_time >= self.max_episode_length_s
+        truncated = self.episode_step >= self.max_episode_length
         terminated = bool(success)
-        truncated = elapsed_time >= self.episode_length
         info = self._get_info(reward, terminated, truncated, success)
 
         return self._get_obs(), reward, terminated, truncated, info
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[Dict] = None
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        self, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> tuple[th.Tensor, dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
+            th.manual_seed(seed)
 
         self.robot.move_to_home()
 
-        self.target_pos = np.array(
-            [
-                np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
-                np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
-                np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
-            ],
-            dtype=np.float32,
+        self.target.set_pose(
+            th.tensor(
+                [
+                    np.random.uniform(self.target_spawn_x[0], self.target_spawn_x[1]),
+                    np.random.uniform(self.target_spawn_y[0], self.target_spawn_y[1]),
+                    np.random.uniform(self.target_spawn_z[0], self.target_spawn_z[1]),
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                ],
+                device=self.device,
+                dtype=th.float32,
+            )
         )
-        self.robot.publish_target_pos(self.target_pos)
 
         self.actions[:] = 0.0
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
         self.tcp_pos = self.robot.get_tcp_position()
-        self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
+        self.dist = th.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
         return self._get_obs(), self._get_info()
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self) -> th.Tensor:
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        return np.concatenate(
-            [self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos]
+        return (
+            th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
+            .clone()
+            .detach()
         )
 
     def _get_info(
@@ -154,10 +197,10 @@ class AegisReacherEnv(gym.Env):
         terminated: bool = False,
         truncated: bool = False,
         success: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         info = {
             "success": success,
-            "dist_to_target": self.dist,
+            "dist_to_target": float(self.dist),
             "episode_step": self.episode_step,
             "is_truncated": truncated,
             "is_success": success,
@@ -172,10 +215,11 @@ class AegisReacherEnv(gym.Env):
         return info
 
     def _reward_dist(self) -> float:
-        return self.dist
+        return float(self.dist)
 
     def _reward_control(self) -> float:
-        return np.sum(self.actions**2)
+        return float(th.sum(self.actions**2))
 
     def render(self) -> None:
+        print("AegisReacher Render not implemented yet.")
         pass
