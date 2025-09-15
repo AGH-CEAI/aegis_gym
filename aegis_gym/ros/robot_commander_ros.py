@@ -20,32 +20,30 @@ class RobotCommanderROS(RobotCommanderInterface):
             cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, robot_director: RobotDirector) -> None:
+    def __init__(self, robot_director: RobotDirector, device: str) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
+        super().__init__(device=device)
         self.robot_director = robot_director
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
-
-        # TODO Take HOME position from SRDF file.
-        self.dof_home = {
-            "shoulder_pan_joint": 0.0,
-            "shoulder_lift_joint": -2.09,
-            "elbow_joint": 2.09,
-            "wrist_1_joint": -1.57,
-            "wrist_2_joint": -1.57,
-            "wrist_3_joint": 0.0,
-            "robotiq_hande_left_finger_joint": 0.025,
-        }
         self._initialized = True
 
     def get_joint_positions(self) -> th.Tensor:
         jp = self.robot_director.get_joint_positions()
-        return th.tensor([jp[name] for name in self.joint_names], dtype=th.float32)
+        return th.tensor(
+            [jp[name] for name in self.joint_names],
+            dtype=th.float32,
+            device=self.device,
+        )
 
     def get_joint_velocities(self) -> th.Tensor:
         jv = self.robot_director.get_joint_velocities()
-        return th.tensor([jv[name] for name in self.joint_names], dtype=th.float32)
+        return th.tensor(
+            [jv[name] for name in self.joint_names],
+            dtype=th.float32,
+            device=self.device,
+        )
 
     def get_tcp_position(self) -> th.Tensor:
         return self.get_tcp_pose()[:3]
@@ -58,9 +56,9 @@ class RobotCommanderROS(RobotCommanderInterface):
         tcp = self.robot_director.get_tcp_pose()
         return th.cat(
             [
-                th.tensor(tcp["position"], dtype=th.float32),
-                th.tensor(tcp["orientation"], dtype=th.float32),
-            ]
+                th.tensor(tcp["position"], dtype=th.float32, device=self.device),
+                th.tensor(tcp["orientation"], dtype=th.float32, device=self.device),
+            ],
         )
 
     def control_dofs_position(
@@ -76,7 +74,7 @@ class RobotCommanderROS(RobotCommanderInterface):
 
     def move_to_home(self) -> None:
         self.robot_director.joint_move(
-            joint_positions=self.dof_home,
+            joint_positions=self.dof_home_dict,
             max_vel=0.5,
             max_accel=0.5,
         )

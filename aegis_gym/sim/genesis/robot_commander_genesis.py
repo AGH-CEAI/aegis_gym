@@ -1,38 +1,16 @@
 import torch as th
-import genesis as gs
+from genesis.engine.entities.rigid_entity import RigidEntity
 
 from ...scene.robot_commander_interface import RobotCommanderInterface
-
-gsEntity = gs.engine.entities.base_entity.Entity
 
 
 class RobotCommanderSimGenesis(RobotCommanderInterface):
     def __init__(
-        self, gs_robot: gsEntity, motor_dofs: tuple[str], device: str = "cuda"
+        self, gs_robot: RigidEntity, motor_dofs: tuple[str], device: str = "cuda"
     ):
-        super().__init__()
+        super().__init__(device)
         self.robot = gs_robot
-        self.device = device
         self.motor_dofs = motor_dofs
-
-        # TODO Take HOME position from SRDF file.
-        cfg = {
-            "default_joint_angles": {
-                "shoulder_pan_joint": 0.0,
-                "shoulder_lift_joint": -2.10,
-                "elbow_joint": 2.10,
-                "wrist_1_joint": -1.57,
-                "wrist_2_joint": -1.57,
-                "wrist_3_joint": 0.0,
-                # "robotiq_hande_left_finger_joint": 0.025,
-                # "robotiq_hande_right_finger_joint": 0.025,
-            },
-        }
-        self.dof_home = th.tensor(
-            [val for val in cfg["default_joint_angles"].values()],
-            # [cfg["default_joint_angles"][name] for name in cfg["dof_names"]],
-            device=device,
-        )
 
     def get_joint_positions(self) -> th.Tensor:
         return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
