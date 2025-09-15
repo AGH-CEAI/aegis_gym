@@ -87,7 +87,9 @@ class AegisReacherEnv(gym.Env):
             delta = self.actions * self.action_scale
             tcp_pos_target = self.tcp_pos + delta
             tcp_ori = self.robot.get_tcp_orientation()
-            self.robot.control_tcp_position(position=tcp_pos_target, orientation=tcp_ori)
+            self.robot.control_tcp_position(
+                position=tcp_pos_target, orientation=tcp_ori
+            )
             self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
