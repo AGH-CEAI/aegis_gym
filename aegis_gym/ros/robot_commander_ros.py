@@ -49,7 +49,6 @@ class RobotCommanderROS(RobotCommanderInterface):
         return self.get_tcp_pose()[:3]
 
     def get_tcp_orientation(self) -> th.Tensor:
-        # TODO: decide on Euler vs Quaterion orientation!
         return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
