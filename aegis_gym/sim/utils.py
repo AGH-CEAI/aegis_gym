@@ -2,11 +2,12 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Union, Any
 
 from ament_index_python.packages import get_package_share_directory
 
 import gymnasium as gym
-import torch
+import torch as th
 import numpy as np
 
 
@@ -14,23 +15,23 @@ class TorchToNumpyWrapper(gym.ObservationWrapper, gym.ActionWrapper):
     def __init__(self, env):
         super().__init__(env)
 
-    def observation(self, obs):
-        # Convert torch.Tensor observation to numpy array
-        if isinstance(obs, torch.Tensor):
+    def observation(self, obs: Union[th.Tensor, Any]) -> np.ndarray:
+        # Convert thTensor observation to numpy array
+        if isinstance(obs, th.Tensor):
             return obs.cpu().numpy()
         return obs
 
-    def action(self, action):
-        # Convert numpy array action to torch.Tensor
+    def action(self, action: Union[np.ndarray, Any]) -> th.Tensor:
+        # Convert numpy array action to thTensor
         if isinstance(action, np.ndarray):
-            return torch.from_numpy(action)
+            return th.from_numpy(action)
         return action
 
 
 def generate_aegis_urdf() -> Path:
     pkg_share = Path(get_package_share_directory("aegis_description"))
     xacro_path = pkg_share / "urdf" / "aegis.urdf.xacro"
-    fd, urdf_path = tempfile.mkstemp(suffix=".urdf", prefix="aegis_urdf_", dir="/tmp")
+    _, urdf_path = tempfile.mkstemp(suffix=".urdf", prefix="aegis_urdf_", dir="/tmp")
 
     urdf_with_uris = subprocess.run(
         ["xacro", str(xacro_path)],
