@@ -1,30 +1,24 @@
 from enum import auto
-from strenum import StrEnum
+from strenum import LowercaseStrEnum
 
 
-# TODO Test wbultin from strenum library for LowerCaseStrEnum
-class LowerStrEnum(StrEnum):
-    def _generate_next_value_(name, start, count, last_values):
-        return name.lower()
-
-
-class EnvRenderMode(LowerStrEnum):
+class EnvRenderMode(LowercaseStrEnum):
     NONE = auto()
     HUMAN = auto()
     RGB_ARRAY = auto()
 
 
-class EnvRewardType(LowerStrEnum):
+class EnvRewardType(LowercaseStrEnum):
     DENSE = auto()
     SPARSE = auto()
 
 
-class EnvObservationType(LowerStrEnum):
+class EnvObservationType(LowercaseStrEnum):
     STATE = auto()
     VISION = auto()
 
 
-class EnvControlType(LowerStrEnum):
+class EnvControlType(LowercaseStrEnum):
     JOINTS = auto()
     CARTESIAN_POSITION = auto()
     CARTESIAN_POSE = auto()
