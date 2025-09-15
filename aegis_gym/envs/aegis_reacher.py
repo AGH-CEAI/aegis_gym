@@ -21,7 +21,6 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 ENV_CFG = {
     "max_episode_length": 1000,
     "num_obs": 18,
-    "num_actions": 6,
     "target_threshold": 0.02,
     "target_spawn_x": [-0.26, 0.26],
     "target_spawn_y": [0.36, 1.0],
@@ -55,10 +54,15 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
+        self.num_actions = None
+        if self.control_type == EnvControlType.JOINTS:
+            self.num_actions = 6
+        if self.control_type == EnvControlType.CARTESIAN_POSITION:
+            self.num_actions = 3
+
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
         self.num_obs = cfg["num_obs"]
-        self.num_actions = cfg["num_actions"]
         self.target_threshold = cfg["target_threshold"]
         self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
@@ -105,13 +109,20 @@ class AegisReacherEnv(gym.Env):
         action = th.clamp(action, -self.clip_action, self.clip_action)
         self.actions = action.clone()
 
-        self.dof_pos = self.robot.get_joint_positions()
-        delta = self.actions * self.action_scale
-        dof_pos_target = self.dof_pos + delta
-        self.robot.control_dofs_position(dof_pos_target)
-
+        if self.control_type == EnvControlType.JOINTS:
+            self.dof_pos = self.robot.get_joint_positions()
+            delta = self.actions * self.action_scale
+            dof_pos_target = self.dof_pos + delta
+            self.robot.control_dofs_position(dof_pos_target)
+        elif self.control_type == EnvControlType.CARTESIAN_POSITION:
+            self.tcp_pos = self.robot.get_tcp_position()
+            delta = self.actions * self.action_scale
+            tcp_pos_target = self.tcp_pos + delta
+            tcp_ori = self.robot.get_tcp_orientation()
+            self.robot.control_tcp_position(
+                target_pos=tcp_pos_target, target_ori=tcp_ori
+            )
         self.scene.step()
-
         self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
@@ -164,7 +175,7 @@ class AegisReacherEnv(gym.Env):
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
-        self.tcp_pose = self.robot.get_tcp_position()
+        self.tcp_pos = self.robot.get_tcp_position()
         self.dist = th.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
