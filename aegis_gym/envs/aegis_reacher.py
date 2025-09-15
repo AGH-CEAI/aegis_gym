@@ -87,11 +87,11 @@ class AegisReacherEnv(gym.Env):
         )
 
         self.episode_step = 0.0
-        self.actions = th.zeros(self.num_actions, device=self.device)
-        self.target_pos = th.zeros(3, device=self.device)
-        self.dof_pos = th.zeros(6, device=self.device)
-        self.dof_vel = th.zeros(6, device=self.device)
-        self.tcp_pos = th.zeros(3, device=self.device)
+        self.actions = th.zeros(self.num_actions, dtype=th.float32, device=self.device)
+        self.target_pos = th.zeros(3, dtype=th.float32, device=self.device)
+        self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
+        self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
+        self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
 
         self.reward_functions = {
             "dist": self._reward_dist,
