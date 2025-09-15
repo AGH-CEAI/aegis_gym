@@ -15,6 +15,9 @@ class RobotCommanderMock(RobotCommanderInterface):
     def get_tcp_position(self) -> th.Tensor:
         return th.tensor([0.0, 0.0, 0.0], dtype=th.float32, device=self.device)
 
+    def get_tcp_orientation(self) -> th.Tensor:
+        return th.tensor([0.0, 0.0, 0.0, 1.0], dtype=th.float32, device=self.device)
+
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
