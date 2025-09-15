@@ -168,4 +168,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-poetry.lock
+COLCON_IGNORE
