@@ -5,15 +5,6 @@ import torch as th
 class RobotCommanderMock(RobotCommanderInterface):
     def __init__(self, device: str) -> None:
         super().__init__(device)
-        self.joint_names = [
-            "shoulder_pan_joint",
-            "shoulder_lift_joint",
-            "elbow_joint",
-            "wrist_1_joint",
-            "wrist_2_joint",
-            "wrist_3_joint",
-        ]
-        self.dof_home = {name: 0.0 for name in self.joint_names}
 
     def get_joint_positions(self) -> th.Tensor:
         return th.zeros(len(self.joint_names), dtype=th.float32, device=self.device)
