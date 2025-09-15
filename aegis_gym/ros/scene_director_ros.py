@@ -9,6 +9,8 @@ except ImportError:
     print(
         "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
     )
+    RobotDirector = None
+if RobotDirector is None:
     raise ImportError
 
 from ..scene import SceneDirectorInterface, EntityType, SceneEntity
