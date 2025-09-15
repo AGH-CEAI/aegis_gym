@@ -9,13 +9,18 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 
 ---
 
-# Build & install
+## Notes
+* All poses consist of position `x,y,z` and orientation in quaterion form `qx,qy,qz,qw`, i.e.: `pose=[x,y,z,qx,qy,qz,qw]`
+
+---
+
+## Build & install
 ```bash
 poetry build
 pip3 install ./dist/aegis_gym-*.whl
 ```
 
-# Run tests
+## Run tests
 ```bash
 poetry run pytest -v -s
 ```
