@@ -29,7 +29,7 @@ class SceneDirectorROS(SceneDirectorInterface):
     def __del__(self) -> None:
         self.shutdown()
 
-    def __init__(self, device: str) -> None:
+    def __init__(self, device: str = "cuda") -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
         super().__init__(device)

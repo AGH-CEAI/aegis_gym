@@ -35,6 +35,15 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         # TODO(issue#9) use max cel and accel
         self.robot.control_dofs_position(target_pos, self.motor_dofs)
 
+    def control_tcp_position(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        raise NotImplementedError
+
     def move_to_home(self) -> None:
         # TODO(issue#8) Do we need trajectory to home in simulation?
         # self.control_dofs_position(self.dof_home)

@@ -12,7 +12,7 @@ class TargetROS(Target):
     def __init__(self, node: Node, device: str = "cuda"):
         super().__init__(device)
         self._node = node
-        self._pose: th.Tensor = th.zeros()
+        self._pose: th.Tensor = None
 
     def create(self, topic: str = "/target_marker") -> None:
         self._target_pub = self._node.create_publisher(Marker, topic, 10)
