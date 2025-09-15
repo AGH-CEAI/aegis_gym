@@ -32,11 +32,11 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        # TODO use max cel and accel
+        # TODO(issue#9) use max cel and accel
         self.robot.control_dofs_position(target_pos, self.motor_dofs)
 
     def move_to_home(self) -> None:
-        # TODO (issue#X) Do we need trajectory to home in simulation?
+        # TODO(issue#8) Do we need trajectory to home in simulation?
         # self.control_dofs_position(self.dof_home)
         self._teleport_to_home()
 

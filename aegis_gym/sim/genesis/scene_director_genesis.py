@@ -47,7 +47,6 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.motor_dofs: tuple[str] = None
 
         if not gs._initialized:
-            # TODO make it more flexible
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
             gs.init(precision="32", backend=backend, logging_level="warning")
         self.dt = cfg["dt"]

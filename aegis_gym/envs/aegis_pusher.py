@@ -19,7 +19,7 @@ from ..scene import (
 from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 ENV_CFG = {
-    "episode_length": 30,
+    "max_episode_length": 1000,
     "num_obs": 21,
     "num_actions": 6,
     "target_pos": [-0.1, 0.76, 0.84],
@@ -63,6 +63,14 @@ class AegisPusherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
+        # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
+        self.max_episode_length = cfg["max_episode_length"]
+        self.num_actions = cfg["num_actions"]
+        self.num_obs = cfg["num_obs"]
+        self.obs_scales = cfg["obs_scales"]
+        self.reward_scales = cfg["reward_scales"]
+        self.target_threshold = cfg["target_threshold"]
+
         self.scene: SceneDirectorInterface = get_scene_director(scene_type)
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.object: Box = self.scene.add_entity(EntityType.BOX)
@@ -72,14 +80,6 @@ class AegisPusherEnv(gym.Env):
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        # TODO(issue#7) Rconsider unifcation for ROS and simulation
-        self.max_episode_length = cfg["episode_length"]
-        self.num_actions = cfg["num_actions"]
-        self.num_obs = cfg["num_obs"]
-        self.obs_scales = cfg["obs_scales"]
-        self.reward_scales = cfg["reward_scales"]
-        self.target_threshold = cfg["target_threshold"]
-
         self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
         )
@@ -87,6 +87,10 @@ class AegisPusherEnv(gym.Env):
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
 
+        self.episode_step = 0.0
+        self.actions = th.zeros(self.num_actions, device=self.device)
+        self.last_actions = th.zeros(self.num_actions, device=self.device)
+        self.last_dof_vel = th.zeros(self.num_actions, device=self.device)
         self.dof_pos = th.zeros(self.num_actions, device=self.device)
         self.dof_vel = th.zeros(self.num_actions, device=self.device)
         self.tcp_pos = th.zeros(3, device=self.device)
@@ -95,10 +99,6 @@ class AegisPusherEnv(gym.Env):
         self.target_pos = th.tensor(
             self.cfg["target_pos"], device=self.device, dtype=th.float32
         )
-        self.actions = th.zeros(self.num_actions, device=self.device)
-        self.last_actions = th.zeros(self.num_actions, device=self.device)
-        self.last_dof_vel = th.zeros(self.num_actions, device=self.device)
-        self.episode_step = 0.0
 
         self.reward_functions = {
             "near": self._reward_near,
@@ -144,6 +144,8 @@ class AegisPusherEnv(gym.Env):
         self.episode_return += reward
 
         terminated = bool(success)
+        # TODO(issue#10) introduce timeouts in ROS and simulations
+        # truncated = elapsed_time >= self.max_episode_length_s
         truncated = self.episode_step >= self.max_episode_length
 
         info = {

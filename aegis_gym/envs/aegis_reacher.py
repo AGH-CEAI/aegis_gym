@@ -19,7 +19,7 @@ from ..scene import (
 from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 ENV_CFG = {
-    "episode_length": 30,
+    "max_episode_length": 1000,
     "num_obs": 18,
     "num_actions": 6,
     "target_threshold": 0.02,
@@ -55,8 +55,8 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        # TODO(issue#7) Rconsider unifcation for ROS and simulation
-        self.max_episode_length = cfg["episode_length"]
+        # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
+        self.max_episode_length = cfg["max_episode_length"]
         self.num_obs = cfg["num_obs"]
         self.num_actions = cfg["num_actions"]
         self.target_threshold = cfg["target_threshold"]
@@ -99,7 +99,6 @@ class AegisReacherEnv(gym.Env):
     def step(
         self, action: Union[th.Tensor, np.ndarray]
     ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
-        # Convert action to torch.Tensor if needed
         if isinstance(action, np.ndarray):
             action = th.from_numpy(action)
         action = action.to(self.device)
@@ -128,13 +127,10 @@ class AegisReacherEnv(gym.Env):
 
         self.episode_return += reward
 
-        # TODO validate if we should truncate on timeout
-        # TODO reimage timeouts in ROS and simulations
-        current_time = time.time()
-        elapsed_time = current_time - self.episode_start_time
-
+        # TODO(issue#10) introduce timeouts in ROS and simulations
+        # truncated = elapsed_time >= self.max_episode_length_s
+        truncated = self.episode_step >= self.max_episode_length
         terminated = bool(success)
-        truncated = elapsed_time >= self.max_episode_length
         info = self._get_info(reward, terminated, truncated, success)
 
         return self._get_obs(), reward, terminated, truncated, info
