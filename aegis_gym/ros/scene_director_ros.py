@@ -11,7 +11,6 @@ except ImportError:
     )
     raise ImportError
 
-from ..envs import EnvRenderMode
 from ..scene import SceneDirectorInterface, EntityType, SceneEntity
 from .robot_commander_ros import RobotCommanderROS
 from .scene_entities_ros import EntityTypeROS
@@ -28,10 +27,10 @@ class SceneDirectorROS(SceneDirectorInterface):
     def __del__(self) -> None:
         self.shutdown()
 
-    def __init__(self, device: str, render_mode=EnvRenderMode.NONE) -> None:
+    def __init__(self, device: str) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
-        super().__init__(device, render_mode)
+        super().__init__(device)
         rclpy.init()
         self.robot_director = RobotDirector(synchronous=True)
         self._scene_node = rclpy.create_node("scene_director")

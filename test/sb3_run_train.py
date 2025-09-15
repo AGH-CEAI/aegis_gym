@@ -16,7 +16,7 @@ except ImportError:
 
 
 def main():
-    env_name = sim_genesis.ENV_IDS[1]
+    env_name = sim_genesis.ENV_IDS[0]
     # env_name = aegis_gym.ENV_IDS[0]
 
     print(f"Training on environment: {env_name}")

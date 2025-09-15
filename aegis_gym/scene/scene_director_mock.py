@@ -1,7 +1,6 @@
 from typing import Any
 import torch as th
 
-from ..envs.env_types import EnvRenderMode
 from .robot_commander_mock import RobotCommanderMock
 from .scene_director_interface import SceneDirectorInterface
 from .scene_entities import EntityType, SceneEntity, Target, Box
@@ -43,7 +42,7 @@ EntityTypeMock = {
 
 class SceneDirectorMock(SceneDirectorInterface):
     def __init__(self):
-        super().__init__(device="cpu", render_mode=EnvRenderMode.NONE)
+        super().__init__(device="cpu", show_render=False)
 
     def get_robot_commander(self) -> RobotCommanderMock:
         return RobotCommanderMock(self.device)

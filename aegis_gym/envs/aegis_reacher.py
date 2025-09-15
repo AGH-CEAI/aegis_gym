@@ -34,7 +34,7 @@ ENV_CFG = {
 
 
 class AegisReacherEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 20}
+    metadata = {"render_modes": ["none", "human", "rgb_array"], "render_fps": 20}
 
     def __init__(
         self,

@@ -1,7 +1,6 @@
 import genesis as gs
 import torch as th
 
-from ...envs import EnvRenderMode
 from ...scene import (
     SceneDirectorInterface,
     RobotCommanderInterface,
@@ -39,10 +38,10 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
     def __init__(
         self,
         device: str = "cuda",
-        render_mode=EnvRenderMode.RGB_ARRAY,
+        show_render: bool = True,
         cfg: dict = SIM_CFG,
     ):
-        super().__init__(device, render_mode)
+        super().__init__(device, show_render)
         self.cfg = cfg
         self.motor_dofs: tuple[str] = None
 
@@ -54,7 +53,6 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self._create_scene()
 
     def _create_scene(self) -> None:
-        show_viewer = True if self.render_mode == EnvRenderMode.HUMAN else False
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=5),
             viewer_options=gs.options.ViewerOptions(
@@ -71,7 +69,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
                 # enable_self_collision=True,
                 enable_joint_limit=True,
             ),
-            show_viewer=show_viewer,
+            show_viewer=self.show_render,
         )
 
         self.scene.add_entity(gs.morphs.Plane())
@@ -108,7 +106,10 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.scene.build()
 
         self.motor_dofs = tuple(
-            [self.robot.get_joint(name).dof_idx_local for name in self.cfg["dof_names"]]
+            [
+                self.robot.get_joint(name).dofs_idx_local[0]
+                for name in self.cfg["dof_names"]
+            ]
         )
         self.robot.set_dofs_kp(self.cfg["kp"], self.motor_dofs)
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)

@@ -1,4 +1,5 @@
 import genesis as gs
+from genesis.engine.entities import RigidEntity
 import torch as th
 
 from ...scene import EntityType, Target, Box
@@ -8,8 +9,8 @@ class TargetSimGenesis(Target):
     def __init__(self, scene: gs.Scene, device: str = "cuda"):
         super().__init__(device)
         self._scene = scene
-        self._pose: th.Tensor = th.zeros()
-        self._obj = None
+        self._pose: th.Tensor = None
+        self._obj: RigidEntity = None
 
     def create(self) -> None:
         pos = (-0.1, 0.76, 0.82)
@@ -23,7 +24,7 @@ class TargetSimGenesis(Target):
 
     def set_pose(self, pose: th.Tensor) -> None:
         self._obj.set_pos(pos=pose[:3].view(3), zero_velocity=True)
-        self._obj.set_quat(pos=pose[3:].view(4), zero_velocity=True)
+        self._obj.set_quat(quat=pose[3:].view(4), zero_velocity=True)
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
@@ -34,8 +35,8 @@ class BoxSimGenesis(Box):
     def __init__(self, scene: gs.Scene, device: str = "cuda"):
         super().__init__(device)
         self._scene = scene
-        self._pose: th.Tensor = th.zeros()
-        self._obj = None
+        self._pose: th.Tensor = None
+        self._obj: RigidEntity = None
 
     def create(self) -> None:
         pos = (0.0, 0.7, 0.84)
@@ -54,7 +55,7 @@ class BoxSimGenesis(Box):
 
     def set_pose(self, pose: th.Tensor) -> None:
         self._obj.set_pos(pos=pose[:3].view(3), zero_velocity=True)
-        self._obj.set_quat(pos=pose[3:].view(4), zero_velocity=True)
+        self._obj.set_quat(quat=pose[3:].view(4), zero_velocity=True)
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
