@@ -21,6 +21,10 @@ class AegisReacherEnv(gym.Env):
         super().__init__()
 
         self.episode_length = 30
+        if control_type == "joints":
+            self.num_actions = 6
+        if control_type == "cartesian":
+            self.num_actions = 3
         self.num_obs = 18
         self.num_actions = 6
         self.target_threshold = 0.02
@@ -72,11 +76,19 @@ class AegisReacherEnv(gym.Env):
         action = np.clip(action, -self.clip_action, self.clip_action)
         self.actions = np.array(action, dtype=np.float32)
 
-        self.dof_pos = self.robot.get_joint_positions()
-        delta = self.actions * self.action_scale
-        dof_pos_target = self.dof_pos + delta
-        self.robot.control_dofs_position(dof_pos_target)
-        self.tcp_pos = self.robot.get_tcp_position()
+        if self.control_type == "joints":
+            self.dof_pos = self.robot.get_joint_positions()
+            delta = self.actions * self.action_scale
+            dof_pos_target = self.dof_pos + delta
+            self.robot.control_dofs_position(dof_pos_target)
+            self.tcp_pos = self.robot.get_tcp_position()
+        elif self.control_type == "cartesian":
+            self.tcp_pos = self.robot.get_tcp_position()
+            delta = self.actions * self.action_scale
+            tcp_pos_target = self.tcp_pos + delta
+            tcp_ori = self.robot.get_tcp_orientation()
+            self.robot.control_tcp_position(position=tcp_pos_target, orientation=tcp_ori)
+            self.tcp_pos = self.robot.get_tcp_position()
 
         self.episode_step += 1
         self.dist = np.linalg.norm(self.tcp_pos - self.target_pos)
