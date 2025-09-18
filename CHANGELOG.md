@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-17](https://github.com/AGH-CEAI/pull/17) - Added cartesian control for Reacher environment.
+- [PR-19](https://github.com/AGH-CEAI/pull/19) - Added Cartesian control for ROS robot commander.
+- [PR-17](https://github.com/AGH-CEAI/pull/17) - Added Cartesian control for Reacher environment.
 - [PR-11,12,13,14,15](https://github.com/AGH-CEAI/aegis_gym/pull/5) - Added Genesis simulator.
 - [PR-2](https://github.com/AGH-CEAI/aegis_gym/pull/2) - Added reinforcement learning Reacher environment for the Aegis robot station.
 - [PR-1](https://github.com/AGH-CEAI/aegis_gym/pull/1) - Initial package with boilerplate and gymnasium API.
