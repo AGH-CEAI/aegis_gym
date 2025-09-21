@@ -63,11 +63,17 @@ class AegisPusherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
+        self.num_actions = None
+        if self.control_type == EnvControlType.JOINTS:
+            self.num_actions = 6
+        if self.control_type == EnvControlType.CARTESIAN_POSITION:
+            self.num_actions = 3
+
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
-        self.num_actions = cfg["num_actions"]
         self.num_obs = cfg["num_obs"]
         self.obs_scales = cfg["obs_scales"]
+        self.action_scale = cfg["action_scale"]
         self.reward_scales = cfg["reward_scales"]
         self.target_threshold = cfg["target_threshold"]
 
@@ -116,6 +122,7 @@ class AegisPusherEnv(gym.Env):
         action = action.to(self.device)
         action = th.clamp(action, -self.cfg["clip_action"], self.cfg["clip_action"])
         self.actions = action.clone()
+        delta = self.actions * self.action_scale
 
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
@@ -123,9 +130,15 @@ class AegisPusherEnv(gym.Env):
         # self.tcp_vel = self.robot.get_tcp_velocity()  # If available
         self.object_pos = self.object.get_pose()[:3].clone()
 
-        target_dof_pos = self.dof_pos + self.actions * self.cfg["action_scale"]
-        self.robot.control_dofs_position(target_dof_pos)
-
+        if self.control_type == EnvControlType.JOINTS:
+            dof_pos_target = self.dof_pos + delta
+            self.robot.control_dofs_position(dof_pos_target)
+        elif self.control_type == EnvControlType.CARTESIAN_POSITION:
+            tcp_pos_target = self.tcp_pos + delta
+            tcp_ori = self.robot.get_tcp_orientation()
+            self.robot.control_tcp_position(
+                target_pos=tcp_pos_target, target_ori=tcp_ori
+            )
         self.scene.step()
         self.episode_step += 1
 
