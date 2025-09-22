@@ -78,7 +78,18 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        pos_np = target_pos.detach().cpu().numpy()
+        ori_np = target_ori.detach().cpu().numpy()
+
+        pos_tuple = tuple(float(v) for v in pos_np)
+        ori_tuple = tuple(float(v) for v in ori_np)
+
+        self.robot_director.pose_move(
+            position=pos_tuple,
+            quat_xyzw=ori_tuple,
+            max_vel=max_vel,
+            max_accel=max_accel,
+        )
 
     def move_to_home(self) -> None:
         self.robot_director.joint_move(

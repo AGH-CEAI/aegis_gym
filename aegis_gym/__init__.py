@@ -17,23 +17,32 @@ from .envs.env_types import (
 ENV_IDS = []
 
 tasks = ["Reacher", "Pusher"]
-obs_type = EnvObservationType.STATE.value.capitalize()
-reward_type = EnvRewardType.DENSE.value.capitalize()
-control_type = EnvControlType.JOINTS.value.capitalize()
+obs_types = [EnvObservationType.STATE]
+control_types = [EnvControlType.JOINTS, EnvControlType.CARTESIAN_POSITION]
+reward_types = [EnvRewardType.DENSE]
 
 for task in tasks:
-    env_id = f"Aegis{task}{obs_type}{control_type}{reward_type}-v1"
-    register(
-        id=env_id,
-        entry_point=f"aegis_gym.envs:Aegis{task}Env",
-        kwargs={
-            "render_mode": EnvRenderMode.NONE.value,
-            "observation_type": obs_type.lower(),
-            "control_type": control_type.lower(),
-            "reward_type": reward_type.lower(),
-            "scene_type": SceneDirectorType.ROS,
-            "device": "cuda",
-        },
-        max_episode_steps=50,
-    )
-    ENV_IDS.append(env_id)
+    for obs_type in obs_types:
+        for reward_type in reward_types:
+            for control_type in control_types:
+                env_id = (
+                    f"Aegis{task}"
+                    f"{obs_type.value.capitalize()}"
+                    f"{control_type.value.capitalize()}"
+                    f"{reward_type.value.capitalize()}"
+                    f"-v1"
+                )
+                register(
+                    id=env_id,
+                    entry_point=f"aegis_gym.envs:Aegis{task}Env",
+                    kwargs={
+                        "render_mode": EnvRenderMode.NONE.value,
+                        "observation_type": obs_type.value.lower(),
+                        "control_type": control_type.value.lower(),
+                        "reward_type": reward_type.value.lower(),
+                        "scene_type": SceneDirectorType.ROS,
+                        "device": "cuda",
+                    },
+                    max_episode_steps=50,
+                )
+                ENV_IDS.append(env_id)

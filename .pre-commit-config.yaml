@@ -28,7 +28,7 @@ repos:
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
 -   repo: https://github.com/python-poetry/poetry
-    rev: "2.2.0"
+    rev: "2.2.1"
     hooks:
     -   id: poetry-check
     -   id: poetry-lock
@@ -40,7 +40,7 @@ repos:
         args: [-w, --ignore-words=.codespell-ignore-words]
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.13.0
+    rev: v0.13.1
     hooks:
     -   id: ruff-check
         args:
