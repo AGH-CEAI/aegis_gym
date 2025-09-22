@@ -139,9 +139,11 @@ class AegisPusherEnv(gym.Env):
             self.robot.control_tcp_position(
                 target_pos=tcp_pos_target, target_ori=tcp_ori
             )
+
         self.scene.step()
         self.episode_step += 1
 
+        self.tcp_pos = self.robot.get_tcp_position()
         dist_to_target = th.norm(self.target_pos - self.object_pos)
         success = bool((dist_to_target < self.target_threshold).item())
 

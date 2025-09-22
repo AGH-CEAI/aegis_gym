@@ -108,24 +108,25 @@ class AegisReacherEnv(gym.Env):
         action = action.to(self.device)
         action = th.clamp(action, -self.clip_action, self.clip_action)
         self.actions = action.clone()
+        delta = self.actions * self.action_scale
+
+        self.dof_pos = self.robot.get_joint_positions()
+        self.tcp_pos = self.robot.get_tcp_position()
 
         if self.control_type == EnvControlType.JOINTS:
-            self.dof_pos = self.robot.get_joint_positions()
-            delta = self.actions * self.action_scale
             dof_pos_target = self.dof_pos + delta
             self.robot.control_dofs_position(dof_pos_target)
         elif self.control_type == EnvControlType.CARTESIAN_POSITION:
-            self.tcp_pos = self.robot.get_tcp_position()
-            delta = self.actions * self.action_scale
             tcp_pos_target = self.tcp_pos + delta
             tcp_ori = self.robot.get_tcp_orientation()
             self.robot.control_tcp_position(
                 target_pos=tcp_pos_target, target_ori=tcp_ori
             )
-        self.scene.step()
-        self.tcp_pos = self.robot.get_tcp_position()
 
+        self.scene.step()
         self.episode_step += 1
+
+        self.tcp_pos = self.robot.get_tcp_position()
         self.dist = th.norm(self.tcp_pos - self.target_pos)
         success = bool(self.dist < self.target_threshold)
 

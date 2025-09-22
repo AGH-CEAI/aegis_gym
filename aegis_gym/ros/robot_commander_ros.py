@@ -64,11 +64,11 @@ class RobotCommanderROS(RobotCommanderInterface):
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
         target_pos_np = target_pos.detach().cpu().numpy()
-        joint_dict = {
+        target_pos_dict = {
             name: float(pos) for name, pos in zip(self.joint_names, target_pos_np)
         }
         self.robot_director.joint_move(
-            joint_positions=joint_dict, max_vel=max_vel, max_accel=max_accel
+            joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
     def control_tcp_position(
@@ -78,15 +78,15 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        pos_np = target_pos.detach().cpu().numpy()
-        ori_np = target_ori.detach().cpu().numpy()
+        target_pos_np = target_pos.detach().cpu().numpy()
+        target_ori_np = target_ori.detach().cpu().numpy()
 
-        pos_tuple = tuple(float(v) for v in pos_np)
-        ori_tuple = tuple(float(v) for v in ori_np)
+        target_pos_tuple = tuple(float(v) for v in target_pos_np)
+        target_ori_tuple = tuple(float(v) for v in target_ori_np)
 
         self.robot_director.pose_move(
-            position=pos_tuple,
-            quat_xyzw=ori_tuple,
+            position=target_pos_tuple,
+            quat_xyzw=target_ori_tuple,
             max_vel=max_vel,
             max_accel=max_accel,
         )
