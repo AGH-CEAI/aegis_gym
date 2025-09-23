@@ -21,14 +21,13 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 ENV_CFG = {
     "max_episode_length": 1000,
     "num_obs": 21,
-    "num_actions": 6,
     "target_pos": [-0.1, 0.76, 0.84],
     "target_threshold": 0.04,
     "object_spawn_x": [-0.36, -0.24],
     "object_spawn_y": [0.34, 0.66],
     "object_spawn_z": [0.84, 0.85],
-    "clip_action": 100.0,
-    "action_scale": 0.5,
+    "clip_action": 1,
+    "action_scale": 0.1,
     "obs_scales": {
         "dof_pos": 1.0,
         "dof_vel": 0.1,
@@ -72,10 +71,11 @@ class AegisPusherEnv(gym.Env):
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
         self.num_obs = cfg["num_obs"]
+        self.target_threshold = cfg["target_threshold"]
+        self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
         self.action_scale = cfg["action_scale"]
         self.reward_scales = cfg["reward_scales"]
-        self.target_threshold = cfg["target_threshold"]
 
         self.scene: SceneDirectorInterface = get_scene_director(scene_type)
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
@@ -95,10 +95,10 @@ class AegisPusherEnv(gym.Env):
 
         self.episode_step = 0.0
         self.actions = th.zeros(self.num_actions, device=self.device)
-        self.last_actions = th.zeros(self.num_actions, device=self.device)
-        self.last_dof_vel = th.zeros(self.num_actions, device=self.device)
-        self.dof_pos = th.zeros(self.num_actions, device=self.device)
-        self.dof_vel = th.zeros(self.num_actions, device=self.device)
+        # self.last_actions = th.zeros(self.num_actions, device=self.device)
+        # self.last_dof_vel = th.zeros(self.num_actions, device=self.device)
+        self.dof_pos = th.zeros(6, device=self.device)
+        self.dof_vel = th.zeros(6, device=self.device)
         self.tcp_pos = th.zeros(3, device=self.device)
         # self.tcp_vel = th.zeros(3, device=self.device)
         self.object_pos = th.zeros(3, device=self.device)
@@ -120,15 +120,9 @@ class AegisPusherEnv(gym.Env):
         if isinstance(action, np.ndarray):
             action = th.from_numpy(action)
         action = action.to(self.device)
-        action = th.clamp(action, -self.cfg["clip_action"], self.cfg["clip_action"])
+        action = th.clamp(action, -self.clip_action, self.clip_action)
         self.actions = action.clone()
         delta = self.actions * self.action_scale
-
-        self.dof_pos = self.robot.get_joint_positions()
-        self.dof_vel = self.robot.get_joint_velocities()
-        self.tcp_pos = self.robot.get_tcp_position()
-        # self.tcp_vel = self.robot.get_tcp_velocity()  # If available
-        self.object_pos = self.object.get_pose()[:3].clone()
 
         if self.control_type == EnvControlType.JOINTS:
             dof_pos_target = self.dof_pos + delta
@@ -143,9 +137,10 @@ class AegisPusherEnv(gym.Env):
         self.scene.step()
         self.episode_step += 1
 
-        self.tcp_pos = self.robot.get_tcp_position()
-        dist_to_target = th.norm(self.target_pos - self.object_pos)
-        success = bool((dist_to_target < self.target_threshold).item())
+        obs = self._get_obs()
+
+        self.dist_to_target = th.norm(self.target_pos - self.object_pos)
+        success = bool(self.dist_to_target < self.target_threshold)
 
         reward = 0.0
         for name, func in self.reward_functions.items():
@@ -158,39 +153,12 @@ class AegisPusherEnv(gym.Env):
 
         self.episode_return += reward
 
-        terminated = bool(success)
         # TODO(issue#10) introduce timeouts in ROS and simulations
         # truncated = elapsed_time >= self.max_episode_length_s
+        terminated = bool(success)
         truncated = self.episode_step >= self.max_episode_length
 
-        info = {
-            "success": success,
-            "dist_to_target": dist_to_target.item(),
-            "episode_step": self.episode_step,
-            "is_truncated": truncated,
-            "is_success": success,
-        }
-
-        for key, value in self.episode_sums.items():
-            info[f"reward_{key}"] = value.item()
-
-        if terminated or truncated:
-            info["episode"] = {"r": float(reward), "l": self.episode_step}
-
-        obs = (
-            th.cat(
-                [
-                    self.dof_pos * self.obs_scales["dof_pos"],
-                    self.dof_vel * self.obs_scales["dof_vel"],
-                    self.tcp_pos,
-                    # self.tcp_vel,
-                    self.object_pos,
-                    self.target_pos,
-                ]
-            )
-            .clone()
-            .detach()
-        )
+        info = self._get_info(reward, terminated, truncated, success)
 
         return obs, reward, terminated, truncated, info
 
@@ -202,10 +170,6 @@ class AegisPusherEnv(gym.Env):
             th.manual_seed(seed)
 
         self.robot.move_to_home()
-        self.dof_pos = self.robot.get_joint_positions()
-        self.dof_vel = th.zeros_like(self.dof_vel)
-        self.tcp_pos = self.robot.get_tcp_position()
-        # self.tcp_vel = self.robot.get_tcp_velocity().float()  # If available
 
         x_range = self.cfg["object_spawn_x"]
         y_range = self.cfg["object_spawn_y"]
@@ -225,31 +189,52 @@ class AegisPusherEnv(gym.Env):
         )
 
         self.object.set_pose(rand_pose)
-        self.object_pos = self.object.get_pose()[:3].clone()
+        obs = self._get_obs()
+        self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
 
         self.actions[:] = 0.0
-        self.last_actions[:] = 0.0
-        self.last_dof_vel[:] = 0.0
+        # self.last_actions[:] = 0.0
+        # self.last_dof_vel[:] = 0.0
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
 
-        obs = (
-            th.cat(
-                [
-                    self.dof_pos * self.obs_scales["dof_pos"],
-                    self.dof_vel * self.obs_scales["dof_vel"],
-                    self.tcp_pos,
-                    # self.tcp_vel,
-                    self.object_pos,
-                    self.target_pos,
-                ]
-            )
+        return obs, {}
+    
+    def _get_obs(self) -> th.Tensor:
+        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_vel = self.robot.get_joint_velocities()
+        self.tcp_pos = self.robot.get_tcp_position()
+        # self.tcp_vel = self.robot.get_tcp_velocity()
+        self.object_pos = self.object.get_pose()[:3].clone()
+        return (
+            th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.object_pos, self.target_pos])
             .clone()
             .detach()
         )
 
-        return obs, {}
+    def _get_info(
+        self,
+        reward: float = 0.0,
+        terminated: bool = False,
+        truncated: bool = False,
+        success: bool = False,
+    ) -> dict[str, Any]:
+        info = {
+            "success": success,
+            "dist_to_target": float(self.dist_to_target),
+            "episode_step": self.episode_step,
+            "is_truncated": truncated,
+            "is_success": success,
+        }
+
+        for key, value in self.episode_sums.items():
+            info[f"reward_{key}"] = float(value)
+
+        if terminated or truncated:
+            info["episode"] = {"r": float(reward), "l": self.episode_step}
+
+        return info
 
     def _reward_near(self) -> th.Tensor:
         return th.norm(self.tcp_pos - self.object_pos)
