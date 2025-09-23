@@ -3,7 +3,6 @@ import time
 import gymnasium as gym
 
 import aegis_gym
-import aegis_gym.sim.genesis as sim_genesis
 from aegis_gym.sim.utils import TorchToNumpyWrapper
 
 try:
@@ -16,8 +15,8 @@ except ImportError:
 
 
 def main():
-    env_name = sim_genesis.ENV_IDS[0]
-    # env_name = aegis_gym.ENV_IDS[0]
+    env_name = aegis_gym.ENV_IDS[0]
+    # env_name = sim_genesis.ENV_IDS[0]
 
     print(f"Training on environment: {env_name}")
 

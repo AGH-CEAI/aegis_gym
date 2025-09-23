@@ -200,7 +200,7 @@ class AegisPusherEnv(gym.Env):
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
 
         return obs, {}
-    
+
     def _get_obs(self) -> th.Tensor:
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
@@ -208,7 +208,15 @@ class AegisPusherEnv(gym.Env):
         # self.tcp_vel = self.robot.get_tcp_velocity()
         self.object_pos = self.object.get_pose()[:3].clone()
         return (
-            th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.object_pos, self.target_pos])
+            th.cat(
+                [
+                    self.dof_pos,
+                    self.dof_vel,
+                    self.tcp_pos,
+                    self.object_pos,
+                    self.target_pos,
+                ]
+            )
             .clone()
             .detach()
         )
