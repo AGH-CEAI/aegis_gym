@@ -54,11 +54,13 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        self.num_actions = None
-        if self.control_type == EnvControlType.JOINTS:
-            self.num_actions = 6
-        if self.control_type == EnvControlType.CARTESIAN_POSITION:
-            self.num_actions = 3
+        match self.control_type:
+            case EnvControlType.JOINTS:
+                self.num_actions = 6
+            case EnvControlType.CARTESIAN_POSITION:
+                self.num_actions = 3
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
@@ -110,15 +112,18 @@ class AegisReacherEnv(gym.Env):
         self.actions = action.clone()
         delta = self.actions * self.action_scale
 
-        if self.control_type == EnvControlType.JOINTS:
-            dof_pos_target = self.dof_pos + delta
-            self.robot.control_dofs_position(dof_pos_target)
-        elif self.control_type == EnvControlType.CARTESIAN_POSITION:
-            tcp_pos_target = self.tcp_pos + delta
-            tcp_ori = self.robot.get_tcp_orientation()
-            self.robot.control_tcp_position(
-                target_pos=tcp_pos_target, target_ori=tcp_ori
-            )
+        match self.control_type:
+            case EnvControlType.JOINTS:
+                dof_pos_target = self.dof_pos + delta
+                self.robot.control_dofs_position(dof_pos_target)
+            case EnvControlType.CARTESIAN_POSITION:
+                tcp_pos_target = self.tcp_pos + delta
+                self.robot.control_tcp_position(
+                    target_pos=tcp_pos_target,
+                    target_ori=self.robot.get_tcp_orientation(),
+                )
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
         self.scene.step()
         self.episode_step += 1
