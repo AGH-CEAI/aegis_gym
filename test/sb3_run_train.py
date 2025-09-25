@@ -3,6 +3,7 @@ import time
 import gymnasium as gym
 
 import aegis_gym
+import aegis_gym.sim.genesis as sim_genesis
 from aegis_gym.sim.utils import TorchToNumpyWrapper
 
 try:

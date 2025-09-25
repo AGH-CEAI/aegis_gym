@@ -97,12 +97,9 @@ class AegisPusherEnv(gym.Env):
 
         self.episode_step = 0.0
         self.actions = th.zeros(self.num_actions, device=self.device)
-        # self.last_actions = th.zeros(self.num_actions, device=self.device)
-        # self.last_dof_vel = th.zeros(self.num_actions, device=self.device)
         self.dof_pos = th.zeros(6, device=self.device)
         self.dof_vel = th.zeros(6, device=self.device)
         self.tcp_pos = th.zeros(3, device=self.device)
-        # self.tcp_vel = th.zeros(3, device=self.device)
         self.object_pos = th.zeros(3, device=self.device)
         self.target_pos = th.tensor(
             self.cfg["target_pos"], device=self.device, dtype=th.float32
@@ -152,8 +149,6 @@ class AegisPusherEnv(gym.Env):
             r = func() * self.reward_scales[name]
             self.episode_sums[name] += r
             reward += r
-        # if success:
-        #     reward += 5
         reward = float(reward.item())
 
         self.episode_return += reward
@@ -198,8 +193,6 @@ class AegisPusherEnv(gym.Env):
         self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
 
         self.actions[:] = 0.0
-        # self.last_actions[:] = 0.0
-        # self.last_dof_vel[:] = 0.0
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
@@ -210,7 +203,6 @@ class AegisPusherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        # self.tcp_vel = self.robot.get_tcp_velocity()
         self.object_pos = self.object.get_pose()[:3].clone()
         return (
             th.cat(
