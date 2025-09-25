@@ -54,11 +54,13 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        self.num_actions = None
-        if self.control_type == EnvControlType.JOINTS:
-            self.num_actions = 6
-        if self.control_type == EnvControlType.CARTESIAN_POSITION:
-            self.num_actions = 3
+        match self.control_type:
+            case EnvControlType.JOINTS:
+                self.num_actions = 6
+            case EnvControlType.CARTESIAN_POSITION:
+                self.num_actions = 3
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
@@ -108,26 +110,28 @@ class AegisReacherEnv(gym.Env):
         action = action.to(self.device)
         action = th.clamp(action, -self.clip_action, self.clip_action)
         self.actions = action.clone()
+        delta = self.actions * self.action_scale
 
-        if self.control_type == EnvControlType.JOINTS:
-            self.dof_pos = self.robot.get_joint_positions()
-            delta = self.actions * self.action_scale
-            dof_pos_target = self.dof_pos + delta
-            self.robot.control_dofs_position(dof_pos_target)
-        elif self.control_type == EnvControlType.CARTESIAN_POSITION:
-            self.tcp_pos = self.robot.get_tcp_position()
-            delta = self.actions * self.action_scale
-            tcp_pos_target = self.tcp_pos + delta
-            tcp_ori = self.robot.get_tcp_orientation()
-            self.robot.control_tcp_position(
-                target_pos=tcp_pos_target, target_ori=tcp_ori
-            )
+        match self.control_type:
+            case EnvControlType.JOINTS:
+                dof_pos_target = self.dof_pos + delta
+                self.robot.control_dofs_position(dof_pos_target)
+            case EnvControlType.CARTESIAN_POSITION:
+                tcp_pos_target = self.tcp_pos + delta
+                self.robot.control_tcp_position(
+                    target_pos=tcp_pos_target,
+                    target_ori=self.robot.get_tcp_orientation(),
+                )
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
+
         self.scene.step()
-        self.tcp_pos = self.robot.get_tcp_position()
-
         self.episode_step += 1
-        self.dist = th.norm(self.tcp_pos - self.target_pos)
-        success = bool(self.dist < self.target_threshold)
+
+        obs = self._get_obs()
+
+        self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
+        success = bool(self.dist_to_target < self.target_threshold)
 
         reward = 0.0
         for name, func in self.reward_functions.items():
@@ -140,11 +144,12 @@ class AegisReacherEnv(gym.Env):
 
         # TODO(issue#10) introduce timeouts in ROS and simulations
         # truncated = elapsed_time >= self.max_episode_length_s
-        truncated = self.episode_step >= self.max_episode_length
         terminated = bool(success)
+        truncated = self.episode_step >= self.max_episode_length
+
         info = self._get_info(reward, terminated, truncated, success)
 
-        return self._get_obs(), reward, terminated, truncated, info
+        return obs, reward, terminated, truncated, info
 
     def reset(
         self, seed: Optional[int] = None, options: Optional[dict] = None
@@ -171,15 +176,16 @@ class AegisReacherEnv(gym.Env):
             )
         )
 
+        obs = self._get_obs()
+        self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
+
         self.actions[:] = 0.0
         self.episode_step = 0
         self.episode_return = 0.0
         self.episode_sums = {k: 0.0 for k in self.reward_functions}
-        self.tcp_pos = self.robot.get_tcp_position()
-        self.dist = th.norm(self.tcp_pos - self.target_pos)
         self.episode_start_time = time.time()
 
-        return self._get_obs(), self._get_info()
+        return obs, {}
 
     def _get_obs(self) -> th.Tensor:
         self.dof_pos = self.robot.get_joint_positions()
@@ -200,7 +206,7 @@ class AegisReacherEnv(gym.Env):
     ) -> dict[str, Any]:
         info = {
             "success": success,
-            "dist_to_target": float(self.dist),
+            "dist_to_target": float(self.dist_to_target),
             "episode_step": self.episode_step,
             "is_truncated": truncated,
             "is_success": success,
@@ -215,7 +221,7 @@ class AegisReacherEnv(gym.Env):
         return info
 
     def _reward_dist(self) -> float:
-        return float(self.dist)
+        return float(self.dist_to_target)
 
     def _reward_control(self) -> float:
         return float(th.sum(self.actions**2))
