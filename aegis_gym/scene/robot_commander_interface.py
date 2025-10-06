@@ -47,9 +47,24 @@ class RobotCommanderInterface(ABC):
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
         raise NotImplementedError
+    
+    def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        raise NotImplementedError
 
     @abstractmethod
     def control_tcp_position(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
         target_ori: th.Tensor,
