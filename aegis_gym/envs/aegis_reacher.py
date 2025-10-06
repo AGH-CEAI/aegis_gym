@@ -58,7 +58,10 @@ class AegisReacherEnv(gym.Env):
         match self.control_type:
             case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
                 self.num_actions = 6
-            case EnvControlType.CARTESIAN_POSITION | EnvControlType.CARTESIAN_POSITION_SERVO:
+            case (
+                EnvControlType.CARTESIAN_POSITION
+                | EnvControlType.CARTESIAN_POSITION_SERVO
+            ):
                 self.num_actions = 3
             case _:
                 raise ValueError(f"Unsupported control type: {self.control_type}")
