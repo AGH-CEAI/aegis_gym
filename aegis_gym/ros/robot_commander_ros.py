@@ -71,6 +71,11 @@ class RobotCommanderROS(RobotCommanderInterface):
             joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
+    def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        pass
+
     def control_tcp_position(
         self,
         target_pos: th.Tensor,
@@ -90,6 +95,15 @@ class RobotCommanderROS(RobotCommanderInterface):
             max_vel=max_vel,
             max_accel=max_accel,
         )
+
+    def control_tcp_position_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        pass
 
     def move_to_home(self) -> None:
         self.robot_director.joint_move(

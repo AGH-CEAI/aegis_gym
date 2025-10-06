@@ -29,10 +29,16 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         ori = self.get_tcp_orientation()
         return th.cat([pos, ori])
 
+    # TODO(issue#9) use max cel and accel
+
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        # TODO(issue#9) use max cel and accel
+        pass
+
+    def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
         self.robot.control_dofs_position(target_pos, self.motor_dofs)
 
     def control_tcp_position(
@@ -42,7 +48,25 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        pass
+
+    def control_tcp_position_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        pos_np = target_pos.detach().cpu().numpy()
+        ori_np = target_ori.detach().cpu().numpy()
+
+        qpos = self.robot.inverse_kinematics(
+            link=self.robot.get_link("robotiq_hande_end"),
+            pos=pos_np,
+            quat=ori_np,
+        )
+
+        self.robot.control_dofs_position(qpos[self.motor_dofs], self.motor_dofs)
 
     def move_to_home(self) -> None:
         # TODO(issue#8) Do we need trajectory to home in simulation?
