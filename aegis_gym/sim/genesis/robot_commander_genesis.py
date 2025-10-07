@@ -29,12 +29,13 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         ori = self.get_tcp_orientation()
         return th.cat([pos, ori])
 
-    # TODO(issue#9) use max cel and accel
+    # TODO(issue#9): Limit velocity and acceleration for Genesis robot commander
+    # TODO(issue#23): Implement synchronous control for Genesis robot commander
 
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        pass
+        raise NotImplementedError
 
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
@@ -48,7 +49,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        pass
+        raise NotImplementedError
 
     def control_tcp_position_servo(
         self,

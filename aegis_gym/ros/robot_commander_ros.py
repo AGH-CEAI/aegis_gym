@@ -71,10 +71,12 @@ class RobotCommanderROS(RobotCommanderInterface):
             joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
+    # TODO(issue#22): Implement continous control for ROS robot commander
+
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        pass
+        raise NotImplementedError
 
     def control_tcp_position(
         self,
@@ -103,7 +105,7 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        pass
+        raise NotImplementedError
 
     def move_to_home(self) -> None:
         self.robot_director.joint_move(
