@@ -47,7 +47,6 @@ class AegisReacherEnv(gym.Env):
     ) -> None:
         super().__init__()
         self.cfg = cfg
-        self.scene_type = scene_type
         self.device = device
 
         self.render_mode = EnvRenderMode(render_mode)
@@ -125,40 +124,10 @@ class AegisReacherEnv(gym.Env):
                 self.robot.control_dofs_position_servo(dof_pos_target)
             case EnvControlType.CARTESIAN_POSITION:
                 tcp_pos_target = self.tcp_pos + delta
-                if self.scene_type == SceneDirectorType.SIM_GENESIS:
-                    tcp_ori_target = th.tensor(
-                        [0.0, 0.7071, 0.7071, 0.0],
-                        dtype=th.float32,
-                        device=self.device,
-                    )
-                else:
-                    tcp_ori_target = th.tensor(
-                        [1.0, 0.0, 0.0, 0.0],
-                        dtype=th.float32,
-                        device=self.device,
-                    )
-                self.robot.control_tcp_position(
-                    target_pos=tcp_pos_target,
-                    target_ori=tcp_ori_target,
-                )
+                self.robot.control_tcp_position(target_pos=tcp_pos_target)
             case EnvControlType.CARTESIAN_POSITION_SERVO:
                 tcp_pos_target = self.tcp_pos + delta
-                if self.scene_type == SceneDirectorType.SIM_GENESIS:
-                    tcp_ori_target = th.tensor(
-                        [0.0, 0.7071, 0.7071, 0.0],
-                        dtype=th.float32,
-                        device=self.device,
-                    )
-                else:
-                    tcp_ori_target = th.tensor(
-                        [1.0, 0.0, 0.0, 0.0],
-                        dtype=th.float32,
-                        device=self.device,
-                    )
-                self.robot.control_tcp_position_servo(
-                    target_pos=tcp_pos_target,
-                    target_ori=tcp_ori_target,
-                )
+                self.robot.control_tcp_position_servo(target_pos=tcp_pos_target)
             case _:
                 raise ValueError(f"Unsupported control type: {self.control_type}")
 

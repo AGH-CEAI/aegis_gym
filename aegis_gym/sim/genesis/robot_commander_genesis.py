@@ -54,10 +54,17 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori: th.Tensor | None = None,
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
+        if target_ori is None:
+            target_ori = th.tensor(
+                [0.0, 0.7071, 0.7071, 0.0],
+                dtype=th.float32,
+                device=self.device,
+            )
+
         pos_np = target_pos.detach().cpu().numpy()
         ori_np = target_ori.detach().cpu().numpy()
 

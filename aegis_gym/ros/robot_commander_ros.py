@@ -71,7 +71,7 @@ class RobotCommanderROS(RobotCommanderInterface):
             joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
-    # TODO(issue#22): Implement continous control for ROS robot commander
+    # TODO(issue#22): Implement continuous control for ROS robot commander
 
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
@@ -81,10 +81,17 @@ class RobotCommanderROS(RobotCommanderInterface):
     def control_tcp_position(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori: th.Tensor | None = None,
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
+        if target_ori is None:
+            target_ori = th.tensor(
+                [1.0, 0.0, 0.0, 0.0],
+                dtype=th.float32,
+                device=self.device,
+            )
+
         target_pos_np = target_pos.detach().cpu().numpy()
         target_ori_np = target_ori.detach().cpu().numpy()
 
