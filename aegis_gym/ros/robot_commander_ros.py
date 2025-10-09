@@ -72,7 +72,6 @@ class RobotCommanderROS(RobotCommanderInterface):
         )
 
     # TODO(issue#22): Implement continuous control for ROS robot commander
-
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
@@ -105,6 +104,7 @@ class RobotCommanderROS(RobotCommanderInterface):
             max_accel=max_accel,
         )
 
+    # TODO(issue#22): Implement continuous control for ROS robot commander
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,

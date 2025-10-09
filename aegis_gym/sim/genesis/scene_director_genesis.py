@@ -11,6 +11,7 @@ from ...sim import generate_aegis_urdf
 from .robot_commander_genesis import RobotCommanderSimGenesis
 from .scene_entities_genesis import EntityTypeSimGenesis
 
+# TODO(issue#24): Include robot fingers in DOF configuration in Genesis
 SIM_CFG = {
     "dt": 0.05,
     "robot_pos": [0.0, 0.0, 0.0],
@@ -112,7 +113,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
                 self.robot.get_joint(name).dofs_idx_local[0]
                 for name in self.cfg["dof_names"]
             ]
-        )     
+        )
 
         self.robot.set_dofs_kp(self.cfg["kp"], self.motor_dofs)
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)

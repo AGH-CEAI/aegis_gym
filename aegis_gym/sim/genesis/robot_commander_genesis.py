@@ -31,8 +31,8 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         return th.cat([pos, ori])
 
     # TODO(issue#9): Limit velocity and acceleration for Genesis robot commander
-    # TODO(issue#23): Implement synchronous control for Genesis robot commander
 
+    # TODO(issue#23): Implement synchronous control for Genesis robot commander
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
@@ -43,6 +43,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         self.robot.control_dofs_position(target_pos, self.motor_dofs)
 
+    # TODO(issue#23): Implement synchronous control for Genesis robot commander
     def control_tcp_position(
         self,
         target_pos: th.Tensor,
@@ -52,6 +53,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         raise NotImplementedError
 
+    # TODO(issue#25): Investigate TCP frame reference discrepancy
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
@@ -73,7 +75,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
             link=self.robot.get_link(self.tcp_link_name),
             pos=pos_np,
             quat=ori_np,
-        )[self.motor_dofs[0]:self.motor_dofs[-1]+1]
+        )[self.motor_dofs[0] : self.motor_dofs[-1] + 1]
 
         self.robot.control_dofs_position(qpos, self.motor_dofs)
 
