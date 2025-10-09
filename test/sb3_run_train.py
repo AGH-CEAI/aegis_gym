@@ -16,16 +16,18 @@ except ImportError:
 
 
 def main():
-    # 0 JOINTS: move joints to target, waits until reached
-    # 1 JOINTS_SERVO: continuous joint commands
-    # 2 CARTESIAN_POSITION: move TCP to target, waits until reached
-    # 3 CARTESIAN_POSITION_SERVO: continuous TCP commands
+    CONTROL_TYPES = {
+        "JOINTS": 0,  # Move joints to target, waits until reached
+        "JOINTS_SERVO": 1,  # Continuous joint commands
+        "CARTESIAN_POSITION": 2,  # Move TCP to target, waits until reached
+        "CARTESIAN_POSITION_SERVO": 3,  # Continuous TCP commands
+    }
 
     # ROS
-    env_name = aegis_gym.ENV_IDS[0]
+    env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS"]]
 
     # GENESIS
-    # env_name = sim_genesis.ENV_IDS[0]
+    # env_name = sim_genesis.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 
     print(f"Training on environment: {env_name}")
 
