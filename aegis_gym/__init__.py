@@ -18,7 +18,12 @@ ENV_IDS = []
 
 tasks = ["Reacher", "Pusher"]
 obs_types = [EnvObservationType.STATE]
-control_types = [EnvControlType.JOINTS, EnvControlType.CARTESIAN_POSITION]
+control_types = [
+    EnvControlType.JOINTS,
+    EnvControlType.JOINTS_SERVO,
+    EnvControlType.CARTESIAN_POSITION,
+    EnvControlType.CARTESIAN_POSITION_SERVO,
+]
 reward_types = [EnvRewardType.DENSE]
 
 for task in tasks:

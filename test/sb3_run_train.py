@@ -2,7 +2,7 @@ import time
 
 import gymnasium as gym
 
-import aegis_gym
+import aegis_gym  # noqa: F401
 import aegis_gym.sim.genesis as sim_genesis  # noqa: F401
 from aegis_gym.sim.utils import TorchToNumpyWrapper
 
@@ -16,8 +16,18 @@ except ImportError:
 
 
 def main():
-    env_name = aegis_gym.ENV_IDS[0]
-    # env_name = sim_genesis.ENV_IDS[0]
+    CONTROL_TYPES = {
+        "JOINTS": 0,  # Move joints to target, waits until reached
+        "JOINTS_SERVO": 1,  # Continuous joint commands
+        "CARTESIAN_POSITION": 2,  # Move TCP to target, waits until reached
+        "CARTESIAN_POSITION_SERVO": 3,  # Continuous TCP commands
+    }
+
+    # ROS
+    env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS"]]
+
+    # GENESIS
+    # env_name = sim_genesis.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 
     print(f"Training on environment: {env_name}")
 

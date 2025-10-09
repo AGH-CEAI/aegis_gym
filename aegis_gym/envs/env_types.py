@@ -20,5 +20,8 @@ class EnvObservationType(LowercaseStrEnum):
 
 class EnvControlType(LowercaseStrEnum):
     JOINTS = auto()
+    JOINTS_SERVO = auto()
     CARTESIAN_POSITION = auto()
+    CARTESIAN_POSITION_SERVO = auto()
     CARTESIAN_POSE = auto()
+    CARTESIAN_POSE_SERVO = auto()

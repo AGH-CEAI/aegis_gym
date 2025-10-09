@@ -11,6 +11,7 @@ from ...sim import generate_aegis_urdf
 from .robot_commander_genesis import RobotCommanderSimGenesis
 from .scene_entities_genesis import EntityTypeSimGenesis
 
+# TODO(issue#24): Include robot fingers in DOF configuration in Genesis
 SIM_CFG = {
     "dt": 0.05,
     "robot_pos": [0.0, 0.0, 0.0],
@@ -26,8 +27,8 @@ SIM_CFG = {
         # 'robotiq_hande_right_finger_joint',
     ],
     # TODO(issue#16): Research tuning of PD gains for UR5e
-    "kp": [600, 600, 400, 400, 200, 200],
-    "kd": [60, 60, 40, 40, 20, 20],
+    "kp": [1000, 1000, 1000, 500, 500, 500],
+    "kd": [200, 200, 200, 100, 100, 100],
 }
 
 
@@ -44,7 +45,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
     ):
         super().__init__(device, show_render)
         self.cfg = cfg
-        self.motor_dofs: tuple[str] = None
+        self.motor_dofs: tuple[int] = None
 
         if not gs._initialized:
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
@@ -80,6 +81,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
                 file=generate_aegis_urdf(),
                 fixed=True,
                 pos=self.cfg["robot_pos"],
+                links_to_keep=["robotiq_hande_end"],
             ),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
@@ -112,6 +114,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
                 for name in self.cfg["dof_names"]
             ]
         )
+
         self.robot.set_dofs_kp(self.cfg["kp"], self.motor_dofs)
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)
 

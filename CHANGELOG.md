@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-21](https://github.com/AGH-CEAI/pull/21) - Added Cartesian control for Genesis robot commander.
 - [PR-19](https://github.com/AGH-CEAI/pull/19) - Added Cartesian control for ROS robot commander.
 - [PR-17](https://github.com/AGH-CEAI/pull/17) - Added Cartesian control for Reacher environment.
 - [PR-11,12,13,14,15](https://github.com/AGH-CEAI/aegis_gym/pull/5) - Added Genesis simulator.
@@ -17,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Changed robot PD gains in Genesis.
+- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Differentiated between synchronous and asynchronous control methods.
 - [PR-11,12,13,14,15](https://github.com/AGH-CEAI/aegis_gym/pull/5) - REFACTOR: Abstract interfaces for Genesis sim and ROS control.
 - [PR-4](https://github.com/AGH-CEAI/aegis_gym/pull/4) - Updated & fixed dependencies versions.
 
@@ -27,5 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+
+- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Fixed TCP link handling in Genesis.
 
 ### Security
