@@ -44,7 +44,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
     ):
         super().__init__(device, show_render)
         self.cfg = cfg
-        self.motor_dofs: tuple[str] = None
+        self.motor_dofs: tuple[int] = None
 
         if not gs._initialized:
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
@@ -107,9 +107,12 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
     def build(self) -> None:
         self.scene.build()
 
-        self.motor_dofs = []
-        for name in self.cfg["dof_names"]:
-            self.motor_dofs.append(self.robot.get_joint(name).dofs_idx_local[0])
+        self.motor_dofs = tuple(
+            [
+                self.robot.get_joint(name).dofs_idx_local[0]
+                for name in self.cfg["dof_names"]
+            ]
+        )     
 
         self.robot.set_dofs_kp(self.cfg["kp"], self.motor_dofs)
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)

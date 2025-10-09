@@ -72,9 +72,9 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
             link=self.robot.get_link("robotiq_hande_end"),
             pos=pos_np,
             quat=ori_np,
-        )
+        )[self.motor_dofs[0]:self.motor_dofs[-1]+1]
 
-        self.robot.control_dofs_position(qpos[self.motor_dofs], self.motor_dofs)
+        self.robot.control_dofs_position(qpos, self.motor_dofs)
 
     def move_to_home(self) -> None:
         # TODO(issue#8) Do we need trajectory to home in simulation?
