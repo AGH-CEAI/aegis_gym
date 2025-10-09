@@ -11,6 +11,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         super().__init__(device)
         self.robot = gs_robot
         self.motor_dofs = motor_dofs
+        self.tcp_link_name = "robotiq_hande_end"
 
     def get_joint_positions(self) -> th.Tensor:
         return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
@@ -19,10 +20,10 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         return self.robot.get_dofs_velocity(self.motor_dofs).clone().detach()
 
     def get_tcp_position(self) -> th.Tensor:
-        return self.robot.get_links_pos()[7, :].clone().detach()
+        return self.robot.get_link(self.tcp_link_name).get_pos().clone().detach()
 
     def get_tcp_orientation(self) -> th.Tensor:
-        return self.robot.get_links_quat()[7, :].clone().detach()
+        return self.robot.get_link(self.tcp_link_name).get_quat().clone().detach()
 
     def get_tcp_pose(self) -> th.Tensor:
         pos = self.get_tcp_position()
@@ -69,7 +70,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         ori_np = target_ori.detach().cpu().numpy()
 
         qpos = self.robot.inverse_kinematics(
-            link=self.robot.get_link("robotiq_hande_end"),
+            link=self.robot.get_link(self.tcp_link_name),
             pos=pos_np,
             quat=ori_np,
         )[self.motor_dofs[0]:self.motor_dofs[-1]+1]
