@@ -23,6 +23,7 @@ class SceneDirectorType(StrEnum):
 
 def get_scene_director(
     mode: SceneDirectorType = SceneDirectorType.ROS,
+    visual_obs: bool = False,
 ) -> SceneDirectorInterface:
     if is_mock_needed():
         print("\n> Deteceted pytest env, using MOCK env implementations.")
@@ -52,7 +53,7 @@ def get_scene_director(
                 SceneDirectorSimGenesis = None
 
             if SceneDirectorSimGenesis:
-                return SceneDirectorSimGenesis()
+                return SceneDirectorSimGenesis(visual_obs=visual_obs)
             warnings.warn(
                 "\n[IMPORT ERROR] Failed to import SceneDirectorSimGenesis. Double check if the 'aegis_gym' is instatalled with optional dependencies: 'pip3 install ./aegis_gym.whl[sim-genesis]'."
             )

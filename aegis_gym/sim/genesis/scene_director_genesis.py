@@ -42,9 +42,11 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         device: str = "cuda",
         show_render: bool = True,
         cfg: dict = SIM_CFG,
+        visual_obs: bool = False,
     ):
         super().__init__(device, show_render)
         self.cfg = cfg
+        self.visual_obs = visual_obs
         self.motor_dofs: tuple[int] = None
 
         if not gs._initialized:
@@ -95,6 +97,16 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
             surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
+
+        if self.visual_obs:
+            self.camera = self.scene.add_camera(
+                res=(1280, 720),
+                pos=(0.014, 0.33, 1.972),
+                lookat=(0.014, 0.33, 0.0),
+                up=(0, 0, -1),
+                fov=50,
+                GUI=True,
+            )
 
     def get_robot_commander(self) -> RobotCommanderInterface:
         return RobotCommanderSimGenesis(self.robot, self.motor_dofs, self.device)
