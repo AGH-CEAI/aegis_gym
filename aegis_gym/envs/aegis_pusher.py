@@ -2,9 +2,10 @@
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 from typing import Any, Optional, Union
 
-import gymnasium as gym
+import cv2
 import numpy as np
 import torch as th
+import gymnasium as gym
 from gymnasium import spaces
 
 from ..scene import (
@@ -82,7 +83,8 @@ class AegisPusherEnv(gym.Env):
         self.action_scale = cfg["action_scale"]
         self.reward_scales = cfg["reward_scales"]
 
-        self.scene: SceneDirectorInterface = get_scene_director(scene_type)
+        visual_obs = self.observation_type == EnvObservationType.VISION
+        self.scene: SceneDirectorInterface = get_scene_director(scene_type, visual_obs)
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.object: Box = self.scene.add_entity(EntityType.BOX)
         self.target.create()
@@ -91,9 +93,20 @@ class AegisPusherEnv(gym.Env):
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
-        )
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
+                )
+            case EnvObservationType.VISION:
+                self.observation_space = spaces.Box(
+                    low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                )
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
+
         self.action_space: spaces.Space[th.Tensor] = spaces.Box(
             low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
         )
@@ -206,23 +219,40 @@ class AegisPusherEnv(gym.Env):
         return obs, {}
 
     def _get_obs(self) -> th.Tensor:
-        self.dof_pos = self.robot.get_joint_positions()
-        self.dof_vel = self.robot.get_joint_velocities()
-        self.tcp_pos = self.robot.get_tcp_position()
-        self.object_pos = self.object.get_pose()[:3].clone()
-        return (
-            th.cat(
-                [
-                    self.dof_pos,
-                    self.dof_vel,
-                    self.tcp_pos,
-                    self.object_pos,
-                    self.target_pos,
-                ]
-            )
-            .clone()
-            .detach()
-        )
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                self.dof_pos = self.robot.get_joint_positions()
+                self.dof_vel = self.robot.get_joint_velocities()
+                self.tcp_pos = self.robot.get_tcp_position()
+                self.object_pos = self.object.get_pose()[:3].clone()
+                return (
+                    th.cat(
+                        [
+                            self.dof_pos,
+                            self.dof_vel,
+                            self.tcp_pos,
+                            self.object_pos,
+                            self.target_pos,
+                        ]
+                    )
+                    .clone()
+                    .detach()
+                )
+            case EnvObservationType.VISION:
+                rgb, depth, seg, normal = self.scene.camera.render(
+                    depth=False, segmentation=False, normal=False
+                )
+                rgb_proc = cv2.resize(
+                    np.ascontiguousarray(np.flipud(rgb)),
+                    (128, 128),
+                    interpolation=cv2.INTER_AREA,
+                )
+                obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
+                return obs
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
 
     def _get_info(
         self,
