@@ -28,7 +28,9 @@ class TargetSimGenesis(Target):
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
-        return self._pose
+        pos = th.tensor(self._obj.get_pos(), device=self._device)
+        ori = th.tensor(self._obj.get_quat(), device=self._device)
+        return th.cat([pos, ori]).clone()
 
 
 class BoxSimGenesis(Box):
@@ -59,7 +61,9 @@ class BoxSimGenesis(Box):
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
-        return self._pose
+        pos = th.tensor(self._obj.get_pos(), device=self._device)
+        ori = th.tensor(self._obj.get_quat(), device=self._device)
+        return th.cat([pos, ori]).clone()
 
 
 EntityTypeSimGenesis = {
