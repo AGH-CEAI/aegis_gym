@@ -21,7 +21,6 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 
 ENV_CFG = {
     "max_episode_length": 1000,
-    "num_obs": 18,
     "target_threshold": 0.02,
     "target_spawn_x": [-0.26, 0.26],
     "target_spawn_y": [0.36, 1.0],
@@ -68,7 +67,6 @@ class AegisReacherEnv(gym.Env):
 
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
-        self.num_obs = cfg["num_obs"]
         self.target_threshold = cfg["target_threshold"]
         self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
@@ -89,11 +87,18 @@ class AegisReacherEnv(gym.Env):
         match self.observation_type:
             case EnvObservationType.STATE:
                 self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
+                    low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
                 )
             case EnvObservationType.VISION:
-                self.observation_space = spaces.Box(
-                    low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                self.observation_space = spaces.Dict(
+                    {
+                        "state": spaces.Box(
+                            low=-np.inf, high=np.inf, shape=(15,), dtype=np.float32
+                        ),
+                        "vision": spaces.Box(
+                            low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                        ),
+                    }
                 )
             case _:
                 raise ValueError(
@@ -194,6 +199,7 @@ class AegisReacherEnv(gym.Env):
                 dtype=th.float32,
             )
         )
+        self.target_pos = self.target.get_pose()[:3]
 
         obs = self._get_obs()
         self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
@@ -218,6 +224,11 @@ class AegisReacherEnv(gym.Env):
                     .detach()
                 )
             case EnvObservationType.VISION:
+                self.dof_pos = self.robot.get_joint_positions()
+                self.dof_vel = self.robot.get_joint_velocities()
+                self.tcp_pos = self.robot.get_tcp_position()
+                state_obs = th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+
                 rgb, depth, seg, normal = self.scene.camera.render(
                     depth=False, segmentation=False, normal=False
                 )
@@ -226,8 +237,9 @@ class AegisReacherEnv(gym.Env):
                     (128, 128),
                     interpolation=cv2.INTER_AREA,
                 )
-                obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
-                return obs
+                vision_obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
+
+                return {"state": state_obs, "vision": vision_obs}
             case _:
                 raise ValueError(
                     f"Unsupported observation type: {self.observation_type}"

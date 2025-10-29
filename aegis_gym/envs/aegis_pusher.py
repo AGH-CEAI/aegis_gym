@@ -21,7 +21,6 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 
 ENV_CFG = {
     "max_episode_length": 1000,
-    "num_obs": 21,
     "target_pos": [-0.1, 0.76, 0.84],
     "target_threshold": 0.04,
     "object_spawn_x": [-0.36, -0.24],
@@ -76,7 +75,6 @@ class AegisPusherEnv(gym.Env):
 
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
-        self.num_obs = cfg["num_obs"]
         self.target_threshold = cfg["target_threshold"]
         self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
@@ -96,11 +94,18 @@ class AegisPusherEnv(gym.Env):
         match self.observation_type:
             case EnvObservationType.STATE:
                 self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
+                    low=-np.inf, high=np.inf, shape=(21,), dtype=np.float32
                 )
             case EnvObservationType.VISION:
-                self.observation_space = spaces.Box(
-                    low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                self.observation_space = spaces.Dict(
+                    {
+                        "state": spaces.Box(
+                            low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
+                        ),
+                        "vision": spaces.Box(
+                            low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                        ),
+                    }
                 )
             case _:
                 raise ValueError(
@@ -224,7 +229,7 @@ class AegisPusherEnv(gym.Env):
                 self.dof_pos = self.robot.get_joint_positions()
                 self.dof_vel = self.robot.get_joint_velocities()
                 self.tcp_pos = self.robot.get_tcp_position()
-                self.object_pos = self.object.get_pose()[:3].clone()
+                self.object_pos = self.object.get_pose()[:3]
                 return (
                     th.cat(
                         [
@@ -239,6 +244,12 @@ class AegisPusherEnv(gym.Env):
                     .detach()
                 )
             case EnvObservationType.VISION:
+                self.dof_pos = self.robot.get_joint_positions()
+                self.dof_vel = self.robot.get_joint_velocities()
+                self.tcp_pos = self.robot.get_tcp_position()
+                self.object_pos = self.object.get_pose()[:3]
+                state_obs = th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+
                 rgb, depth, seg, normal = self.scene.camera.render(
                     depth=False, segmentation=False, normal=False
                 )
@@ -247,8 +258,9 @@ class AegisPusherEnv(gym.Env):
                     (128, 128),
                     interpolation=cv2.INTER_AREA,
                 )
-                obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
-                return obs
+                vision_obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
+
+                return {"state": state_obs, "vision": vision_obs}
             case _:
                 raise ValueError(
                     f"Unsupported observation type: {self.observation_type}"
