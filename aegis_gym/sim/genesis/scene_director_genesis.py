@@ -42,11 +42,11 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         device: str = "cuda",
         show_render: bool = True,
         cfg: dict = SIM_CFG,
-        visual_obs: bool = False,
+        enable_scene_camera: bool = False,
     ):
         super().__init__(device, show_render)
         self.cfg = cfg
-        self.visual_obs = visual_obs
+        self.enable_scene_camera = enable_scene_camera
         self.motor_dofs: tuple[int] = None
 
         if not gs._initialized:
@@ -98,7 +98,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
 
-        if self.visual_obs:
+        if self.enable_scene_camera:
             self.camera = self.scene.add_camera(
                 res=(1280, 720),
                 pos=(0.014, 0.33, 1.972),

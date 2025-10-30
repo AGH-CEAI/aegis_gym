@@ -76,8 +76,8 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = cfg["target_spawn_y"]
         self.target_spawn_z = cfg["target_spawn_z"]
 
-        visual_obs = self.observation_type == EnvObservationType.VISION
-        self.scene: SceneDirectorInterface = get_scene_director(scene_type, visual_obs)
+        enable_scene_camera = self.observation_type == EnvObservationType.MULTIMODAL
+        self.scene: SceneDirectorInterface = get_scene_director(scene_type, enable_scene_camera)
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.target.create()
 
@@ -89,7 +89,7 @@ class AegisReacherEnv(gym.Env):
                 self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
                     low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
                 )
-            case EnvObservationType.VISION:
+            case EnvObservationType.MULTIMODAL:
                 self.observation_space = spaces.Dict(
                     {
                         "state": spaces.Box(
@@ -223,7 +223,7 @@ class AegisReacherEnv(gym.Env):
                     .clone()
                     .detach()
                 )
-            case EnvObservationType.VISION:
+            case EnvObservationType.MULTIMODAL:
                 self.dof_pos = self.robot.get_joint_positions()
                 self.dof_vel = self.robot.get_joint_velocities()
                 self.tcp_pos = self.robot.get_tcp_position()
