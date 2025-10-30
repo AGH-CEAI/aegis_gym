@@ -248,7 +248,9 @@ class AegisPusherEnv(gym.Env):
                 self.dof_vel = self.robot.get_joint_velocities()
                 self.tcp_pos = self.robot.get_tcp_position()
                 self.object_pos = self.object.get_pose()[:3]
-                state_obs = th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+                state_obs = (
+                    th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+                )
 
                 rgb, depth, seg, normal = self.scene.camera.render(
                     depth=False, segmentation=False, normal=False
@@ -258,7 +260,9 @@ class AegisPusherEnv(gym.Env):
                     (128, 128),
                     interpolation=cv2.INTER_AREA,
                 )
-                vision_obs = th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
+                vision_obs = (
+                    th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
+                )
 
                 return {"state": state_obs, "vision": vision_obs}
             case _:
