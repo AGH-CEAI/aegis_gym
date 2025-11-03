@@ -197,8 +197,17 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
+        robot_pos = self.robot.get_robot_position()
+        # Normalizing Cartesian positions w.r.t the robot's base
         return (
-            th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
+            th.cat(
+                [
+                    self.dof_pos,
+                    self.dof_vel,
+                    self.tcp_pos - robot_pos,
+                    self.target_pos - robot_pos,
+                ]
+            )
             .clone()
             .detach()
         )
