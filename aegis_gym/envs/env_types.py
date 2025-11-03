@@ -16,6 +16,7 @@ class EnvRewardType(LowercaseStrEnum):
 class EnvObservationType(LowercaseStrEnum):
     STATE = auto()
     VISION = auto()
+    MULTIMODAL = auto()
 
 
 class EnvControlType(LowercaseStrEnum):
