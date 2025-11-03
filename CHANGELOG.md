@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-28](https://github.com/AGH-CEAI/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
 - [PR-21](https://github.com/AGH-CEAI/pull/21) - Added Cartesian control for Genesis robot commander.
 - [PR-19](https://github.com/AGH-CEAI/pull/19) - Added Cartesian control for ROS robot commander.
 - [PR-17](https://github.com/AGH-CEAI/pull/17) - Added Cartesian control for Reacher environment.
