@@ -22,13 +22,16 @@ class TargetSimGenesis(Target):
         pose = [*pos, 0.0, 0.0, 0.0, 1.0]
         self._pose = th.tensor(pose, device=self._device)
 
+    # TODO(issue #29): Verify necessity of tensor cloning
     def set_pose(self, pose: th.Tensor) -> None:
         self._obj.set_pos(pos=pose[:3].view(3), zero_velocity=True)
         self._obj.set_quat(quat=pose[3:].view(4), zero_velocity=True)
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
-        return self._pose
+        pos = th.tensor(self._obj.get_pos(), device=self._device)
+        ori = th.tensor(self._obj.get_quat(), device=self._device)
+        return th.cat([pos, ori]).clone()
 
 
 class BoxSimGenesis(Box):
@@ -53,13 +56,16 @@ class BoxSimGenesis(Box):
         pose = [*pos, 0.0, 0.0, 0.0, 1.0]
         self._pose = th.tensor(pose, device=self._device)
 
+    # TODO(issue #29): Verify necessity of tensor cloning
     def set_pose(self, pose: th.Tensor) -> None:
         self._obj.set_pos(pos=pose[:3].view(3), zero_velocity=True)
         self._obj.set_quat(quat=pose[3:].view(4), zero_velocity=True)
         self._pose = pose.clone()
 
     def get_pose(self) -> th.Tensor:
-        return self._pose
+        pos = th.tensor(self._obj.get_pos(), device=self._device)
+        ori = th.tensor(self._obj.get_quat(), device=self._device)
+        return th.cat([pos, ori]).clone()
 
 
 EntityTypeSimGenesis = {

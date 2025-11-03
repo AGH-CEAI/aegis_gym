@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-28](https://github.com/AGH-CEAI/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
+- [PR-26](https://github.com/AGH-CEAI/pull/26) - Added support for multimodal observations in environments.
+- [PR-26](https://github.com/AGH-CEAI/pull/26) - Added a scene camera to Genesis simulation for visual observations.
 - [PR-21](https://github.com/AGH-CEAI/pull/21) - Added Cartesian control for Genesis robot commander.
 - [PR-19](https://github.com/AGH-CEAI/pull/19) - Added Cartesian control for ROS robot commander.
 - [PR-17](https://github.com/AGH-CEAI/pull/17) - Added Cartesian control for Reacher environment.
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-26](https://github.com/AGH-CEAI/pull/26) - Fixed pose retrieval for Genesis entities.
 - [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Fixed TCP link handling in Genesis.
 
 ### Security

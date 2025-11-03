@@ -2,9 +2,10 @@
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 from typing import Any, Optional, Union
 
-import gymnasium as gym
+import cv2
 import numpy as np
 import torch as th
+import gymnasium as gym
 from gymnasium import spaces
 
 from ..scene import (
@@ -20,7 +21,6 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 
 ENV_CFG = {
     "max_episode_length": 1000,
-    "num_obs": 21,
     "target_pos": [-0.1, 0.76, 0.84],
     "target_threshold": 0.04,
     "object_spawn_x": [-0.36, -0.24],
@@ -62,27 +62,18 @@ class AegisPusherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        match self.control_type:
-            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
-                self.num_actions = 6
-            case (
-                EnvControlType.CARTESIAN_POSITION
-                | EnvControlType.CARTESIAN_POSITION_SERVO
-            ):
-                self.num_actions = 3
-            case _:
-                raise ValueError(f"Unsupported control type: {self.control_type}")
-
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
-        self.num_obs = cfg["num_obs"]
         self.target_threshold = cfg["target_threshold"]
         self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
         self.action_scale = cfg["action_scale"]
         self.reward_scales = cfg["reward_scales"]
 
-        self.scene: SceneDirectorInterface = get_scene_director(scene_type)
+        enable_scene_camera = self.observation_type == EnvObservationType.MULTIMODAL
+        self.scene: SceneDirectorInterface = get_scene_director(
+            scene_type, enable_scene_camera
+        )
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.object: Box = self.scene.add_entity(EntityType.BOX)
         self.target.create()
@@ -91,15 +82,11 @@ class AegisPusherEnv(gym.Env):
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
-        )
-        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
-        )
+        self.observation_space = self._make_observation_space()
+        self.action_space = self._make_action_space()
 
         self.episode_step = 0.0
-        self.actions = th.zeros(self.num_actions, device=self.device)
+        self.actions = th.zeros(self.action_space.shape, device=self.device)
         self.dof_pos = th.zeros(6, device=self.device)
         self.dof_vel = th.zeros(6, device=self.device)
         self.tcp_pos = th.zeros(3, device=self.device)
@@ -115,6 +102,40 @@ class AegisPusherEnv(gym.Env):
         }
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
         self.reset()
+
+    def _make_observation_space(self) -> spaces.Space[th.Tensor]:
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                return spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(21,), dtype=np.float32
+                )
+            case EnvObservationType.MULTIMODAL:
+                return spaces.Dict(
+                    {
+                        "state": spaces.Box(
+                            low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
+                        ),
+                        "vision": spaces.Box(
+                            low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                        ),
+                    }
+                )
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
+
+    def _make_action_space(self) -> spaces.Space[th.Tensor]:
+        match self.control_type:
+            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
+                return spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32)
+            case (
+                EnvControlType.CARTESIAN_POSITION
+                | EnvControlType.CARTESIAN_POSITION_SERVO
+            ):
+                return spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
     def step(
         self, action: Union[th.Tensor, np.ndarray]
@@ -209,20 +230,46 @@ class AegisPusherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        self.object_pos = self.object.get_pose()[:3].clone()
-        return (
-            th.cat(
-                [
-                    self.dof_pos,
-                    self.dof_vel,
-                    self.tcp_pos,
-                    self.object_pos,
-                    self.target_pos,
-                ]
-            )
-            .clone()
-            .detach()
+        self.object_pos = self.object.get_pose()[:3]
+
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                return (
+                    th.cat(
+                        [
+                            self.dof_pos,
+                            self.dof_vel,
+                            self.tcp_pos,
+                            self.object_pos,
+                            self.target_pos,
+                        ]
+                    )
+                    .clone()
+                    .detach()
+                )
+            case EnvObservationType.MULTIMODAL:
+                state_obs = (
+                    th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+                )
+
+                rgb, depth, seg, normal = self.scene.camera.render(
+                    depth=False, segmentation=False, normal=False
+                )
+                vision_obs = self._process_rgb(rgb)
+
+                return {"state": state_obs, "vision": vision_obs}
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
+
+    def _process_rgb(self, rgb: np.ndarray) -> th.Tensor:
+        rgb_proc = cv2.resize(
+            np.ascontiguousarray(np.flipud(rgb)),
+            (128, 128),
+            interpolation=cv2.INTER_AREA,
         )
+        return th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
 
     def _get_info(
         self,

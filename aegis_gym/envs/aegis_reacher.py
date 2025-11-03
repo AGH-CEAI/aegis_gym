@@ -3,6 +3,7 @@
 import time
 from typing import Optional, Any, Union
 
+import cv2
 import numpy as np
 import torch as th
 import gymnasium as gym
@@ -20,7 +21,6 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 
 ENV_CFG = {
     "max_episode_length": 1000,
-    "num_obs": 18,
     "target_threshold": 0.02,
     "target_spawn_x": [-0.26, 0.26],
     "target_spawn_y": [0.36, 1.0],
@@ -54,20 +54,8 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        match self.control_type:
-            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
-                self.num_actions = 6
-            case (
-                EnvControlType.CARTESIAN_POSITION
-                | EnvControlType.CARTESIAN_POSITION_SERVO
-            ):
-                self.num_actions = 3
-            case _:
-                raise ValueError(f"Unsupported control type: {self.control_type}")
-
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
-        self.num_obs = cfg["num_obs"]
         self.target_threshold = cfg["target_threshold"]
         self.clip_action = cfg["clip_action"]
         self.obs_scales = cfg["obs_scales"]
@@ -77,22 +65,23 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = cfg["target_spawn_y"]
         self.target_spawn_z = cfg["target_spawn_z"]
 
-        self.scene: SceneDirectorInterface = get_scene_director(scene_type)
+        enable_scene_camera = self.observation_type == EnvObservationType.MULTIMODAL
+        self.scene: SceneDirectorInterface = get_scene_director(
+            scene_type, enable_scene_camera
+        )
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.target.create()
 
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
-        self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.num_obs,), dtype=np.float32
-        )
-        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
-        )
+        self.observation_space = self._make_observation_space()
+        self.action_space = self._make_action_space()
 
         self.episode_step = 0.0
-        self.actions = th.zeros(self.num_actions, dtype=th.float32, device=self.device)
+        self.actions = th.zeros(
+            self.action_space.shape, dtype=th.float32, device=self.device
+        )
         self.target_pos = th.zeros(3, dtype=th.float32, device=self.device)
         self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
         self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
@@ -105,6 +94,40 @@ class AegisReacherEnv(gym.Env):
         }
         self.episode_sums = {key: 0.0 for key in self.reward_functions}
         self.reset()
+
+    def _make_observation_space(self) -> spaces.Space[th.Tensor]:
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                return spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
+                )
+            case EnvObservationType.MULTIMODAL:
+                return spaces.Dict(
+                    {
+                        "state": spaces.Box(
+                            low=-np.inf, high=np.inf, shape=(15,), dtype=np.float32
+                        ),
+                        "vision": spaces.Box(
+                            low=0, high=255, shape=(128, 128, 3), dtype=np.uint8
+                        ),
+                    }
+                )
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
+
+    def _make_action_space(self) -> spaces.Space[th.Tensor]:
+        match self.control_type:
+            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
+                return spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32)
+            case (
+                EnvControlType.CARTESIAN_POSITION
+                | EnvControlType.CARTESIAN_POSITION_SERVO
+            ):
+                return spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
     def step(
         self, action: Union[th.Tensor, np.ndarray]
@@ -183,6 +206,7 @@ class AegisReacherEnv(gym.Env):
                 dtype=th.float32,
             )
         )
+        self.target_pos = self.target.get_pose()[:3]
 
         obs = self._get_obs()
         self.dist_to_target = th.norm(self.tcp_pos - self.target_pos)
@@ -195,23 +219,46 @@ class AegisReacherEnv(gym.Env):
 
         return obs, {}
 
+    # TODO(issue#30) Fix return type
     def _get_obs(self) -> th.Tensor:
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        # Normalizing Cartesian positions w.r.t the robot's base
-        return (
-            th.cat(
-                [
-                    self.dof_pos,
-                    self.dof_vel,
-                    self.tcp_pos - self.base_pos,
-                    self.target_pos - self.base_pos,
-                ]
-            )
-            .clone()
-            .detach()
+
+        # Normalizing Cartesian positions w.r.t. the robot's base
+        tcp_pos_rel = self.tcp_pos - self.base_pos
+        target_pos_rel = self.target_pos - self.base_pos
+
+        match self.observation_type:
+            case EnvObservationType.STATE:
+                return (
+                    th.cat([self.dof_pos, self.dof_vel, tcp_pos_rel, target_pos_rel])
+                    .clone()
+                    .detach()
+                )
+            case EnvObservationType.MULTIMODAL:
+                state_obs = (
+                    th.cat([self.dof_pos, self.dof_vel, tcp_pos_rel]).clone().detach()
+                )
+
+                rgb, depth, seg, normal = self.scene.camera.render(
+                    depth=False, segmentation=False, normal=False
+                )
+                vision_obs = self._process_rgb(rgb)
+
+                return {"state": state_obs, "vision": vision_obs}
+            case _:
+                raise ValueError(
+                    f"Unsupported observation type: {self.observation_type}"
+                )
+
+    def _process_rgb(self, rgb: np.ndarray) -> th.Tensor:
+        rgb_proc = cv2.resize(
+            np.ascontiguousarray(np.flipud(rgb)),
+            (128, 128),
+            interpolation=cv2.INTER_AREA,
         )
+        return th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
 
     def _get_info(
         self,

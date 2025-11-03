@@ -18,7 +18,7 @@ ENV_IDS = []
 
 sim_name = SceneDirectorType.SIM_GENESIS.value
 tasks = ["Reacher", "Pusher"]
-obs_types = [EnvObservationType.STATE]
+obs_types = [EnvObservationType.STATE, EnvObservationType.MULTIMODAL]
 control_types = [
     EnvControlType.JOINTS,
     EnvControlType.JOINTS_SERVO,
