@@ -40,7 +40,7 @@ def get_scene_director(
                 SceneDirectorROS = None
 
             if SceneDirectorROS:
-                return SceneDirectorROS()
+                return SceneDirectorROS(enable_scene_camera=enable_scene_camera)
             warnings.warn(
                 "\n[IMPORT ERROR] Failed to import SceneDirectorROS. Double check if the ROS is sourced properly via `source /opt/ros/ROS_DISTRO/setup.sh`."
             )
