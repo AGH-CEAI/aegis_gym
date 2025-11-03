@@ -8,7 +8,7 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 <p align="center">
-    <img src="./.docs/aegis_reacher.png" alt="Static image of the AegisReacher environment in Genesis simulator." width="640"/>
+    <img src="./docs/aegis_reacher.png" alt="Static image of the AegisReacher environment in Genesis simulator." width="640"/>
 </p>
 
 
