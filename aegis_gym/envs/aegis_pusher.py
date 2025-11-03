@@ -227,12 +227,13 @@ class AegisPusherEnv(gym.Env):
         return obs, {}
 
     def _get_obs(self) -> th.Tensor:
+        self.dof_pos = self.robot.get_joint_positions()
+        self.dof_vel = self.robot.get_joint_velocities()
+        self.tcp_pos = self.robot.get_tcp_position()
+        self.object_pos = self.object.get_pose()[:3]
+
         match self.observation_type:
             case EnvObservationType.STATE:
-                self.dof_pos = self.robot.get_joint_positions()
-                self.dof_vel = self.robot.get_joint_velocities()
-                self.tcp_pos = self.robot.get_tcp_position()
-                self.object_pos = self.object.get_pose()[:3]
                 return (
                     th.cat(
                         [
@@ -247,10 +248,6 @@ class AegisPusherEnv(gym.Env):
                     .detach()
                 )
             case EnvObservationType.MULTIMODAL:
-                self.dof_pos = self.robot.get_joint_positions()
-                self.dof_vel = self.robot.get_joint_velocities()
-                self.tcp_pos = self.robot.get_tcp_position()
-                self.object_pos = self.object.get_pose()[:3]
                 state_obs = (
                     th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
                 )
@@ -258,20 +255,21 @@ class AegisPusherEnv(gym.Env):
                 rgb, depth, seg, normal = self.scene.camera.render(
                     depth=False, segmentation=False, normal=False
                 )
-                rgb_proc = cv2.resize(
-                    np.ascontiguousarray(np.flipud(rgb)),
-                    (128, 128),
-                    interpolation=cv2.INTER_AREA,
-                )
-                vision_obs = (
-                    th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
-                )
+                vision_obs = self._process_rgb(rgb)
 
                 return {"state": state_obs, "vision": vision_obs}
             case _:
                 raise ValueError(
                     f"Unsupported observation type: {self.observation_type}"
                 )
+
+    def _process_rgb(self, rgb: np.ndarray) -> th.Tensor:
+        rgb_proc = cv2.resize(
+            np.ascontiguousarray(np.flipud(rgb)),
+            (128, 128),
+            interpolation=cv2.INTER_AREA,
+        )
+        return th.tensor(rgb_proc, dtype=th.float32, device=self.device) / 255.0
 
     def _get_info(
         self,
