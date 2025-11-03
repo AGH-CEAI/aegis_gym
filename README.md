@@ -11,6 +11,7 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 
 ## Notes
 * All poses consist of position `x,y,z` and orientation in quaterion form `qx,qy,qz,qw`, i.e.: `pose=[x,y,z,qx,qy,qz,qw]`
+* For simplicity, the project uses Pytorch tensors instead of numpy ones.
 
 ---
 
@@ -18,6 +19,8 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 ```bash
 poetry build
 pip3 install ./dist/aegis_gym-*.whl
+# Combined command:
+poetry build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-py3-none-any.whl[sim-genesis]"
 ```
 
 ## Run tests
