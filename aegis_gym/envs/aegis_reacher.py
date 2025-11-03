@@ -54,17 +54,6 @@ class AegisReacherEnv(gym.Env):
         self.control_type = EnvControlType(control_type)
         self.reward_type = EnvRewardType(reward_type)
 
-        match self.control_type:
-            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
-                self.num_actions = 6
-            case (
-                EnvControlType.CARTESIAN_POSITION
-                | EnvControlType.CARTESIAN_POSITION_SERVO
-            ):
-                self.num_actions = 3
-            case _:
-                raise ValueError(f"Unsupported control type: {self.control_type}")
-
         # TODO(issue#7) Rconsider episode length units unifcation for ROS and simulation
         self.max_episode_length = cfg["max_episode_length"]
         self.target_threshold = cfg["target_threshold"]
@@ -77,20 +66,42 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_z = cfg["target_spawn_z"]
 
         enable_scene_camera = self.observation_type == EnvObservationType.MULTIMODAL
-        self.scene: SceneDirectorInterface = get_scene_director(scene_type, enable_scene_camera)
+        self.scene: SceneDirectorInterface = get_scene_director(
+            scene_type, enable_scene_camera
+        )
         self.target: Target = self.scene.add_entity(EntityType.TARGET)
         self.target.create()
 
         self.scene.build()
         self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
 
+        self.observation_space = self._make_observation_space()
+        self.action_space = self._make_action_space()
+
+        self.episode_step = 0.0
+        self.actions = th.zeros(
+            self.action_space.shape, dtype=th.float32, device=self.device
+        )
+        self.target_pos = th.zeros(3, dtype=th.float32, device=self.device)
+        self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
+        self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
+        self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
+
+        self.reward_functions = {
+            "dist": self._reward_dist,
+            "control": self._reward_control,
+        }
+        self.episode_sums = {key: 0.0 for key in self.reward_functions}
+        self.reset()
+
+    def _make_observation_space(self) -> spaces.Space[th.Tensor]:
         match self.observation_type:
             case EnvObservationType.STATE:
-                self.observation_space: spaces.Space[th.Tensor] = spaces.Box(
+                return spaces.Box(
                     low=-np.inf, high=np.inf, shape=(18,), dtype=np.float32
                 )
             case EnvObservationType.MULTIMODAL:
-                self.observation_space = spaces.Dict(
+                return spaces.Dict(
                     {
                         "state": spaces.Box(
                             low=-np.inf, high=np.inf, shape=(15,), dtype=np.float32
@@ -105,23 +116,17 @@ class AegisReacherEnv(gym.Env):
                     f"Unsupported observation type: {self.observation_type}"
                 )
 
-        self.action_space: spaces.Space[th.Tensor] = spaces.Box(
-            low=-1.0, high=1.0, shape=(self.num_actions,), dtype=np.float32
-        )
-
-        self.episode_step = 0.0
-        self.actions = th.zeros(self.num_actions, dtype=th.float32, device=self.device)
-        self.target_pos = th.zeros(3, dtype=th.float32, device=self.device)
-        self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
-        self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
-        self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
-
-        self.reward_functions = {
-            "dist": self._reward_dist,
-            "control": self._reward_control,
-        }
-        self.episode_sums = {key: 0.0 for key in self.reward_functions}
-        self.reset()
+    def _make_action_space(self) -> spaces.Space[th.Tensor]:
+        match self.control_type:
+            case EnvControlType.JOINTS | EnvControlType.JOINTS_SERVO:
+                return spaces.Box(low=-1.0, high=1.0, shape=(6,), dtype=np.float32)
+            case (
+                EnvControlType.CARTESIAN_POSITION
+                | EnvControlType.CARTESIAN_POSITION_SERVO
+            ):
+                return spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+            case _:
+                raise ValueError(f"Unsupported control type: {self.control_type}")
 
     def step(
         self, action: Union[th.Tensor, np.ndarray]
