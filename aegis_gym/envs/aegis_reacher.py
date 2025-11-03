@@ -97,6 +97,7 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
         self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
         self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
+        self.base_pos = th.zeros(3, dtype=th.float32, device=self.device)
 
         self.reward_functions = {
             "dist": self._reward_dist,
@@ -165,6 +166,7 @@ class AegisReacherEnv(gym.Env):
             th.manual_seed(seed)
 
         self.robot.move_to_home()
+        self.base_pos = self.robot.get_base_position()
 
         self.target.set_pose(
             th.tensor(
@@ -197,15 +199,14 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
-        robot_pos = self.robot.get_robot_position()
         # Normalizing Cartesian positions w.r.t the robot's base
         return (
             th.cat(
                 [
                     self.dof_pos,
                     self.dof_vel,
-                    self.tcp_pos - robot_pos,
-                    self.target_pos - robot_pos,
+                    self.tcp_pos - self.base_pos,
+                    self.target_pos - self.base_pos,
                 ]
             )
             .clone()

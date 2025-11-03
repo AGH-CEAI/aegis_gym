@@ -43,7 +43,7 @@ class RobotCommanderInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_robot_position(self) -> th.Tensor:
+    def get_base_position(self) -> th.Tensor:
         raise NotImplementedError
 
     @abstractmethod

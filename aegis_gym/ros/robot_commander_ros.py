@@ -60,7 +60,7 @@ class RobotCommanderROS(RobotCommanderInterface):
             ],
         )
 
-    def get_robot_position(self) -> th.Tensor:
+    def get_base_position(self) -> th.Tensor:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
     def control_dofs_position(

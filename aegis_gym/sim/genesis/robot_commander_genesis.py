@@ -31,7 +31,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         ori = self.get_tcp_orientation()
         return th.cat([pos, ori])
 
-    def get_robot_position(self) -> th.Tensor:
+    def get_base_position(self) -> th.Tensor:
         return self.robot.get_link(self.base_link_name).get_pos().clone().detach()
 
     # TODO(issue#9): Limit velocity and acceleration for Genesis robot commander
