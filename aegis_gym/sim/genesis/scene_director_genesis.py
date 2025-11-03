@@ -48,6 +48,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.cfg = cfg
         self.enable_scene_camera = enable_scene_camera
         self.motor_dofs: tuple[int] = None
+        self.camera = None
 
         if not gs._initialized:
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
