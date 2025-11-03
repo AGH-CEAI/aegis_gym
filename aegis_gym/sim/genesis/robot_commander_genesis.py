@@ -12,6 +12,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         self.robot = gs_robot
         self.motor_dofs = motor_dofs
         self.tcp_link_name = "robotiq_hande_end"
+        self.base_link_name = "ur_base"
 
     def get_joint_positions(self) -> th.Tensor:
         return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
@@ -29,6 +30,9 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         pos = self.get_tcp_position()
         ori = self.get_tcp_orientation()
         return th.cat([pos, ori])
+
+    def get_base_position(self) -> th.Tensor:
+        return self.robot.get_link(self.base_link_name).get_pos().clone().detach()
 
     # TODO(issue#9): Limit velocity and acceleration for Genesis robot commander
 

@@ -43,6 +43,10 @@ class RobotCommanderInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_base_position(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:

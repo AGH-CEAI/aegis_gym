@@ -86,6 +86,7 @@ class AegisReacherEnv(gym.Env):
         self.dof_pos = th.zeros(6, dtype=th.float32, device=self.device)
         self.dof_vel = th.zeros(6, dtype=th.float32, device=self.device)
         self.tcp_pos = th.zeros(3, dtype=th.float32, device=self.device)
+        self.base_pos = th.zeros(3, dtype=th.float32, device=self.device)
 
         self.reward_functions = {
             "dist": self._reward_dist,
@@ -188,6 +189,7 @@ class AegisReacherEnv(gym.Env):
             th.manual_seed(seed)
 
         self.robot.move_to_home()
+        self.base_pos = self.robot.get_base_position()
 
         self.target.set_pose(
             th.tensor(
@@ -217,21 +219,26 @@ class AegisReacherEnv(gym.Env):
 
         return obs, {}
 
+    # TODO(issue#30) Fix return type
     def _get_obs(self) -> th.Tensor:
         self.dof_pos = self.robot.get_joint_positions()
         self.dof_vel = self.robot.get_joint_velocities()
         self.tcp_pos = self.robot.get_tcp_position()
 
+        # Normalizing Cartesian positions w.r.t. the robot's base
+        tcp_pos_rel = self.tcp_pos - self.base_pos
+        target_pos_rel = self.target_pos - self.base_pos
+
         match self.observation_type:
             case EnvObservationType.STATE:
                 return (
-                    th.cat([self.dof_pos, self.dof_vel, self.tcp_pos, self.target_pos])
+                    th.cat([self.dof_pos, self.dof_vel, tcp_pos_rel, target_pos_rel])
                     .clone()
                     .detach()
                 )
             case EnvObservationType.MULTIMODAL:
                 state_obs = (
-                    th.cat([self.dof_pos, self.dof_vel, self.tcp_pos]).clone().detach()
+                    th.cat([self.dof_pos, self.dof_vel, tcp_pos_rel]).clone().detach()
                 )
 
                 rgb, depth, seg, normal = self.scene.camera.render(

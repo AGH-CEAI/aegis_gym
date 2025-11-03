@@ -7,10 +7,16 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 [![Licence](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
+<p align="center">
+    <img src="./docs/aegis_reacher.png" alt="Static image of the AegisReacher environment in Genesis simulator." width="640"/>
+</p>
+
+
 ---
 
 ## Notes
 * All poses consist of position `x,y,z` and orientation in quaterion form `qx,qy,qz,qw`, i.e.: `pose=[x,y,z,qx,qy,qz,qw]`
+* For simplicity, the project uses Pytorch tensors instead of numpy ones.
 
 ---
 
@@ -18,13 +24,18 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 ```bash
 poetry build
 pip3 install ./dist/aegis_gym-*.whl
+# Combined command:
+poetry build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-py3-none-any.whl[sim-genesis]"
 ```
 
 ## Run tests
 ```bash
 poetry run pytest -v -s
 ```
-
+## Run test training
+```bash
+python3 ./test/sb3_run_train.py
+```
 ---
 ## Development notes
 
