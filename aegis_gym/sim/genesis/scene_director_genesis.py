@@ -60,8 +60,6 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.sim_substeps = cfg["sim_substeps"]
         self.steps_per_ctrl = int(1.0 / (self.sim_dt * cfg["ctrl_freq"]))
 
-        print("steps per ctrl:", self.steps_per_ctrl)
-
         self._create_scene()
 
     def _create_scene(self) -> None:
@@ -141,7 +139,5 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)
 
     def step(self) -> None:
-        print("CTRL")
         for _ in range(self.steps_per_ctrl):
             self.scene.step()
-            print("sim step")
