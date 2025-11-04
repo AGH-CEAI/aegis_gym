@@ -13,7 +13,9 @@ from .scene_entities_genesis import EntityTypeSimGenesis
 
 # TODO(issue#24): Include robot fingers in DOF configuration in Genesis
 SIM_CFG = {
-    "dt": 0.05,
+    "sim_dt": 0.01,
+    "sim_substeps": 2,
+    "ctrl_freq": 20,
     "robot_pos": [0.0, 0.0, 0.0],
     "table_pos": [0.0, 0.6, 0.41],
     "dof_names": [
@@ -27,8 +29,8 @@ SIM_CFG = {
         # 'robotiq_hande_right_finger_joint',
     ],
     # TODO(issue#16): Research tuning of PD gains for UR5e
-    "kp": [1000, 1000, 1000, 500, 500, 500],
-    "kd": [200, 200, 200, 100, 100, 100],
+    "kp": [12000, 12000, 12000, 6000, 6000, 6000],
+    "kd": [2000, 2000, 2000, 1000, 1000, 1000],
 }
 
 
@@ -53,22 +55,27 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         if not gs._initialized:
             backend = gs.gpu if device in ("cuda", "gpu") else gs.cpu
             gs.init(precision="32", backend=backend, logging_level="warning")
-        self.dt = cfg["dt"]
+
+        self.sim_dt = cfg["sim_dt"]
+        self.sim_substeps = cfg["sim_substeps"]
+        self.steps_per_ctrl = int(1.0 / (self.sim_dt * cfg["ctrl_freq"]))
 
         self._create_scene()
 
     def _create_scene(self) -> None:
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=5),
+            sim_options=gs.options.SimOptions(
+                dt=self.sim_dt, substeps=self.sim_substeps
+            ),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(1.0 / self.dt),
+                max_FPS=int(1.0 / self.sim_dt),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
             ),
             vis_options=gs.options.VisOptions(),
             rigid_options=gs.options.RigidOptions(
-                dt=self.dt,
+                dt=self.sim_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 # enable_self_collision=True,
@@ -132,4 +139,5 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
         self.robot.set_dofs_kv(self.cfg["kd"], self.motor_dofs)
 
     def step(self) -> None:
-        self.scene.step()
+        for _ in range(self.steps_per_ctrl):
+            self.scene.step()
