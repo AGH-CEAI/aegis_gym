@@ -29,8 +29,8 @@ SIM_CFG = {
         # 'robotiq_hande_right_finger_joint',
     ],
     # TODO(issue#16): Research tuning of PD gains for UR5e
-    "kp": [1000, 1000, 1000, 500, 500, 500],
-    "kd": [200, 200, 200, 100, 100, 100],
+    "kp": [12000, 12000, 12000, 6000, 6000, 6000],
+    "kd": [2000, 2000, 2000, 1000, 1000, 1000],
 }
 
 
