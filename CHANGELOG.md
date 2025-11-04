@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-31](https://github.com/AGH-CEAI/pull/31) - Introduced control frequency parameter to decouple policy updates from physics steps in Genesis.
 - [PR-28](https://github.com/AGH-CEAI/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
 - [PR-26](https://github.com/AGH-CEAI/pull/26) - Added support for multimodal observations in environments.
 - [PR-26](https://github.com/AGH-CEAI/pull/26) - Added a scene camera to Genesis simulation for visual observations.
@@ -21,7 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Changed robot PD gains in Genesis.
+- [PR-31](https://github.com/AGH-CEAI/aegis_gym/pull/31) - Changed physics timesteps and substeps.
+- [PR-31](https://github.com/AGH-CEAI/aegis_gym/pull/31) - Changed robot joint PD gains in Genesis.
+- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Changed robot joint PD gains in Genesis.
 - [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Differentiated between synchronous and asynchronous control methods.
 - [PR-11,12,13,14,15](https://github.com/AGH-CEAI/aegis_gym/pull/5) - REFACTOR: Abstract interfaces for Genesis sim and ROS control.
 - [PR-4](https://github.com/AGH-CEAI/aegis_gym/pull/4) - Updated & fixed dependencies versions.
