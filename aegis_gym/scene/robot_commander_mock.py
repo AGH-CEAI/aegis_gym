@@ -34,3 +34,17 @@ class RobotCommanderMock(RobotCommanderInterface):
 
     def move_to_home(self) -> None:
         pass
+
+    def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        raise NotImplementedError
+
+    def control_tcp_position_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        raise NotImplementedError

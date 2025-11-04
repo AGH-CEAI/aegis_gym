@@ -3,6 +3,7 @@ import torch as th
 
 try:
     from aegis_director.robot_director import RobotDirector
+    from aegis_director.utils import quaternion_to_euler
 except ImportError:
     print(
         "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
@@ -66,6 +67,9 @@ class RobotCommanderROS(RobotCommanderInterface):
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+
         target_pos_np = target_pos.detach().cpu().numpy()
         target_pos_dict = {
             name: float(pos) for name, pos in zip(self.joint_names, target_pos_np)
@@ -87,6 +91,9 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+
         if target_ori is None:
             target_ori = th.tensor(
                 [1.0, 0.0, 0.0, 0.0],
@@ -115,7 +122,19 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        if not self.robot_director.servo_enabled:
+            self.robot_director.servo_enable()
+
+        target_pos_np = target_pos.detach().cpu().numpy()
+        target_ori_np = target_ori.detach().cpu().numpy()
+
+        target_pos_tuple = tuple(float(v) for v in target_pos_np)
+        target_ori_tuple = tuple(quaternion_to_euler(q_xyzw=target_ori_np))
+
+        self.robot_director.servo_move(
+            linear=target_pos_tuple,
+            angular=target_ori_tuple,
+        )
 
     def move_to_home(self) -> None:
         self.robot_director.joint_move(
