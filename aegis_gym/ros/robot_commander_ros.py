@@ -80,9 +80,22 @@ class RobotCommanderROS(RobotCommanderInterface):
 
     # TODO(issue#22): Implement continuous control for ROS robot commander
     def control_dofs_position_servo(
-        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+        self,
+        target_vel: th.Tensor | None = None,
     ) -> None:
-        raise NotImplementedError
+        if not self.robot_director.servo_enabled:
+            self.robot_director.servo_enable()
+
+        if target_vel is None:
+            target_vel_tuple = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        else:
+            target_vel_tuple = tuple(target_vel.detach().cpu().numpy())
+
+        print(f">>> JOG TARGET VEL: {target_vel_tuple}")
+        self.robot_director.servo_jog(
+            joint_names=tuple(self.joint_names),
+            velocities=target_vel_tuple,
+        )
 
     def control_tcp_position(
         self,
