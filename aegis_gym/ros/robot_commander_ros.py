@@ -115,21 +115,25 @@ class RobotCommanderROS(RobotCommanderInterface):
         )
 
     # TODO(issue#22): Implement continuous control for ROS robot commander
+    # TODO(issue#X): Change servo API to Euler angles
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori: th.Tensor | None = None,
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
         if not self.robot_director.servo_enabled:
             self.robot_director.servo_enable()
 
-        target_pos_np = target_pos.detach().cpu().numpy()
-        target_ori_np = target_ori.detach().cpu().numpy()
+        if target_ori is None:
+            target_ori_tuple = tuple([0.0, 0.0, 0.0])
+        else:
+            target_ori_np = target_ori.detach().cpu().numpy()
+            target_ori_tuple = tuple(quaternion_to_euler(q_xyzw=target_ori_np))
 
+        target_pos_np = target_pos.detach().cpu().numpy()
         target_pos_tuple = tuple(float(v) for v in target_pos_np)
-        target_ori_tuple = tuple(quaternion_to_euler(q_xyzw=target_ori_np))
 
         self.robot_director.servo_move(
             linear=target_pos_tuple,
@@ -137,6 +141,9 @@ class RobotCommanderROS(RobotCommanderInterface):
         )
 
     def move_to_home(self) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+        # TODO(issue#X) There are edge positions where the Moveit2 planner can't plan the trajectory to home position. This issue breaks the training.
         self.robot_director.joint_move(
             joint_positions=self.dof_home_dict,
             max_vel=0.5,
