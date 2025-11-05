@@ -1,3 +1,4 @@
+from importlib import import_module
 from importlib.metadata import version, PackageNotFoundError
 
 try:
@@ -38,6 +39,11 @@ for task in tasks:
                     f"{reward_type.value.capitalize()}"
                     f"-v1"
                 )
+
+                env_file_path = f"aegis_gym.envs.aegis_{task.lower()}"
+                env_module = import_module(env_file_path)
+                env_cfg = getattr(env_module, "ENV_CFG")
+
                 register(
                     id=env_id,
                     entry_point=f"aegis_gym.envs:Aegis{task}Env",
@@ -49,6 +55,6 @@ for task in tasks:
                         "scene_type": SceneDirectorType.SIM_GENESIS,
                         "device": "cuda",
                     },
-                    max_episode_steps=50,
+                    max_episode_steps=env_cfg["max_episode_length"],
                 )
                 ENV_IDS.append(env_id)
