@@ -91,7 +91,6 @@ class RobotCommanderROS(RobotCommanderInterface):
         else:
             target_vel_tuple = tuple(target_vel.detach().cpu().numpy())
 
-        print(f">>> JOG TARGET VEL: {target_vel_tuple}")
         self.robot_director.servo_jog(
             joint_names=tuple(self.joint_names),
             velocities=target_vel_tuple,
