@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch as th
 from genesis.engine.entities.rigid_entity import RigidEntity
 
@@ -5,6 +7,13 @@ from ...scene.robot_commander_interface import RobotCommanderInterface
 
 
 class RobotCommanderSimGenesis(RobotCommanderInterface):
+    _instance: Optional["RobotCommanderInterface"] = None
+
+    def __new__(cls, *args, **kwargs) -> "RobotCommanderInterface":
+        if cls._instance is None:
+            cls._instance = super(RobotCommanderInterface, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self, gs_robot: RigidEntity, motor_dofs: tuple[str], device: str = "cuda"
     ):

@@ -1,3 +1,5 @@
+from typing import Optional
+
 import genesis as gs
 import torch as th
 
@@ -37,6 +39,13 @@ def gs_rand_float(lower, upper, shape, device):
 
 
 class SceneDirectorSimGenesis(SceneDirectorInterface):
+    _instance: Optional["SceneDirectorInterface"] = None
+
+    def __new__(cls, *args, **kwargs) -> "SceneDirectorInterface":
+        if cls._instance is None:
+            cls._instance = super(SceneDirectorInterface, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         device: str = "cuda",
