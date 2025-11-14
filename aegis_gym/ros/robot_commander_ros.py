@@ -81,7 +81,8 @@ class RobotCommanderROS(RobotCommanderInterface):
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        raise NotImplementedError
+        # TODO(issue#35) - Unify servoing into position or velocities commands
+        self.control_dofs_velocity_servo(target_vel=target_pos)
 
     def control_dofs_velocity_servo(
         self,
@@ -134,17 +135,18 @@ class RobotCommanderROS(RobotCommanderInterface):
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor | None = None,
+        target_ori: th.Tensor | None = None,  # HACK interface mismatch for default None
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        # TODO(issue#35) - Unify servoing into position or velocities commands
+        self.control_tcp_velocity_servo(target_pos, target_ori)
 
     # TODO(issue#33): Change servo API to Euler angles
     def control_tcp_velocity_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori: th.Tensor | None = None,
     ) -> None:
         if not self.robot_director.servo_enabled:
             self.robot_director.servo_enable()
