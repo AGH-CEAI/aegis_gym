@@ -56,6 +56,12 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         self.robot.control_dofs_position(target_pos, self.motor_dofs)
 
+    def control_dofs_velocity_servo(
+        self,
+        target_vel: th.Tensor | None,
+    ) -> None:
+        raise NotImplementedError
+
     # TODO(issue#23): Implement synchronous control for Genesis robot commander
     def control_tcp_position(
         self,
@@ -66,6 +72,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         raise NotImplementedError
 
+    # TODO(issue#33) - Change quats to Euler angles in servo
     # TODO(issue#25): Investigate TCP frame reference discrepancy
     def control_tcp_position_servo(
         self,
@@ -91,6 +98,14 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         )[self.motor_dofs[0] : self.motor_dofs[-1] + 1]
 
         self.robot.control_dofs_position(qpos, self.motor_dofs)
+
+    # TODO(issue#33) - Change quats to Euler angles in servo
+    def control_tcp_velocity_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+    ) -> None:
+        raise NotImplementedError
 
     def move_to_home(self) -> None:
         # TODO(issue#8) Do we need trajectory to home in simulation?

@@ -78,8 +78,12 @@ class RobotCommanderROS(RobotCommanderInterface):
             joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
-    # TODO(issue#22): Implement continuous control for ROS robot commander
     def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        raise NotImplementedError
+
+    def control_dofs_velocity_servo(
         self,
         target_vel: th.Tensor | None = None,
     ) -> None:
@@ -126,14 +130,21 @@ class RobotCommanderROS(RobotCommanderInterface):
             max_accel=max_accel,
         )
 
-    # TODO(issue#22): Implement continuous control for ROS robot commander
-    # TODO(issue#X): Change servo API to Euler angles
+    # TODO(issue#33): Change servo API to Euler angles
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
         target_ori: th.Tensor | None = None,
         max_vel: float = 0.3,
         max_accel: float = 0.3,
+    ) -> None:
+        raise NotImplementedError
+
+    # TODO(issue#33): Change servo API to Euler angles
+    def control_tcp_velocity_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
     ) -> None:
         if not self.robot_director.servo_enabled:
             self.robot_director.servo_enable()
@@ -155,7 +166,7 @@ class RobotCommanderROS(RobotCommanderInterface):
     def move_to_home(self) -> None:
         if self.robot_director.servo_enabled:
             self.robot_director.servo_disable()
-        # TODO(issue#X) There are edge positions where the Moveit2 planner can't plan the trajectory to home position. This issue breaks the training.
+        # TODO(issue#34) There are edge positions where the Moveit2 planner can't plan the trajectory to home position. This issue breaks the training.
         self.robot_director.joint_move(
             joint_positions=self.dof_home_dict,
             max_vel=0.5,
