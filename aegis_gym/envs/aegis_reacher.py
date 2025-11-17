@@ -144,21 +144,18 @@ class AegisReacherEnv(gym.Env):
                 dof_pos_target = self.dof_pos + delta
                 self.robot.control_dofs_position(dof_pos_target)
             case EnvControlType.JOINTS_SERVO:
-                servo_delta = (
-                    delta / self.action_scale * 0.5
-                )  # TODO control the speed somewhere else
+                # TODO(issue#35) This should be speed in rad/s and it should be calibrated both for real and simulation purposes. Check the servo frequency in aegis_ros;s ur_servo.yaml configuration file.
+                servo_delta = delta / self.action_scale * 0.5
                 self.robot.control_dofs_position_servo(target_pos=servo_delta)
             case EnvControlType.CARTESIAN_POSITION:
                 tcp_pos_target = self.tcp_pos + delta
                 self.robot.control_tcp_position(target_pos=tcp_pos_target)
             case EnvControlType.CARTESIAN_POSITION_SERVO:
-                servo_delta = (
-                    delta * 10.0 + 0.2
-                )  # TODO: servo works only from 0.2 to 1.0 values
+                # TODO(issue#35): similar joints case, this control should be given in m/s and it should be calibrated. For some reason the current implementation works with values only from 0.2 to 1.0 (the latter makes sense, that the maximum in the MoveiT2 Servo implementation, no foggiest idea what is the deal with 0.2).
+                servo_delta = delta * 10.0 + 0.2
                 tcp_pos_target = th.clamp(
                     servo_delta, -self.clip_action, self.clip_action
                 )
-                # tcp_pos_target = delta*10.0
                 self.robot.control_tcp_position_servo(target_pos=tcp_pos_target)
             case _:
                 raise ValueError(f"Unsupported control type: {self.control_type}")
