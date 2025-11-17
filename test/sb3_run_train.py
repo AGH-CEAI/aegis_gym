@@ -2,6 +2,8 @@ import time
 
 import gymnasium as gym
 
+import aegis_gym  # noqa: F401
+import aegis_gym.sim.genesis as sim_genesis  # noqa: F401
 from aegis_gym.sim.utils import TorchToNumpyWrapper
 
 try:
@@ -23,11 +25,9 @@ def main():
 
     # ROS
     # env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS"]]
-    # import aegis_gym  # noqa: F401
     # env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 
     # GENESIS
-    import aegis_gym.sim.genesis as sim_genesis  # noqa: F401
 
     env_name = sim_genesis.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 

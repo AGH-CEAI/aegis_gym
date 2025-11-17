@@ -27,7 +27,7 @@ def register_envs(scene_type: SceneDirectorType) -> list[str]:
             for reward_type in reward_types:
                 for control_type in control_types:
                     env_id = (
-                        f"Aegis{task}"
+                        f"Aegis{scene_type.value}{task}"
                         f"{obs_type.value.capitalize()}"
                         f"{control_type.value.capitalize()}"
                         f"{reward_type.value.capitalize()}"
