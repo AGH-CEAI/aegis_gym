@@ -147,7 +147,7 @@ class AegisReacherEnv(gym.Env):
                 servo_delta = (
                     delta / self.action_scale * 0.5
                 )  # TODO control the speed somewhere else
-                self.robot.control_dofs_position_servo(target_vel=servo_delta)
+                self.robot.control_dofs_position_servo(target_pos=servo_delta)
             case EnvControlType.CARTESIAN_POSITION:
                 tcp_pos_target = self.tcp_pos + delta
                 self.robot.control_tcp_position(target_pos=tcp_pos_target)
