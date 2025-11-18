@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-32](https://github.com/AGH-CEAI/pull/32) - `ROSRoboticCommander`: Added servoing (twist/jog) with MoveIt2 Servo.
 - [PR-31](https://github.com/AGH-CEAI/pull/31) - Introduced control frequency parameter to decouple policy updates from physics steps in Genesis.
 - [PR-28](https://github.com/AGH-CEAI/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
 - [PR-26](https://github.com/AGH-CEAI/pull/26) - Added support for multimodal observations in environments.

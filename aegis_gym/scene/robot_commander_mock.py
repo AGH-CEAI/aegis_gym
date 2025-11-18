@@ -30,7 +30,33 @@ class RobotCommanderMock(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        pass
 
     def move_to_home(self) -> None:
+        pass
+
+    def control_dofs_position_servo(
+        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        pass
+
+    def control_dofs_velocity_servo(self, target_vel: th.Tensor | None) -> None:
+        pass
+
+    # TODO(issue#33) - Change quats to Euler angles in servo
+    def control_tcp_position_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+        max_vel: float = 0.3,
+        max_accel: float = 0.3,
+    ) -> None:
+        pass
+
+    # TODO(issue#33) - Change quats to Euler angles in servo
+    def control_tcp_velocity_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
+    ) -> None:
         pass

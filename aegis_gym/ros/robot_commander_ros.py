@@ -3,6 +3,7 @@ import torch as th
 
 try:
     from aegis_director.robot_director import RobotDirector
+    from aegis_director.utils import quaternion_to_euler
 except ImportError:
     print(
         "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
@@ -66,6 +67,9 @@ class RobotCommanderROS(RobotCommanderInterface):
     def control_dofs_position(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+
         target_pos_np = target_pos.detach().cpu().numpy()
         target_pos_dict = {
             name: float(pos) for name, pos in zip(self.joint_names, target_pos_np)
@@ -74,11 +78,28 @@ class RobotCommanderROS(RobotCommanderInterface):
             joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
         )
 
-    # TODO(issue#22): Implement continuous control for ROS robot commander
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
     ) -> None:
-        raise NotImplementedError
+        # TODO(issue#35) - Unify servoing into position or velocities commands
+        self.control_dofs_velocity_servo(target_vel=target_pos)
+
+    def control_dofs_velocity_servo(
+        self,
+        target_vel: th.Tensor | None = None,
+    ) -> None:
+        if not self.robot_director.servo_enabled:
+            self.robot_director.servo_enable()
+
+        if target_vel is None:
+            target_vel_tuple = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        else:
+            target_vel_tuple = tuple(target_vel.detach().cpu().numpy())
+
+        self.robot_director.servo_jog(
+            joint_names=tuple(self.joint_names),
+            velocities=target_vel_tuple,
+        )
 
     def control_tcp_position(
         self,
@@ -87,6 +108,9 @@ class RobotCommanderROS(RobotCommanderInterface):
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+
         if target_ori is None:
             target_ori = th.tensor(
                 [1.0, 0.0, 0.0, 0.0],
@@ -107,17 +131,44 @@ class RobotCommanderROS(RobotCommanderInterface):
             max_accel=max_accel,
         )
 
-    # TODO(issue#22): Implement continuous control for ROS robot commander
+    # TODO(issue#33): Change servo API to Euler angles
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori: th.Tensor | None = None,  # HACK interface mismatch for default None
         max_vel: float = 0.3,
         max_accel: float = 0.3,
     ) -> None:
-        raise NotImplementedError
+        # TODO(issue#35) - Unify servoing into position or velocities commands
+        self.control_tcp_velocity_servo(target_pos, target_ori)
+
+    # TODO(issue#33): Change servo API to Euler angles
+    def control_tcp_velocity_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor | None = None,
+    ) -> None:
+        if not self.robot_director.servo_enabled:
+            self.robot_director.servo_enable()
+
+        if target_ori is None:
+            target_ori_tuple = tuple([0.0, 0.0, 0.0])
+        else:
+            target_ori_np = target_ori.detach().cpu().numpy()
+            target_ori_tuple = tuple(quaternion_to_euler(q_xyzw=target_ori_np))
+
+        target_pos_np = target_pos.detach().cpu().numpy()
+        target_pos_tuple = tuple(float(v) for v in target_pos_np)
+
+        self.robot_director.servo_move(
+            linear=target_pos_tuple,
+            angular=target_ori_tuple,
+        )
 
     def move_to_home(self) -> None:
+        if self.robot_director.servo_enabled:
+            self.robot_director.servo_disable()
+        # TODO(issue#34) There are edge positions where the Moveit2 planner can't plan the trajectory to home position. This issue breaks the training.
         self.robot_director.joint_move(
             joint_positions=self.dof_home_dict,
             max_vel=0.5,
