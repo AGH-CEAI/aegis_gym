@@ -159,10 +159,14 @@ class AegisReacherEnv(gym.Env):
                 self.robot.control_tcp_position(target_pos=tcp_pos_target)
             case EnvControlType.CARTESIAN_POSITION_SERVO:
                 # TODO(issue#35): similar joints case, this control should be given in m/s and it should be calibrated. For some reason the current implementation works with values only from 0.2 to 1.0 (the latter makes sense, that the maximum in the MoveiT2 Servo implementation, no foggiest idea what is the deal with 0.2).
-                servo_delta = delta * 10.0 + 0.2
-                tcp_pos_target = th.clamp(
-                    servo_delta, -self.clip_action, self.clip_action
-                )
+                tcp_pos_target = self.tcp_pos + delta
+                if (
+                    self.scene_type == SceneDirectorType.ROS
+                ):  # TODO(issue#35) remove condition
+                    servo_delta = delta * 10.0 + 0.2
+                    tcp_pos_target = th.clamp(
+                        servo_delta, -self.clip_action, self.clip_action
+                    )
                 self.robot.control_tcp_position_servo(target_pos=tcp_pos_target)
             case _:
                 raise ValueError(f"Unsupported control type: {self.control_type}")
