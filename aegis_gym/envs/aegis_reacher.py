@@ -22,9 +22,21 @@ from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRen
 ENV_CFG = {
     "max_episode_length": 1000,
     "target_threshold": 0.02,
-    "target_spawn_x": [-0.26, 0.26],
-    "target_spawn_y": [0.36, 1.0],
-    "target_spawn_z": [0.98, 1.78],
+    # target spawn range inside camera FOV
+    "target_spawn_x": [-0.3, 0.3],
+    "target_spawn_y": [0.34, 0.58],
+    "target_spawn_z": [0.86, 1.4],
+
+    # wider target spawn range
+    # "target_spawn_x": [-0.3, 0.3],
+    # "target_spawn_y": [0.34, 0.8],
+    # "target_spawn_z": [0.86, 1.66],
+
+    # target spawn range for end-effector pointing down
+    # "target_spawn_x": [-0.3, 0.3],
+    # "target_spawn_y": [0.34, 0.58],
+    # "target_spawn_z": [0.86, 1.22],
+
     "clip_action": 1,
     "action_scale": 0.1,
     "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
