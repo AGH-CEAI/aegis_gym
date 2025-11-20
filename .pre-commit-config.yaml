@@ -1,6 +1,6 @@
 repos:
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.8.0
+    rev: v0.9.0
     hooks:
     -   id: pre-commit-update
 
@@ -40,7 +40,7 @@ repos:
         args: [-w, --ignore-words=.codespell-ignore-words]
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.3
+    rev: v0.14.5
     hooks:
     -   id: ruff-check
         args:

@@ -26,17 +26,14 @@ ENV_CFG = {
     "target_spawn_x": [-0.3, 0.3],
     "target_spawn_y": [0.34, 0.58],
     "target_spawn_z": [0.86, 1.4],
-
     # wider target spawn range
     # "target_spawn_x": [-0.3, 0.3],
     # "target_spawn_y": [0.34, 0.8],
     # "target_spawn_z": [0.86, 1.66],
-
     # target spawn range for end-effector pointing down
     # "target_spawn_x": [-0.3, 0.3],
     # "target_spawn_y": [0.34, 0.58],
     # "target_spawn_z": [0.86, 1.22],
-
     "clip_action": 1,
     "action_scale": 0.1,
     "obs_scales": {"dof_pos": 1.0, "dof_vel": 0.1},
