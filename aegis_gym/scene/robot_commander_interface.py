@@ -52,8 +52,16 @@ class RobotCommanderInterface(ABC):
     ) -> None:
         raise NotImplementedError
 
+    @abstractmethod
     def control_dofs_position_servo(
         self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def control_dofs_velocity_servo(
+        self,
+        target_vel: th.Tensor | None,
     ) -> None:
         raise NotImplementedError
 
@@ -67,6 +75,7 @@ class RobotCommanderInterface(ABC):
     ) -> None:
         raise NotImplementedError
 
+    # TODO(issue#33) - Change quats to Euler angles in servo
     @abstractmethod
     def control_tcp_position_servo(
         self,
@@ -74,6 +83,15 @@ class RobotCommanderInterface(ABC):
         target_ori: th.Tensor,
         max_vel: float = 0.3,
         max_accel: float = 0.3,
+    ) -> None:
+        raise NotImplementedError
+
+    # TODO(issue#33) - Change quats to Euler angles in servo
+    @abstractmethod
+    def control_tcp_velocity_servo(
+        self,
+        target_pos: th.Tensor,
+        target_ori: th.Tensor,
     ) -> None:
         raise NotImplementedError
 

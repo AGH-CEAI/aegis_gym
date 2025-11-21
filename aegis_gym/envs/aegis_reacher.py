@@ -74,6 +74,9 @@ class AegisReacherEnv(gym.Env):
         self.target_spawn_y = cfg["target_spawn_y"]
         self.target_spawn_z = cfg["target_spawn_z"]
 
+        # TODO(issue#35) Remove temporal storage of scene_type used to fork JOINTS_SERVO calculatioans
+        self.scene_type = scene_type
+
         enable_scene_camera = self.observation_type == EnvObservationType.MULTIMODAL
         self.scene: SceneDirectorInterface = get_scene_director(
             scene_type, enable_scene_camera
@@ -153,13 +156,26 @@ class AegisReacherEnv(gym.Env):
                 dof_pos_target = self.dof_pos + delta
                 self.robot.control_dofs_position(dof_pos_target)
             case EnvControlType.JOINTS_SERVO:
+                # TODO(issue#35) This should be speed in rad/s and it should be calibrated both for real and simulation purposes. Check the servo frequency in aegis_ros;s ur_servo.yaml configuration file.
                 dof_pos_target = self.dof_pos + delta
-                self.robot.control_dofs_position_servo(dof_pos_target)
+                if (
+                    self.scene_type == SceneDirectorType.ROS
+                ):  # TODO(issue#35) remove condition
+                    dof_pos_target = delta / self.action_scale * 0.5
+                self.robot.control_dofs_position_servo(target_pos=dof_pos_target)
             case EnvControlType.CARTESIAN_POSITION:
                 tcp_pos_target = self.tcp_pos + delta
                 self.robot.control_tcp_position(target_pos=tcp_pos_target)
             case EnvControlType.CARTESIAN_POSITION_SERVO:
+                # TODO(issue#35): similar joints case, this control should be given in m/s and it should be calibrated. For some reason the current implementation works with values only from 0.2 to 1.0 (the latter makes sense, that the maximum in the MoveiT2 Servo implementation, no foggiest idea what is the deal with 0.2).
                 tcp_pos_target = self.tcp_pos + delta
+                if (
+                    self.scene_type == SceneDirectorType.ROS
+                ):  # TODO(issue#35) remove condition
+                    servo_delta = delta * 10.0 + 0.2
+                    tcp_pos_target = th.clamp(
+                        servo_delta, -self.clip_action, self.clip_action
+                    )
                 self.robot.control_tcp_position_servo(target_pos=tcp_pos_target)
             case _:
                 raise ValueError(f"Unsupported control type: {self.control_type}")

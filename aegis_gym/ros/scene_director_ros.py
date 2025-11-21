@@ -21,7 +21,7 @@ from .scene_entities_ros import EntityTypeROS
 class SceneDirectorROS(SceneDirectorInterface):
     _instance: Optional["SceneDirectorROS"] = None
 
-    def __new__(cls) -> "SceneDirectorROS":
+    def __new__(cls, *args, **kwargs) -> "SceneDirectorROS":
         if cls._instance is None:
             cls._instance = super(SceneDirectorROS, cls).__new__(cls)
         return cls._instance

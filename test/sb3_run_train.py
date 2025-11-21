@@ -25,8 +25,10 @@ def main():
 
     # ROS
     # env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS"]]
+    # env_name = aegis_gym.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 
     # GENESIS
+
     env_name = sim_genesis.ENV_IDS[CONTROL_TYPES["JOINTS_SERVO"]]
 
     print(f"Training on environment: {env_name}")
