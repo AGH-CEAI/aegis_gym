@@ -14,13 +14,13 @@ class TargetSimGenesis(Target):
         self._obj: RigidEntity = None
 
     def create(self) -> None:
-        pos = (-0.1, 0.76, 0.82)
+        pos = (0.76, -0.1, 0.82)
         self._obj = self._scene.add_entity(
             gs.morphs.Cylinder(height=0.00001, radius=0.04, pos=pos, fixed=True),
             surface=gs.surfaces.Default(color=(1.0, 0.0, 0.0)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
-        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        pose = [*pos, 1.0, 0.0, 0.0, 0.0]
         self._pose = th.tensor(pose, device=self._device)
 
     # TODO(issue #29): Verify necessity of tensor cloning
@@ -58,7 +58,7 @@ class BoxSimGenesis(Box):
             surface=gs.surfaces.Default(color=(1.0, 1.0, 1.0)),
             material=gs.materials.Rigid(rho=8000.0, friction=0.6, coup_friction=0.6),
         )
-        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        pose = [*pos, 1.0, 0.0, 0.0, 0.0]
         self._pose = th.tensor(pose, device=self._device)
 
     # TODO(issue #29): Verify necessity of tensor cloning

@@ -14,12 +14,16 @@ from .robot_commander_genesis import RobotCommanderSimGenesis
 from .scene_entities_genesis import EntityTypeSimGenesis
 
 # TODO(issue#24): Include robot fingers in DOF configuration in Genesis
+TABLE_TO_CELL_OFFSET = 0.014  # m
+TABLE_SIZE = (0.55, 0.84, 0.82)  # m
 SIM_CFG = {
     "sim_dt": 0.01,
     "sim_substeps": 2,
     "ctrl_freq": 20,
     "robot_pos": [0.0, 0.0, 0.0],
-    "table_pos": [0.0, 0.6, 0.41],
+    "table_size": [TABLE_SIZE[0], TABLE_SIZE[1], TABLE_SIZE[2] + TABLE_TO_CELL_OFFSET],
+    "table_pos": [0.6, 0.0, -(TABLE_SIZE[2] - TABLE_TO_CELL_OFFSET) / 2],
+    "table_angle": [0.0, 0.0, 90.0],
     "dof_names": [
         "shoulder_pan_joint",
         "shoulder_lift_joint",
@@ -93,8 +97,6 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
             show_viewer=self.show_render,
         )
 
-        self.scene.add_entity(gs.morphs.Plane())
-
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
                 file=generate_aegis_urdf(),
@@ -107,12 +109,18 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
 
         self.table = self.scene.add_entity(
             gs.morphs.Box(
-                size=(0.84, 0.55, 0.82),
+                size=self.cfg["table_size"],
                 pos=self.cfg["table_pos"],
                 fixed=True,
             ),
             surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
+        )
+
+        table_ground_z = self.cfg["table_pos"][2] - self.cfg["table_size"][2] / 2
+        plane_z_offset = 0.02
+        self.scene.add_entity(
+            gs.morphs.Plane(pos=[0.0, 0.0, table_ground_z + plane_z_offset])
         )
 
         if self.enable_scene_camera:
