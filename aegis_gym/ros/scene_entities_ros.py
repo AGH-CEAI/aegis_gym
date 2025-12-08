@@ -22,7 +22,7 @@ class TargetROS(Target):
         p = pose.clone().cpu().numpy()
 
         msg = Marker()
-        msg.header.frame_id = "world"
+        msg.header.frame_id = "ur_base"
         msg.header.stamp = Clock().now().to_msg()
 
         msg.ns = "target"
