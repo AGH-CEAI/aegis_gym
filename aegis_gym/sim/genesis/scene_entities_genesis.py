@@ -47,13 +47,10 @@ class BoxSimGenesis(Box):
         # This is currently based on the robot's cell definition and aegis_moveit_config/config/scene_objects.yaml parameters.
         pos = (0.0, 0.7, -0.84)
         size = (0.04, 0.04, 0.04)
-        angle_euler = (0.0, 0.0, -math.pi / 2)
-
         self._obj = self._scene.add_entity(
             gs.morphs.Box(
                 size=size,
                 pos=pos,
-                euler=angle_euler,
             ),
             surface=gs.surfaces.Default(color=(1.0, 1.0, 1.0)),
             material=gs.materials.Rigid(rho=8000.0, friction=0.6, coup_friction=0.6),
