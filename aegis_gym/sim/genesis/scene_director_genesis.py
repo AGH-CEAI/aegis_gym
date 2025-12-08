@@ -29,7 +29,7 @@ SIM_CFG = {
         0.0,
         TABLE_SIZE.z / 2 - WORKBENCH_SIZE.z,
     ],
-    "bg_plane_pos": [0.0, 0.0, WORKBENCH_SIZE.z],
+    "bg_plane_pos": [0.0, 0.0, -WORKBENCH_SIZE.z],
     "dof_names": [
         "shoulder_pan_joint",
         "shoulder_lift_joint",
