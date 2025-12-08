@@ -2,13 +2,19 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Union, Any
+from typing import Union, Any, NamedTuple
 
 from ament_index_python.packages import get_package_share_directory
 
 import gymnasium as gym
 import torch as th
 import numpy as np
+
+
+class Dimensions(NamedTuple):
+    x: float
+    y: float
+    z: float
 
 
 class TorchToNumpyWrapper(gym.ObservationWrapper, gym.ActionWrapper):

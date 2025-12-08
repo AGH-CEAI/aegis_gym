@@ -10,8 +10,12 @@ from ...scene import (
     SceneEntity,
 )
 from ...sim import generate_aegis_urdf
+from ..utils import Dimensions
 from .robot_commander_genesis import RobotCommanderSimGenesis
 from .scene_entities_genesis import EntityTypeSimGenesis
+
+TABLE_SIZE = Dimensions(0.55, 0.84, 0.82)
+WORKBENCH_SIZE = Dimensions(0.64, 1.0, 0.806)
 
 # TODO(issue#24): Include robot fingers in DOF configuration in Genesis
 SIM_CFG = {
@@ -19,7 +23,13 @@ SIM_CFG = {
     "sim_substeps": 2,
     "ctrl_freq": 20,
     "robot_pos": [0.0, 0.0, 0.0],
-    "table_pos": [0.0, 0.6, 0.41],
+    "table_size": [TABLE_SIZE.x, TABLE_SIZE.y, TABLE_SIZE.z],
+    "table_pos": [
+        TABLE_SIZE.x / 2 + WORKBENCH_SIZE.x / 2,
+        0.0,
+        TABLE_SIZE.z / 2 - WORKBENCH_SIZE.z,
+    ],
+    "bg_plane_pos": [0.0, 0.0, -WORKBENCH_SIZE.z],
     "dof_names": [
         "shoulder_pan_joint",
         "shoulder_lift_joint",
@@ -93,27 +103,27 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
             show_viewer=self.show_render,
         )
 
-        self.scene.add_entity(gs.morphs.Plane())
-
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
                 file=generate_aegis_urdf(),
                 fixed=True,
                 pos=self.cfg["robot_pos"],
-                links_to_keep=["ur_base", "robotiq_hande_end"],
+                links_to_keep=["world", "robotiq_hande_end"],
             ),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
 
         self.table = self.scene.add_entity(
             gs.morphs.Box(
-                size=(0.84, 0.55, 0.82),
+                size=self.cfg["table_size"],
                 pos=self.cfg["table_pos"],
                 fixed=True,
             ),
             surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
+
+        self.scene.add_entity(gs.morphs.Plane(pos=self.cfg["bg_plane_pos"]))
 
         if self.enable_scene_camera:
             self.camera = self.scene.add_camera(

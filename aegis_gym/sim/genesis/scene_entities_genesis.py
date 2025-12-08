@@ -1,3 +1,4 @@
+import math
 import genesis as gs
 from genesis.engine.entities import RigidEntity
 import torch as th
@@ -13,13 +14,13 @@ class TargetSimGenesis(Target):
         self._obj: RigidEntity = None
 
     def create(self) -> None:
-        pos = (-0.1, 0.76, 0.82)
+        pos = (0.76, -0.1, 0.82)
         self._obj = self._scene.add_entity(
             gs.morphs.Cylinder(height=0.00001, radius=0.04, pos=pos, fixed=True),
             surface=gs.surfaces.Default(color=(1.0, 0.0, 0.0)),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
-        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        pose = [*pos, 1.0, 0.0, 0.0, 0.0]
         self._pose = th.tensor(pose, device=self._device)
 
     # TODO(issue #29): Verify necessity of tensor cloning
@@ -42,9 +43,10 @@ class BoxSimGenesis(Box):
         self._obj: RigidEntity = None
 
     def create(self) -> None:
-        pos = (0.0, 0.7, 0.84)
+        # TODO(issue#37) This should be parametrized (and will be in a future refactor)
+        # This is currently based on the robot's cell definition and aegis_moveit_config/config/scene_objects.yaml parameters.
+        pos = (0.0, 0.7, -0.84)
         size = (0.04, 0.04, 0.04)
-
         self._obj = self._scene.add_entity(
             gs.morphs.Box(
                 size=size,
@@ -53,7 +55,7 @@ class BoxSimGenesis(Box):
             surface=gs.surfaces.Default(color=(1.0, 1.0, 1.0)),
             material=gs.materials.Rigid(rho=8000.0, friction=0.6, coup_friction=0.6),
         )
-        pose = [*pos, 0.0, 0.0, 0.0, 1.0]
+        pose = [*pos, 1.0, 0.0, 0.0, 0.0]
         self._pose = th.tensor(pose, device=self._device)
 
     # TODO(issue #29): Verify necessity of tensor cloning

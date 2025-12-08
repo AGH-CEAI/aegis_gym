@@ -21,7 +21,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         self.robot = gs_robot
         self.motor_dofs = motor_dofs
         self.tcp_link_name = "robotiq_hande_end"
-        self.base_link_name = "ur_base"
+        self.base_link_name = "world"
 
     def get_joint_positions(self) -> th.Tensor:
         return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
@@ -73,7 +73,6 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         raise NotImplementedError
 
     # TODO(issue#33) - Change quats to Euler angles in servo
-    # TODO(issue#25): Investigate TCP frame reference discrepancy
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
@@ -83,7 +82,9 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         if target_ori is None:
             target_ori = th.tensor(
-                [0.0, 0.7071, 0.7071, 0.0],
+                # TODO(issue#25): Investigate TCP frame reference discrepancy
+                [0.0, 0.7071, 0.0, 0.7071],
+                # [1.0, 0.0, 0.0, 0.0],
                 dtype=th.float32,
                 device=self.device,
             )
