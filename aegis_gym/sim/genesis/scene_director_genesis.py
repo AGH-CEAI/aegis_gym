@@ -102,7 +102,7 @@ class SceneDirectorSimGenesis(SceneDirectorInterface):
                 file=generate_aegis_urdf(),
                 fixed=True,
                 pos=self.cfg["robot_pos"],
-                links_to_keep=["ur_base", "robotiq_hande_end"],
+                links_to_keep=["world", "robotiq_hande_end"],
             ),
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )

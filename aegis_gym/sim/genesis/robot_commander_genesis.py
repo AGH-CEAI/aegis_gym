@@ -21,7 +21,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         self.robot = gs_robot
         self.motor_dofs = motor_dofs
         self.tcp_link_name = "robotiq_hande_end"
-        self.base_link_name = "ur_base"
+        self.base_link_name = "world"
 
     def get_joint_positions(self) -> th.Tensor:
         return self.robot.get_dofs_position(self.motor_dofs).clone().detach()

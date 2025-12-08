@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-38](https://github.com/AGH-CEAI/aegis_gym/pull/38) - Changed `world` frame to the `ur_base` frame.
+- [PR-38](https://github.com/AGH-CEAI/aegis_gym/pull/38) - Changed `ur_base` frame to the `world` frame.
 - [PR-36](https://github.com/AGH-CEAI/aegis_gym/pull/36) - Changed target spawn ranges in Reacher environment.
 - [PR-31](https://github.com/AGH-CEAI/aegis_gym/pull/31) - Changed physics timesteps and substeps.
 - [PR-31](https://github.com/AGH-CEAI/aegis_gym/pull/31) - Changed robot joint PD gains in Genesis.
