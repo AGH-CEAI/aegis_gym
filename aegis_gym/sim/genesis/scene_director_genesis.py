@@ -14,16 +14,15 @@ from .robot_commander_genesis import RobotCommanderSimGenesis
 from .scene_entities_genesis import EntityTypeSimGenesis
 
 # TODO(issue#24): Include robot fingers in DOF configuration in Genesis
-TABLE_TO_CELL_OFFSET = 0.014  # m
-TABLE_SIZE = (0.55, 0.84, 0.82)  # m
+TABLE_SIZE = (0.55, 0.84, 0.82)
+WORKBENCH_SIZE = (0.64, 1.0, 0.806)
 SIM_CFG = {
     "sim_dt": 0.01,
     "sim_substeps": 2,
     "ctrl_freq": 20,
     "robot_pos": [0.0, 0.0, 0.0],
-    "table_size": [TABLE_SIZE[0], TABLE_SIZE[1], TABLE_SIZE[2] + TABLE_TO_CELL_OFFSET],
-    "table_pos": [0.6, 0.0, -(TABLE_SIZE[2] - TABLE_TO_CELL_OFFSET) / 2],
-    "table_angle": [0.0, 0.0, 90.0],
+    "table_size": [TABLE_SIZE[0], TABLE_SIZE[1], TABLE_SIZE[2]],
+    "table_pos": [TABLE_SIZE[0] / 2 + WORKBENCH_SIZE[0] / 2, 0.0, TABLE_SIZE[2] / 2 - WORKBENCH_SIZE[2]],
     "dof_names": [
         "shoulder_pan_joint",
         "shoulder_lift_joint",
