@@ -19,13 +19,18 @@ TABLE_SIZE = (0.55, 0.84, 0.82)
 WORKBENCH_SIZE = (0.64, 1.0, 0.806)
 
 
-def generate_aegis_urdf() -> Path:
+def generate_aegis_urdf(show_cell: bool) -> Path:
     pkg_share = Path(get_package_share_directory("aegis_description"))
     xacro_path = pkg_share / "urdf" / "aegis.urdf.xacro"
     _, urdf_path = tempfile.mkstemp(suffix=".urdf", prefix="aegis_urdf_", dir="/tmp")
 
+    if show_cell:
+        xacro_args = ["disable_cell_collision:=true", "disable_cell:=false"]
+    else:
+        xacro_args = ["disable_cell:=true"]
+
     urdf_with_uris = subprocess.run(
-        ["xacro", str(xacro_path)],
+        ["xacro", str(xacro_path) + xacro_args],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
@@ -60,6 +65,7 @@ class GraspEnv:
         self.image_width = env_cfg["image_resolution"][0]
         self.image_height = env_cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
+        self.show_cell = env_cfg["visualize_cell"]
         self.device = gs.device
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
@@ -95,30 +101,33 @@ class GraspEnv:
         )
 
         # == add ground ==
-        self.scene.add_entity(gs.morphs.Plane(pos=(0, 0, -0.82)))
+        plane_z = -0.82 if self.show_cell else 0.0
+        self.scene.add_entity(gs.morphs.Plane(pos=(0, 0, plane_z)))
 
         # == add robot ==
         self.robot = Manipulator(
             num_envs=self.num_envs,
             scene=self.scene,
             args=robot_cfg,
+            show_cell=self.show_cell,
             device=gs.device,
         )
 
         # == add table ==
-        self.table = self.scene.add_entity(
-            gs.morphs.Box(
-                size=TABLE_SIZE,
-                pos=(
-                    TABLE_SIZE[0] / 2 + WORKBENCH_SIZE[0] / 2,
-                    0.0,
-                    TABLE_SIZE[2] / 2 - WORKBENCH_SIZE[2],
+        if self.show_cell:
+            self.table = self.scene.add_entity(
+                gs.morphs.Box(
+                    size=TABLE_SIZE,
+                    pos=(
+                        TABLE_SIZE[0] / 2 + WORKBENCH_SIZE[0] / 2,
+                        0.0,
+                        TABLE_SIZE[2] / 2 - WORKBENCH_SIZE[2],
+                    ),
+                    fixed=True,
                 ),
-                fixed=True,
-            ),
-            surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
-            material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
-        )
+                surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
+                material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
+            )
 
         # == add object ==
         self.object = self.scene.add_entity(
@@ -430,7 +439,14 @@ class GraspEnv:
 
 ## ------------ robot ----------------
 class Manipulator:
-    def __init__(self, num_envs: int, scene: gs.Scene, args: dict, device: str = "cpu"):
+    def __init__(
+        self,
+        num_envs: int,
+        scene: gs.Scene,
+        args: dict,
+        show_cell: bool,
+        device: str = "cpu",
+    ):
         # == set members ==
         self._device = device
         self._scene = scene
@@ -440,7 +456,7 @@ class Manipulator:
         # == Genesis configurations ==
         material: gs.materials.Rigid = gs.materials.Rigid()
         morph: gs.morphs.URDF = gs.morphs.URDF(
-            file=generate_aegis_urdf(),
+            file=generate_aegis_urdf(show_cell),
             fixed=True,
             pos=(0.0, 0.0, 0.0),
             quat=(1.0, 0.0, 0.0, 0.0),
