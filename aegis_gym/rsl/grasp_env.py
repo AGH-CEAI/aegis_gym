@@ -30,7 +30,7 @@ def generate_aegis_urdf(show_cell: bool) -> Path:
         xacro_args = ["disable_cell:=true"]
 
     urdf_with_uris = subprocess.run(
-        ["xacro", str(xacro_path) + xacro_args],
+        ["xacro", str(xacro_path)] + xacro_args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
@@ -85,7 +85,9 @@ class GraspEnv:
                 enable_collision=True,
                 enable_joint_limit=True,
             ),
-            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(10))),
+            vis_options=gs.options.VisOptions(
+                rendered_envs_idx=list(range(min(env_cfg["num_envs"], 10)))
+            ),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=int(0.5 / self.ctrl_dt),
                 camera_pos=(2.0, 0.0, 2.5),
@@ -93,10 +95,9 @@ class GraspEnv:
                 camera_fov=40,
             ),
             profiling_options=gs.options.ProfilingOptions(show_FPS=False),
-            # renderer=gs.options.renderers.BatchRenderer(
-            #     use_rasterizer=env_cfg["use_rasterizer"],
-            # ),
-            renderer=None,
+            renderer=gs.options.renderers.BatchRenderer(
+                use_rasterizer=env_cfg["use_rasterizer"],
+            ),
             show_viewer=show_viewer,
         )
 
@@ -209,7 +210,9 @@ class GraspEnv:
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = torch.rand(num_reset, device=self.device) * 0.4 + 0.2  # 0.2 – 0.6
+        random_x = (
+            torch.rand(num_reset, device=self.device) * 0.22 + 0.36
+        )  # 0.36 – 0.58
         random_y = (
             torch.rand(num_reset, device=self.device) - 0.5
         ) * 0.5  # -0.25 – 0.25
@@ -304,8 +307,8 @@ class GraspEnv:
     def get_observations(self) -> tuple[torch.Tensor, dict]:
         # current end-effector pose
         ee_pos, ee_quat = (
-            self.robot.ee_quat[:, :3],
-            self.robot.ee_quat[:, 3:7],
+            self.robot.ee_pose[:, :3],
+            self.robot.ee_pose[:, 3:7],
         )
         obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
 

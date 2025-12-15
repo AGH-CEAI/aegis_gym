@@ -130,13 +130,13 @@ def get_task_cfgs():
         "action_scales": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
         "episode_length_s": 3.0,
         "ctrl_dt": 0.01,
-        "box_size": [0.08, 0.03, 0.06],
+        "box_size": [0.03, 0.08, 0.06],
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
         "use_rasterizer": False,
         "visualize_camera": False,
-        "visualize_cell": True,
+        "visualize_cell": False,
     }
     reward_scales = {
         "keypoints": 1.0,
@@ -178,7 +178,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
-    parser.add_argument("-B", "--num_envs", type=int, default=2048)
+    parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, default="rl")
     args = parser.parse_args()
