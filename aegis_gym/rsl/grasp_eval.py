@@ -1,74 +1,16 @@
 import argparse
-import re
 import pickle
-from importlib import metadata
 from pathlib import Path
 
 import torch
-
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib") != "2.2.4":
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError(
-        "Please uninstall 'rsl_rl' and install 'rsl-rl-lib==2.2.4'."
-    ) from e
-from rsl_rl.runners import OnPolicyRunner
-
 import genesis as gs
 
+from utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
 from grasp_env import GraspEnv
-from behavior_cloning import BehaviorCloning
-
-
-def load_rl_policy(env, train_cfg, log_dir):
-    """Load reinforcement learning policy."""
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
-
-    # Find the latest checkpoint
-    checkpoint_files = [
-        f for f in log_dir.iterdir() if re.match(r"model_\d+\.pt", f.name)
-    ]
-    if not checkpoint_files:
-        raise FileNotFoundError(f"No checkpoint files found in {log_dir}")
-
-    try:
-        *_, last_ckpt = sorted(checkpoint_files)
-    except ValueError as e:
-        raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
-    runner.load(last_ckpt)
-    print(f"Loaded RL checkpoint from {last_ckpt}")
-
-    return runner.get_inference_policy(device=gs.device)
-
-
-def load_bc_policy(env, bc_cfg, log_dir):
-    """Load behavior cloning policy."""
-    # Create behavior cloning instance
-    bc_runner = BehaviorCloning(env, bc_cfg, None, device=gs.device)
-
-    # Find the latest checkpoint
-    checkpoint_files = [
-        f for f in log_dir.iterdir() if re.match(r"checkpoint_\d+\.pt", f.name)
-    ]
-    if not checkpoint_files:
-        raise FileNotFoundError(f"No checkpoint files found in {log_dir}")
-
-    try:
-        *_, last_ckpt = sorted(checkpoint_files)
-    except ValueError as e:
-        raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
-    print(f"Loaded BC checkpoint from {last_ckpt}")
-    bc_runner.load(last_ckpt)
-
-    return bc_runner._policy
 
 
 def main():
+    check_rsl_rl_version()
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument(
@@ -89,6 +31,7 @@ def main():
         default=None,
         help="Path to save the video file (default: auto-generated)",
     )
+    parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
     args = parser.parse_args()
 
     # Set PyTorch default dtype to float32 for better performance
@@ -125,7 +68,7 @@ def main():
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
-        show_viewer=True,
+        show_viewer=not args.no_vis,
     )
 
     # Load the appropriate policy based on model type
@@ -176,15 +119,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-"""
-# evaluation
-# For reinforcement learning model:
-python3 grasp_eval.py --stage=rl
-
-# For behavior cloning model:
-python3 grasp_eval.py --stage=bc
-
-# With video recording:
-python3 grasp_eval.py --stage=bc --record
-"""
