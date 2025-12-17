@@ -1,26 +1,12 @@
 import argparse
-import re
 import pickle
-from importlib import metadata
 from pathlib import Path
 
-try:
-    try:
-        if metadata.version("rsl-rl"):
-            raise ImportError
-    except metadata.PackageNotFoundError:
-        if metadata.version("rsl-rl-lib") != "2.2.4":
-            raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError(
-        "Please uninstall 'rsl_rl' and install 'rsl-rl-lib==2.2.4'."
-    ) from e
-
-from rsl_rl.runners import OnPolicyRunner
-from behavior_cloning import BehaviorCloning
-
 import genesis as gs
+from rsl_rl.runners import OnPolicyRunner
 
+from behavior_cloning import BehaviorCloning
+from utils import check_rsl_rl_version, load_teacher_policy
 from grasp_env import GraspEnv
 
 
@@ -131,12 +117,14 @@ def get_task_cfgs():
         "episode_length_s": 3.0,
         "ctrl_dt": 0.01,
         "box_size": [0.03, 0.08, 0.06],
+        "table_size": [0.55, 0.84, 0.82],
+        "workbench_size": [0.64, 1.0, 0.806],
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
         "use_rasterizer": False,
         "visualize_camera": False,
-        "visualize_cell": False,
+        "visualize_cell": True,
     }
     reward_scales = {
         "keypoints": 1.0,
@@ -155,26 +143,8 @@ def get_task_cfgs():
     return env_cfg, reward_scales, robot_cfg
 
 
-def load_teacher_policy(env, rl_train_cfg, exp_name):
-    # load teacher policy
-    log_dir = Path("logs") / f"{exp_name + '_' + 'rl'}"
-    assert log_dir.exists(), f"Log directory {log_dir} does not exist"
-    checkpoint_files = [
-        f for f in log_dir.iterdir() if re.match(r"model_\d+\.pt", f.name)
-    ]
-    try:
-        *_, last_ckpt = sorted(checkpoint_files)
-    except ValueError as e:
-        raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
-    assert last_ckpt is not None, f"No checkpoint found in {log_dir}"
-    runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=gs.device)
-    runner.load(last_ckpt)
-    print(f"Loaded teacher policy from checkpoint {last_ckpt} from {log_dir}")
-    teacher_policy = runner.get_inference_policy(device=gs.device)
-    return teacher_policy
-
-
 def main():
+    check_rsl_rl_version()
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
@@ -222,13 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-"""
-# training
-
-# to train the RL policy
-python3 grasp_train.py --stage=rl
-
-# to train the BC policy (requires RL policy to be trained first)
-python3 grasp_train.py --stage=bc
-"""
