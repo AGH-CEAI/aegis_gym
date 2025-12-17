@@ -1,53 +1,15 @@
-import torch
 import math
 from typing import Literal
-from pathlib import Path
-import re
-import subprocess
-import tempfile
+import torch
 
-from ament_index_python.packages import get_package_share_directory
 import genesis as gs
 from genesis.utils.geom import (
-    xyz_to_quat,
-    transform_quat_by_quat,
     transform_by_quat,
+    transform_quat_by_quat,
+    xyz_to_quat,
 )
 
-
-TABLE_SIZE = (0.55, 0.84, 0.82)
-WORKBENCH_SIZE = (0.64, 1.0, 0.806)
-
-
-def generate_aegis_urdf(show_cell: bool) -> Path:
-    pkg_share = Path(get_package_share_directory("aegis_description"))
-    xacro_path = pkg_share / "urdf" / "aegis.urdf.xacro"
-    _, urdf_path = tempfile.mkstemp(suffix=".urdf", prefix="aegis_urdf_", dir="/tmp")
-
-    if show_cell:
-        xacro_args = ["disable_cell_collision:=true", "disable_cell:=false"]
-    else:
-        xacro_args = ["disable_cell:=true"]
-
-    urdf_with_uris = subprocess.run(
-        ["xacro", str(xacro_path)] + xacro_args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=True,
-    ).stdout
-    Path(urdf_path).write_bytes(_resolve_packages_paths(urdf_with_uris))
-
-    return Path(urdf_path)
-
-
-def _resolve_packages_paths(urdf: bytes) -> bytes:
-    urdf_str = urdf.decode("utf-8")
-    pattern = r"package://([a-zA-Z0-9_]+)/"
-    matches = re.findall(pattern, urdf_str)
-    for match in matches:
-        package_path = get_package_share_directory(match)
-        urdf_str = urdf_str.replace(f"package://{match}/", f"{package_path}/")
-    return urdf_str.encode("utf-8")
+from utils import generate_aegis_urdf
 
 
 class GraspEnv:
@@ -118,11 +80,11 @@ class GraspEnv:
         if self.show_cell:
             self.table = self.scene.add_entity(
                 gs.morphs.Box(
-                    size=TABLE_SIZE,
+                    size=env_cfg["table_size"],
                     pos=(
-                        TABLE_SIZE[0] / 2 + WORKBENCH_SIZE[0] / 2,
+                        env_cfg["table_size"][0] / 2 + env_cfg["workbench_size"][0] / 2,
                         0.0,
-                        TABLE_SIZE[2] / 2 - WORKBENCH_SIZE[2],
+                        env_cfg["table_size"][2] / 2 - env_cfg["workbench_size"][2],
                     ),
                     fixed=True,
                 ),
@@ -334,9 +296,9 @@ class GraspEnv:
             rgb=True, depth=False, segmentation=False, normal=False
         )
 
-        # convert to proper format
-        rgb_left = rgb_left.permute(0, 3, 1, 2)[:, :3]  # shape (B, 3, H, W)
-        rgb_right = rgb_right.permute(0, 3, 1, 2)[:, :3]  # shape (B, 3, H, W)
+        # convert to the NCHW format
+        rgb_left = rgb_left.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
+        rgb_right = rgb_right.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
 
         # normalize if requested
         if normalize:
@@ -376,9 +338,9 @@ class GraspEnv:
 
     def _to_world_frame(
         self,
-        position: torch.Tensor,  # [B, 3]
-        quaternion: torch.Tensor,  # [B, 4]
-        keypoints_offset: torch.Tensor,  # [B, 7, 3]
+        position: torch.Tensor,  # [N, 3]
+        quaternion: torch.Tensor,  # [N, 4]
+        keypoints_offset: torch.Tensor,  # [N, 7, 3]
     ) -> torch.Tensor:
         world = torch.zeros_like(keypoints_offset)
         for k in range(keypoints_offset.shape[1]):
