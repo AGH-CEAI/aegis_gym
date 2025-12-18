@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 from importlib import metadata
 from pathlib import Path
+from typing import Any, Callable
 
 import genesis as gs
 from ament_index_python.packages import get_package_share_directory
@@ -42,7 +43,7 @@ def _resolve_packages_paths(urdf: bytes) -> bytes:
     return urdf_str.encode("utf-8")
 
 
-def check_rsl_rl_version():
+def check_rsl_rl_version() -> None:
     """Ensure correct RSL-RL library is installed."""
     try:
         try:
@@ -57,7 +58,7 @@ def check_rsl_rl_version():
         ) from e
 
 
-def load_teacher_policy(env, rl_train_cfg, exp_name):
+def load_teacher_policy(env: Any, rl_train_cfg: dict, exp_name: str) -> Callable:
     """Load teacher policy."""
     log_dir = Path("logs") / f"{exp_name + '_' + 'rl'}"
     assert log_dir.exists(), f"Log directory {log_dir} does not exist"
@@ -76,7 +77,7 @@ def load_teacher_policy(env, rl_train_cfg, exp_name):
     return teacher_policy
 
 
-def load_rl_policy(env, train_cfg, log_dir):
+def load_rl_policy(env: Any, train_cfg: dict, log_dir: Path) -> Callable:
     """Load reinforcement learning policy."""
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
 
@@ -97,7 +98,7 @@ def load_rl_policy(env, train_cfg, log_dir):
     return runner.get_inference_policy(device=gs.device)
 
 
-def load_bc_policy(env, bc_cfg, log_dir):
+def load_bc_policy(env: Any, bc_cfg: dict, log_dir: Path) -> Callable:
     """Load behavior cloning policy."""
     # Create behavior cloning instance
     bc_runner = BehaviorCloning(env, bc_cfg, None, device=gs.device)
