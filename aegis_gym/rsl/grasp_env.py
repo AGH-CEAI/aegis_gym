@@ -31,11 +31,19 @@ class GraspEnv:
         self.ctrl_dt = env_cfg["ctrl_dt"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
-        # configs
         self.env_cfg = env_cfg
         self.reward_scales = reward_cfg
         self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
 
+        self._init_scene(env_cfg, robot_cfg, show_viewer)
+        self.scene.build(n_envs=env_cfg["num_envs"])
+
+        self.robot.set_pd_gains()
+        self._init_reward_functions()
+        self._init_buffers()
+        self.reset()
+
+    def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.ctrl_dt, substeps=2),
@@ -130,12 +138,7 @@ class GraspEnv:
             GUI=self.env_cfg["visualize_camera"],
         )
 
-        # build
-        self.scene.build(n_envs=env_cfg["num_envs"])
-        # set pd gains
-        self.robot.set_pd_gains()
-
-        # prepare reward functions
+    def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
             self.reward_scales[name] *= self.ctrl_dt
@@ -147,9 +150,6 @@ class GraspEnv:
         self.keypoints_offset = self.get_keypoint_offsets(
             batch_size=self.num_envs, device=self.device, unit_length=0.5
         )
-        # == init buffers ==
-        self._init_buffers()
-        self.reset()
 
     def _init_buffers(self) -> None:
         self.episode_length_buf = torch.zeros(
@@ -225,7 +225,7 @@ class GraspEnv:
         self.episode_length_buf += 1
 
         # apply action based on task
-        actions = self.rescale_action(actions)
+        actions = actions * self.action_scales
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
@@ -281,10 +281,6 @@ class GraspEnv:
         obs_tensor = torch.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return obs_tensor, self.extras
-
-    def rescale_action(self, action: torch.Tensor) -> torch.Tensor:
-        rescaled_action = action * self.action_scales
-        return rescaled_action
 
     def get_stereo_rgb_images(self, normalize: bool = True) -> torch.Tensor:
         rgb_left, _, _, _ = self.left_cam.render(
