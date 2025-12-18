@@ -1,4 +1,3 @@
-import math
 import genesis as gs
 from genesis.engine.entities import RigidEntity
 import torch as th
