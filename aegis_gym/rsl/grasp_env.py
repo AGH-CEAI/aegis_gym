@@ -247,6 +247,7 @@ class GraspEnv:
 
         return obs, reward, self.reset_buf, self.extras
 
+    # currently not in use
     def get_privileged_observations(self) -> None:
         return None
 
