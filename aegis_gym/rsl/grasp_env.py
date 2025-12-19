@@ -1,6 +1,7 @@
 import math
 import torch
 
+import numpy as np
 import genesis as gs
 from genesis.utils.geom import (
     transform_by_quat,
@@ -26,6 +27,7 @@ class GraspEnv:
         self.image_height = env_cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.show_cell = env_cfg["visualize_cell"]
+        self.camera_setup = env_cfg["camera_setup"]
         self.device = gs.device
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
@@ -39,6 +41,8 @@ class GraspEnv:
         self.scene.build(n_envs=env_cfg["num_envs"])
 
         self.robot.set_pd_gains()
+        self._attach_cameras()
+
         self._init_reward_functions()
         self._init_buffers()
         self.reset()
@@ -112,8 +116,19 @@ class GraspEnv:
                 ),
             ),
         )
+
+        # == add cameras ==
+        match self.camera_setup:
+            case "default":
+                self._add_camera(name="scene_cam", fov=40, res=(800, 400))
+                self._add_camera(name="tool_left_cam", fov=30, res=(800, 400))
+                self._add_camera(name="tool_right_cam", fov=30, res=(800, 400))
+            case "scene_dual":
+                self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
+                self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
+
         if self.env_cfg["visualize_camera"]:
-            self.vis_cam = self.scene.add_camera(
+            self.record_cam = self.scene.add_camera(
                 res=(1280, 720),
                 pos=(1.5, 0.0, 0.2),
                 lookat=(0.0, 0.0, 0.2),
@@ -122,21 +137,61 @@ class GraspEnv:
                 debug=True,
             )
 
-        # == add stereo camera ==
-        self.left_cam = self.scene.add_camera(
-            res=(self.image_width, self.image_height),
-            pos=(1.25, 0.3, 0.3),
-            lookat=(0.0, 0.0, 0.0),
-            fov=60,
-            GUI=self.env_cfg["visualize_camera"],
+    def _add_camera(
+        self,
+        name: str,
+        pos: tuple = (0.0, 0.0, 0.0),
+        fov: float = 40,
+        lookat: tuple = (0.0, 0.0, 0.0),
+        res: tuple = None,
+    ):
+        if res is None:
+            res = (self.image_width, self.image_height)
+        setattr(
+            self,
+            name,
+            self.scene.add_camera(
+                res=res,
+                pos=pos,
+                lookat=lookat,
+                fov=fov,
+                GUI=self.env_cfg["visualize_camera"],
+            ),
         )
-        self.right_cam = self.scene.add_camera(
-            res=(self.image_width, self.image_height),
-            pos=(1.25, -0.3, 0.3),
-            lookat=(0.0, 0.0, 0.0),
-            fov=60,
-            GUI=self.env_cfg["visualize_camera"],
+
+    def _attach_cameras(self):
+        if self.camera_setup != "default":
+            return
+
+        scene_offset_T = np.array(
+            [
+                [0.0, 0.0, -1.0, 0.0],
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
         )
+        tool_offset_T = np.array(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, -0.03],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+
+        cams_to_attach = [
+            ("scene_cam", "cam_scene_rgb_camera_frame", scene_offset_T),
+            ("tool_left_cam", "cam_tool_left", tool_offset_T),
+            ("tool_right_cam", "cam_tool_right", tool_offset_T),
+        ]
+
+        for cam_name, link_name, offset in cams_to_attach:
+            cam = getattr(self, cam_name)
+            cam.attach(self.robot._robot_entity.get_link(link_name), offset)
+            cam.move_to_attach()
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -284,10 +339,10 @@ class GraspEnv:
         return obs_tensor, self.extras
 
     def get_stereo_rgb_images(self, normalize: bool = True) -> torch.Tensor:
-        rgb_left, _, _, _ = self.left_cam.render(
+        rgb_left, _, _, _ = self.scene_left_cam.render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
-        rgb_right, _, _, _ = self.right_cam.render(
+        rgb_right, _, _, _ = self.scene_right_cam.render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
 
@@ -303,6 +358,28 @@ class GraspEnv:
         # concatenate left and right rgb images along channel dimension
         stereo_rgb = torch.cat([rgb_left, rgb_right], dim=1)
         return stereo_rgb
+
+    def get_observations_vis(self, normalize: bool = True) -> torch.Tensor:
+        match self.camera_setup:
+            case "default":
+                cams = [self.scene_cam, self.tool_left_cam, self.tool_right_cam]
+            case "scene_dual":
+                cams = [self.scene_left_cam, self.scene_right_cam]
+            case _:
+                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+
+        rgb_list = []
+        for cam in cams:
+            rgb, _, _, _ = cam.render(
+                rgb=True, depth=False, segmentation=False, normal=False
+            )
+            rgb = rgb.permute(0, 3, 1, 2)[:, :3]
+            if normalize:
+                rgb = torch.clamp(rgb, 0.0, 255.0) / 255.0
+            rgb_list.append(rgb)
+
+        rgb_multi = torch.cat(rgb_list, dim=1)
+        return rgb_multi
 
     def _reward_keypoints(self) -> torch.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]

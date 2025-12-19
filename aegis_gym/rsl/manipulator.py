@@ -32,7 +32,13 @@ class Manipulator:
             fixed=True,
             pos=(0.0, 0.0, 0.0),
             quat=(1.0, 0.0, 0.0, 0.0),
-            links_to_keep=["ur_base", "robotiq_hande_end"],
+            links_to_keep=[
+                "ur_base",
+                "robotiq_hande_end",
+                "cam_tool_right",
+                "cam_tool_left",
+                "cam_scene_rgb_camera_frame",
+            ],
         )
         self._robot_entity: gs.Entity = scene.add_entity(material=material, morph=morph)
 
