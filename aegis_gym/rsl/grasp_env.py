@@ -120,9 +120,9 @@ class GraspEnv:
         # == add cameras ==
         match self.camera_setup:
             case "default":
-                self._add_camera(name="scene_cam", fov=40, res=(800, 400))
-                self._add_camera(name="tool_left_cam", fov=30, res=(800, 400))
-                self._add_camera(name="tool_right_cam", fov=30, res=(800, 400))
+                self._add_camera(name="scene_cam", fov=40)
+                self._add_camera(name="tool_left_cam", fov=30)
+                self._add_camera(name="tool_right_cam", fov=30)
             case "scene_dual":
                 self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
                 self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
