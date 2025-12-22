@@ -88,17 +88,17 @@ def main():
             # env.vis_cam.start_recording()
             # env.left_cam.start_recording()
             # env.right_cam.start_recording()
-            if env.cfg["camera_setup"] == "default":
+            if env_cfg["camera_setup"] == "default":
                 env.record_cam.start_recording()
                 env.scene_cam.start_recording()
                 env.tool_left_cam.start_recording()
                 env.tool_right_cam.start_recording()
-            elif env.cfg["camera_setup"] == "scene_dual":
+            elif env_cfg["camera_setup"] == "scene_dual":
                 env.record_cam.start_recording()
                 env.scene_left_cam.start_recording()
                 env.scene_right_cam.start_recording()
             else:
-                raise RuntimeError(f"Unknown camera_setup: {env.cfg['camera_setup']}")
+                raise RuntimeError(f"Unknown camera_setup: {env_cfg['camera_setup']}")
         for step in range(max_sim_step):
             if args.stage == "rl":
                 actions = policy(obs)
@@ -111,7 +111,7 @@ def main():
 
                 # Collect frame for video recording
                 if args.record:
-                    env.vis_cam.render()  # render the visualization camera
+                    env.record_cam.render()  # render the visualization camera
 
             obs, rews, dones, infos = env.step(actions)
         env.grasp_and_lift_demo()
@@ -126,7 +126,7 @@ def main():
             # env.right_cam.stop_recording(
             #     save_to_filename="right_cam.mp4", fps=env_cfg["max_visualize_FPS"]
             # )
-            if env.cfg["camera_setup"] == "default":
+            if env_cfg["camera_setup"] == "default":
                 env.record_cam.stop_recording(
                     save_to_filename=args.video_path,
                     fps=env_cfg["max_visualize_FPS"],
@@ -139,7 +139,7 @@ def main():
                     save_to_filename="tool_right_cam.mp4",
                     fps=env_cfg["max_visualize_FPS"],
                 )
-            elif env.cfg["camera_setup"] == "scene_dual":
+            elif env_cfg["camera_setup"] == "scene_dual":
                 env.record_cam.stop_recording(
                     save_to_filename=args.video_path,
                     fps=env_cfg["max_visualize_FPS"],
