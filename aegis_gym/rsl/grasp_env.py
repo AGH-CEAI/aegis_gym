@@ -137,11 +137,12 @@ class GraspEnv:
                 debug=True,
             )
 
+    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     def _add_camera(
         self,
         name: str,
         pos: tuple = (0.0, 0.0, 0.0),
-        fov: float = 40,
+        fov: float = 40,  # deg
         lookat: tuple = (0.0, 0.0, 0.0),
         res: tuple = None,
     ):
