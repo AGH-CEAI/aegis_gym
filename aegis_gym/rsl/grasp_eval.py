@@ -86,9 +86,6 @@ def main():
     with torch.no_grad():
         if args.record:
             print("Recording video...")
-            # env.vis_cam.start_recording()
-            # env.left_cam.start_recording()
-            # env.right_cam.start_recording()
             if env.cfg["camera_setup"] == "default":
                 env.record_cam.start_recording()
                 env.scene_cam.start_recording()
@@ -119,15 +116,6 @@ def main():
         env.grasp_and_lift_demo()
         if args.record:
             print("Stopping video recording...")
-            # env.vis_cam.stop_recording(
-            #     save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"]
-            # )
-            # env.left_cam.stop_recording(
-            #     save_to_filename="left_cam.mp4", fps=env_cfg["max_visualize_FPS"]
-            # )
-            # env.right_cam.stop_recording(
-            #     save_to_filename="right_cam.mp4", fps=env_cfg["max_visualize_FPS"]
-            # )
             if env.cfg["camera_setup"] == "default":
                 env.record_cam.stop_recording(
                     save_to_filename=args.video_path,
