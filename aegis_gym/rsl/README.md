@@ -31,3 +31,9 @@ python3 grasp_eval.py --stage=bc
 ```bash
 python3 grasp_eval.py --stage=bc --record
 ```
+
+## Camera Setups
+The environment supports configurable camera layouts, allowing different perception setups to be selected at initialization time.
+Currently, two camera setups are available:
+* **default** – matches the real robot setup (without the front tool camera): one static top-down scene camera plus two eye-in-hand cameras moving with the end-effector
+* **dual_scene** – legacy configuration: two static scene cameras forming a stereo view from the front
