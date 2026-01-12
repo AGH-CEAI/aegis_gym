@@ -20,8 +20,15 @@ class BehaviorCloning:
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
-        # Stereo RGB: 6 channels (3 left + 3 right)
-        rgb_shape = (6, env.image_height, env.image_width)
+        if env.camera_setup == "default":
+            num_cameras = 3
+        elif env.camera_setup == "scene_dual":
+            num_cameras = 2
+        else:
+            raise ValueError(f"Unknown camera_setup: {env.camera_setup}")
+
+        cfg["policy"]["num_cameras"] = num_cameras
+        rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 
         # Multi-task policy with action and pose heads
@@ -74,21 +81,17 @@ class BehaviorCloning:
             for batch in generator:
                 # Forward pass for both action and pose prediction
                 pred_action = self._policy(batch["rgb_obs"], batch["robot_pose"])
-                pred_left_pose, pred_right_pose = self._policy.predict_pose(
-                    batch["rgb_obs"]
-                )
+                pred_poses = self._policy.predict_pose(batch["rgb_obs"])
 
                 # Compute action prediction loss
                 action_loss = F.mse_loss(pred_action, batch["actions"])
 
                 # Compute pose estimation loss (position + orientation)
-                pose_left_loss = self._compute_pose_loss(
-                    pred_left_pose, batch["object_poses"]
-                )
-                pose_right_loss = self._compute_pose_loss(
-                    pred_right_pose, batch["object_poses"]
-                )
-                pose_loss = pose_left_loss + pose_right_loss
+                pose_loss = 0.0
+                for pred_pose in pred_poses:
+                    pose_loss += self._compute_pose_loss(
+                        pred_pose, batch["object_poses"]
+                    )
 
                 # Combined loss with weights
                 total_loss = action_loss + pose_loss
@@ -185,8 +188,8 @@ class BehaviorCloning:
         obs, _ = self._env.get_observations()
         with torch.inference_mode():
             for _ in range(self._num_steps_per_env):
-                # Get stereo rgb images
-                rgb_obs = self._env.get_stereo_rgb_images(normalize=True)
+                # rgb_obs = self._env.get_stereo_rgb_images(normalize=True)
+                rgb_obs = self._env.get_observations_vis(normalize=True)
 
                 # Get teacher action
                 teacher_action = self._teacher(obs).detach()
@@ -353,11 +356,10 @@ class Policy(nn.Module):
 
     def __init__(self, config: dict, action_dim: int):
         super().__init__()
+        self.num_cameras = config["num_cameras"]
 
-        # Shared encoder for both left and right cameras
         self.shared_encoder = self._build_cnn(config["vision_encoder"])
 
-        # Feature fusion layer to combine stereo features
         vision_encoder_conv_out_channels = config["vision_encoder"]["conv_layers"][-1][
             "out_channels"
         ]
@@ -365,8 +367,8 @@ class Policy(nn.Module):
 
         self.feature_fusion = nn.Sequential(
             nn.Linear(
-                vision_encoder_output_dim * 2, vision_encoder_output_dim
-            ),  # 2 cameras
+                vision_encoder_output_dim * self.num_cameras, vision_encoder_output_dim
+            ),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
@@ -429,25 +431,25 @@ class Policy(nn.Module):
         layers.append(nn.Linear(mlp_input_dim, config["output_dim"]))
         return nn.Sequential(*layers)
 
-    def get_features(self, rgb_obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # Split stereo rgb images
-        left_rgb = rgb_obs[:, 0:3]  # First 3 channels (RGB)
-        right_rgb = rgb_obs[:, 3:6]  # Last 3 channels (RGB)
+    def get_features(self, rgb_obs: torch.Tensor) -> list[torch.Tensor]:
+        # Split rgb images
+        camera_features = []
+        for i in range(self.num_cameras):
+            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
+            cam_features = self.shared_encoder(cam_rgb).flatten(start_dim=1)
+            camera_features.append(cam_features)
 
-        # Use shared encoder for both images
-        left_features = self.shared_encoder(left_rgb).flatten(start_dim=1)
-        right_features = self.shared_encoder(right_rgb).flatten(start_dim=1)
-        return left_features, right_features
+        return camera_features
 
     def forward(
         self, rgb_obs: torch.Tensor, state_obs: torch.Tensor | None = None
     ) -> dict:
         """Forward pass with shared stereo encoder for rgb images."""
         # Get features
-        left_features, right_features = self.get_features(rgb_obs)
+        features_list = self.get_features(rgb_obs)
 
         # Concatenate features (much more efficient than concatenating raw images)
-        combined_features = torch.cat([left_features, right_features], dim=-1)
+        combined_features = torch.cat(features_list, dim=-1)
         # Feature fusion
         fused_features = self.feature_fusion(combined_features)
 
@@ -460,9 +462,8 @@ class Policy(nn.Module):
         # Predict actions
         return self.mlp(final_features)
 
-    def predict_pose(self, rgb_obs: torch.Tensor) -> torch.Tensor:
+    def predict_pose(self, rgb_obs: torch.Tensor) -> list[torch.Tensor]:
         """Predict pose from rgb images and state observations."""
-        left_features, right_features = self.get_features(rgb_obs)
-        left_pose = self.pose_mlp(left_features)
-        right_pose = self.pose_mlp(right_features)
-        return left_pose, right_pose
+        features_list = self.get_features(rgb_obs)
+        poses = [self.pose_mlp(features) for features in features_list]
+        return poses
