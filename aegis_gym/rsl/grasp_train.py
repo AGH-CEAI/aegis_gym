@@ -125,6 +125,7 @@ def get_task_cfgs():
         "use_rasterizer": False,
         "visualize_camera": False,
         "visualize_cell": True,
+        "camera_setup": "default",  # options: default, scene_dual
     }
     reward_scales = {
         "keypoints": 1.0,

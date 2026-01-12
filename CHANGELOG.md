@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-40](https://github.com/AGH-CEAI/pull/40) - Added scene and tool cameras setup for Grasp environment.
 - [PR-39](https://github.com/AGH-CEAI/pull/39) - Added Grasp environment compatible with RSL-RL.
 - [PR-32](https://github.com/AGH-CEAI/pull/32) - `ROSRoboticCommander`: Added servoing (twist/jog) with MoveIt2 Servo.
 - [PR-31](https://github.com/AGH-CEAI/pull/31) - Introduced control frequency parameter to decouple policy updates from physics steps in Genesis.
