@@ -188,7 +188,6 @@ class BehaviorCloning:
         obs, _ = self._env.get_observations()
         with torch.inference_mode():
             for _ in range(self._num_steps_per_env):
-                # rgb_obs = self._env.get_stereo_rgb_images(normalize=True)
                 rgb_obs = self._env.get_observations_vis(normalize=True)
 
                 # Get teacher action
@@ -462,8 +461,8 @@ class Policy(nn.Module):
         # Predict actions
         return self.mlp(final_features)
 
-    def predict_pose(self, rgb_obs: torch.Tensor) -> list[torch.Tensor]:
+    def predict_pose(self, rgb_obs: torch.Tensor) -> tuple[torch.Tensor]:
         """Predict pose from rgb images and state observations."""
         features_list = self.get_features(rgb_obs)
-        poses = [self.pose_mlp(features) for features in features_list]
+        poses = tuple(self.pose_mlp(features) for features in features_list)
         return poses
