@@ -10,48 +10,70 @@ from utils import check_rsl_rl_version, load_teacher_policy
 from grasp_env import GraspEnv
 
 
-def get_train_cfg(exp_name, max_iterations):
+def get_train_cfg(exp_name: str, max_iterations: int) -> tuple[dict, dict]:
     # stage 1: privileged reinforcement learning
     rl_cfg_dict = {
+        "class_name": "OnPolicyRunner",
+        # General
+        "num_steps_per_env": 24,  # Number of steps per environment per iteration
+        "max_iterations": max_iterations,  # Number of policy updates
+        "seed": 1,
+        # Observations
+        "obs_groups": {
+            "policy": ["policy"],
+            "critic": ["policy"],
+        },  # Maps observation groups to sets. See `vec_env.py` for more information
+        # Logging parameters
+        "save_interval": 50,  # Check for potential saves every `save_interval` iterations
+        "experiment_name": exp_name,
+        "run_name": "",
+        # Logger
+        "logger": "tensorboard",  # tensorboard, neptune, wandb
+        "neptune_project": "aegis_grasp",
+        "wandb_project": "aegis_grasp",
         "algorithm": {
             "class_name": "PPO",
+            # Training
+            "learning_rate": 0.0003,
+            "num_learning_epochs": 5,
+            "num_mini_batches": 4,
+            "schedule": "adaptive",  # adaptive, fixed
+            # Value function
+            "value_loss_coef": 1.0,
             "clip_param": 0.2,
+            "use_clipped_value_loss": True,
+            # Surrogate loss
             "desired_kl": 0.01,
             "entropy_coef": 0.0,
             "gamma": 0.99,
             "lam": 0.95,
-            "learning_rate": 0.0003,
             "max_grad_norm": 1.0,
-            "num_learning_epochs": 5,
-            "num_mini_batches": 4,
-            "schedule": "adaptive",
-            "use_clipped_value_loss": True,
-            "value_loss_coef": 1.0,
+            # Miscellaneous
+            "normalize_advantage_per_mini_batch": False,
+            # Random network distilation
+            "rnd_cfg": None,
+            # Symmetry augmentation
+            "symmetry_cfg": None,
         },
         "init_member_classes": {},
         "policy": {
-            "activation": "relu",
+            "class_name": "ActorCritic",
+            "activation": "elu",  # original: "relu"
+            "actor_obs_normalization": False,
+            "critic_obs_normalization": False,
+            "init_noise_std": 1.0,
             "actor_hidden_dims": [256, 256, 128],
             "critic_hidden_dims": [256, 256, 128],
-            "init_noise_std": 1.0,
-            "class_name": "ActorCritic",
+            "noise_std_type": "scalar",  # 'scalar' or 'log'
+            "state_dependent_std": False,
         },
-        "runner": {
-            "checkpoint": -1,
-            "experiment_name": exp_name,
-            "load_run": -1,
-            "log_interval": 1,
-            "max_iterations": max_iterations,
-            "record_interval": -1,
-            "resume": False,
-            "resume_path": None,
-            "run_name": "",
-        },
-        "runner_class_name": "OnPolicyRunner",
-        "num_steps_per_env": 24,
-        "save_interval": 100,
-        "empirical_normalization": None,
-        "seed": 1,
+        # LEGACY
+        "checkpoint": -1,
+        "load_run": -1,
+        "log_interval": 1,
+        "record_interval": -1,
+        "resume": False,
+        "resume_path": None,
     }
 
     # stage 2: vision-based behavior cloning
