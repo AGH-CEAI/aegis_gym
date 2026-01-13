@@ -71,7 +71,9 @@ class GraspEnv(VecEnv):
     def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         # == setup scene ==
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.ctrl_dt, substeps=self.sim_substeps),
+            sim_options=gs.options.SimOptions(
+                dt=self.ctrl_dt, substeps=self.sim_substeps
+            ),
             rigid_options=gs.options.RigidOptions(
                 dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
@@ -320,7 +322,7 @@ class GraspEnv(VecEnv):
         # get observations and fill extras
         obs = self.get_observations()
         dones = self.reset_buf
-        return TensorDict(obs, batch_size=[self.num_envs]), reward, dones, self.extras
+        return obs, reward, dones, self.extras
 
     # currently not in use
     def get_privileged_observations(self) -> None:
