@@ -67,13 +67,6 @@ def get_train_cfg(exp_name: str, max_iterations: int) -> tuple[dict, dict]:
             "noise_std_type": "scalar",  # 'scalar' or 'log'
             "state_dependent_std": False,
         },
-        # LEGACY
-        "checkpoint": -1,
-        "load_run": -1,
-        "log_interval": 1,
-        "record_interval": -1,
-        "resume": False,
-        "resume_path": None,
     }
 
     # stage 2: vision-based behavior cloning
