@@ -36,6 +36,7 @@ class GraspEnv(VecEnv):
         self.device = gs.device
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
+        self.sim_substeps = env_cfg["sim_substeps"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
         self.env_cfg = env_cfg
@@ -70,7 +71,7 @@ class GraspEnv(VecEnv):
     def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         # == setup scene ==
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.ctrl_dt, substeps=2),
+            sim_options=gs.options.SimOptions(dt=self.ctrl_dt, substeps=self.sim_substeps),
             rigid_options=gs.options.RigidOptions(
                 dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
