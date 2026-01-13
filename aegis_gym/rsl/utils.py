@@ -50,11 +50,11 @@ def check_rsl_rl_version() -> None:
             if metadata.version("rsl-rl"):
                 raise ImportError
         except metadata.PackageNotFoundError:
-            if metadata.version("rsl-rl-lib") != "2.2.4":
+            if metadata.version("rsl-rl-lib") != "3.3.0":
                 raise ImportError
     except (metadata.PackageNotFoundError, ImportError) as e:
         raise ImportError(
-            "Please uninstall 'rsl_rl' and install 'rsl-rl-lib==2.2.4'."
+            "Please uninstall 'rsl_rl' and install 'rsl-rl-lib==3.3.0'."
         ) from e
 
 
