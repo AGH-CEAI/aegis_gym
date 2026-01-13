@@ -12,7 +12,7 @@ def get_rl_cfg(exp_name: str, max_iterations: int) -> dict:
             "critic": ["policy"],
         },  # Maps observation groups to sets. See `vec_env.py` for more information
         # Logging parameters
-        "save_interval": 50,  # Check for potential saves every `save_interval` iterations
+        "save_interval": 100,  # Check for potential saves every `save_interval` iterations
         "experiment_name": exp_name,
         "run_name": "",
         # Logger
@@ -128,7 +128,7 @@ def get_task_cfgs():
         "image_resolution": (64, 64),
         "use_rasterizer": False,
         "visualize_camera": False,
-        "visualize_cell": True,
+        "visualize_cell": False,
         "camera_setup": "default",  # options: default, scene_dual
     }
     reward_scales = {
