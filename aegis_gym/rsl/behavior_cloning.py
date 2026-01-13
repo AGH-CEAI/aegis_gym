@@ -185,7 +185,7 @@ class BehaviorCloning:
     def _collect_with_rl_teacher(self) -> None:
         """Collect experience from environment using stereo rgb images and object poses."""
         # Get state observation
-        obs, _ = self._env.get_observations()
+        obs = self._env.get_observations()
         with torch.inference_mode():
             for _ in range(self._num_steps_per_env):
                 rgb_obs = self._env.get_observations_vis(normalize=True)

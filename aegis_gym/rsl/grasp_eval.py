@@ -32,6 +32,7 @@ def main():
         help="Path to save the video file (default: auto-generated)",
     )
     parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
+    parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
     args = parser.parse_args()
 
     # Set PyTorch default dtype to float32 for better performance
@@ -63,6 +64,8 @@ def main():
     env_cfg["num_envs"] = 10
     # for video recording
     env_cfg["visualize_camera"] = args.record
+    # modify simsubsteps for evaluation
+    env_cfg["sim_substeps"] = args.sim_substeps
 
     env = GraspEnv(
         env_cfg=env_cfg,

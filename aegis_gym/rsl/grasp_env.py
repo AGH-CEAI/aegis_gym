@@ -7,11 +7,16 @@ from genesis.utils.geom import (
     transform_by_quat,
     transform_quat_by_quat,
 )
+from rsl_rl.env import VecEnv
+from tensordict import TensorDict
 
 from manipulator import Manipulator
 
+# Further example
+# https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
 
-class GraspEnv:
+
+class GraspEnv(VecEnv):
     def __init__(
         self,
         env_cfg: dict,
@@ -31,6 +36,7 @@ class GraspEnv:
         self.device = gs.device
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
+        self.sim_substeps = env_cfg["sim_substeps"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
         self.env_cfg = env_cfg
@@ -47,10 +53,27 @@ class GraspEnv:
         self._init_buffers()
         self.reset()
 
+    # Required by rsl_rl
+    @property
+    def unwrapped(self) -> "GraspEnv":
+        return self
+
+    # Required by rsl_rl
+    @property
+    def step_dt(self) -> float:
+        return self.ctrl_dt
+
+    # Required by rsl_rl
+    @property
+    def cfg(self) -> dict:
+        return self.env_cfg
+
     def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         # == setup scene ==
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.ctrl_dt, substeps=2),
+            sim_options=gs.options.SimOptions(
+                dt=self.ctrl_dt, substeps=self.sim_substeps
+            ),
             rigid_options=gs.options.RigidOptions(
                 dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
@@ -267,16 +290,14 @@ class GraspEnv:
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> tuple[torch.Tensor, dict]:
+    def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
         self.reset_idx(torch.arange(self.num_envs, device=gs.device))
-
-        obs, self.extras = self.get_observations()
-        return obs, self.extras
+        return self.get_observations(), self.extras
 
     def step(
         self, actions: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    ) -> tuple[TensorDict, torch.Tensor, torch.Tensor, dict]:
         # update time
         self.episode_length_buf += 1
 
@@ -299,9 +320,9 @@ class GraspEnv:
             self.episode_sums[name] += rew
 
         # get observations and fill extras
-        obs, self.extras = self.get_observations()
-
-        return obs, reward, self.reset_buf, self.extras
+        obs = self.get_observations()
+        dones = self.reset_buf
+        return obs, reward, dones, self.extras
 
     # currently not in use
     def get_privileged_observations(self) -> None:
@@ -321,8 +342,7 @@ class GraspEnv:
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def get_observations(self) -> tuple[torch.Tensor, dict]:
-        # current end-effector pose
+    def get_observations(self) -> TensorDict:
         ee_pos, ee_quat = (
             self.robot.ee_pose[:, :3],
             self.robot.ee_pose[:, 3:7],
@@ -337,7 +357,7 @@ class GraspEnv:
         ]
         obs_tensor = torch.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
-        return obs_tensor, self.extras
+        return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
 
     def get_stereo_rgb_images(self, normalize: bool = True) -> torch.Tensor:
         rgb_left, _, _, _ = self.scene_left_cam.render(
