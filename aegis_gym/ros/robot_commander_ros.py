@@ -10,6 +10,15 @@ except ImportError:
     )
     raise ImportError
 
+try:
+    from aegis_grpc_client import AegisRobotClient
+except ImportError:
+    print(
+        "Failed to import aegis_grpc_client. "
+        "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
+    )
+    raise ImportError
+
 from ..scene import RobotCommanderInterface
 
 
@@ -21,11 +30,16 @@ class RobotCommanderROS(RobotCommanderInterface):
             cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, robot_director: RobotDirector, device: str) -> None:
+    def __init__(
+        self, robot_director: RobotDirector, robot_client: AegisRobotClient, device: str
+    ) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
         super().__init__(device=device)
         self.robot_director = robot_director
+        self.robot_client = robot_client
+
+        # TODO rewrite all getters to use robot_client
         joint_state = self.robot_director._get_joint_states()
         self.joint_names = list(joint_state.name)[1:]
         self._initialized = True
