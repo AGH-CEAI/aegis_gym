@@ -23,11 +23,24 @@ class RobotCommanderInterface(ABC):
         )
 
     @abstractmethod
-    def get_joint_positions(self) -> th.Tensor:
+    def read_state(self) -> None:
+        """Updates internal state. Requirement for an external communication."""
         raise NotImplementedError
 
     @abstractmethod
-    def get_joint_velocities(self) -> th.Tensor:
+    def get_state_tensordict(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_positions(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_velocities(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_efforts(self) -> th.Tensor:
         raise NotImplementedError
 
     @abstractmethod

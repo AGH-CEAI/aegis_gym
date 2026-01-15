@@ -5,7 +5,7 @@ import torch as th
 from tensordict import TensorDict
 
 try:
-    from aegis_grpc_client import AegisRobotClient    
+    from aegis_grpc_client import AegisRobotClient
 except ImportError:
     print(
         "Failed to import aegis_grpc_client. "
@@ -14,7 +14,6 @@ except ImportError:
     raise
 
 from ..scene import RobotCommanderInterface
-from ..utils import quaternion_to_euler
 
 
 class RobotCommanderROS(RobotCommanderInterface):
@@ -25,30 +24,29 @@ class RobotCommanderROS(RobotCommanderInterface):
             cls._instance = super(RobotCommanderROS, cls).__new__(cls)
         return cls._instance
 
-    def __init__(
-        self, robot_client: AegisRobotClient, device: str
-    ) -> None:
+    def __init__(self, robot_client: AegisRobotClient, device: str) -> None:
         super().__init__(device=device)
         self._robot_client = robot_client
-        
-        # Dynamicly obtain joints names
+
+        # Dynamically obtain joints names
         self.joint_names = list(self._robot_client.get_joint_names())[1:]
-        
+
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
-        
 
     def read_state(self) -> None:
         state = self._robot_client.get_all()
-        self._state = TensorDict({
-            "pose": th.from_numpy(state["pose"]),
-            "wrench": th.from_numpy(state["wrench"]),
-            "joints_pos": th.from_numpy(state["joints_pos"]),
-            "joints_vel": th.from_numpy(state["joints_vel"]),
-            "joints_eff": th.from_numpy(state["joints_eff"]),
-        })
-        
+        self._state = TensorDict(
+            {
+                "pose": th.from_numpy(state["pose"]),
+                "wrench": th.from_numpy(state["wrench"]),
+                "joints_pos": th.from_numpy(state["joints_pos"]),
+                "joints_vel": th.from_numpy(state["joints_vel"]),
+                "joints_eff": th.from_numpy(state["joints_eff"]),
+            }
+        )
+
     def get_state_tensordict(self) -> TensorDict:
         return self._state
 
@@ -57,7 +55,7 @@ class RobotCommanderROS(RobotCommanderInterface):
 
     def get_joints_velocities(self) -> th.Tensor:
         return self._state["joints_vel"].to(device=self.device, dtype=th.float32)
-    
+
     def get_joints_efforts(self) -> th.Tensor:
         return self._state["joints_eff"].to(device=self.device, dtype=th.float32)
 
@@ -103,7 +101,7 @@ class RobotCommanderROS(RobotCommanderInterface):
     ) -> None:
         # TODO enable servo control
         pass
-    
+
         # if not self.robot_director.servo_enabled:
         #     self.robot_director.servo_enable()
 
@@ -159,7 +157,7 @@ class RobotCommanderROS(RobotCommanderInterface):
     ) -> None:
         # TODO enable servo control
         pass
-        
+
         # TODO(issue#35) - Unify servoing into position or velocities commands
         # self.control_tcp_velocity_servo(target_pos, target_ori)
 
