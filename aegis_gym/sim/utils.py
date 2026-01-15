@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from typing import Union, Any, NamedTuple
 
+# TODO reimplement to remove this dependnecy
 from ament_index_python.packages import get_package_share_directory
 
 import gymnasium as gym
