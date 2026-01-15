@@ -1,25 +1,18 @@
 from typing import Optional
 import torch as th
 
-try:
-    from aegis_director.robot_director import RobotDirector
-    from aegis_director.utils import quaternion_to_euler
-except ImportError:
-    print(
-        "Failed to import aegis_director. Double check if you have sourced the AGH-CEAI/aegis_ros project."
-    )
-    raise ImportError
 
 try:
-    from aegis_grpc_client import AegisRobotClient
+    from aegis_grpc_client import AegisRobotClient    
 except ImportError:
     print(
         "Failed to import aegis_grpc_client. "
         "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
     )
-    raise ImportError
+    raise
 
 from ..scene import RobotCommanderInterface
+from ..utils import quaternion_to_euler
 
 
 class RobotCommanderROS(RobotCommanderInterface):
@@ -31,7 +24,7 @@ class RobotCommanderROS(RobotCommanderInterface):
         return cls._instance
 
     def __init__(
-        self, robot_director: RobotDirector, robot_client: AegisRobotClient, device: str
+        self, robot_client: AegisRobotClient, device: str
     ) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
