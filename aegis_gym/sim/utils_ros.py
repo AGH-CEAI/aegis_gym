@@ -6,11 +6,12 @@ import warnings
 from pathlib import Path
 
 # Source: https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/constants.py
-RESOURCE_INDEX_SUBFOLDER = 'share/ament_index/resource_index'
-AMENT_PREFIX_PATH_ENV_VAR = 'AMENT_PREFIX_PATH'
+RESOURCE_INDEX_SUBFOLDER = "share/ament_index/resource_index"
+AMENT_PREFIX_PATH_ENV_VAR = "AMENT_PREFIX_PATH"
+
 
 def generate_aegis_urdf(show_cell: bool = True) -> Path:
-    pkg_share = Path(get_package_share_directory("aegis_description"))
+    pkg_share = Path(_get_package_share_directory("aegis_description"))
     xacro_path = pkg_share / "urdf" / "aegis.urdf.xacro"
     _, urdf_path = tempfile.mkstemp(suffix=".urdf", prefix="aegis_urdf_", dir="/tmp")
 
@@ -29,59 +30,67 @@ def generate_aegis_urdf(show_cell: bool = True) -> Path:
 
     return Path(urdf_path)
 
+
 # Definition taken from ROS 2 ament_index_python
 # https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/packages.py#L65
 def _get_package_share_directory(package_name: str) -> Path:
     """
     Return the share directory of the given ROS 2 package.
     """
-    path = os.path.join(_get_package_prefix(package_name), 'share', package_name)
+    path = os.path.join(_get_package_prefix(package_name), "share", package_name)
     if not os.path.exists(path):
-        warnings.warn(f'Share directory for {package_name} ({path}) does not exist.', stacklevel=2)
+        warnings.warn(
+            f"Share directory for {package_name} ({path}) does not exist.", stacklevel=2
+        )
     return path
+
 
 # Definition taken from ROS 2 ament_index_python
 # https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/packages.py#L39
 def _get_package_prefix(package_name: str):
     # This regex checks for a valid package name as defined by REP-127 including the recommended
     #  exemptions. See https://ros.org/reps/rep-0127.html#name
-    if re.fullmatch('[a-zA-Z0-9][a-zA-Z0-9_-]+', package_name, re.ASCII) is None:
-        raise ValueError(
-            "'{}' is not a valid package name".format(package_name))
+    if re.fullmatch("[a-zA-Z0-9][a-zA-Z0-9_-]+", package_name, re.ASCII) is None:
+        raise ValueError(f"'{package_name}' is not a valid package name")
     try:
-        package_prefix = _get_resource_prefix_path('packages', package_name)
+        package_prefix = _get_resource_prefix_path("packages", package_name)
     except LookupError:
-        raise PackageNotFoundError(
-            "package '{}' not found, searching: {}".format(package_name, get_search_paths()))
+        raise ValueError(
+            f"package '{package_name}' not found, searching: {_get_search_paths()}"
+        )
     return package_prefix
+
 
 # Definition taken from ROS 2 ament_index_python
 # https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/resources.py#L52
 def _get_resource_prefix_path(resource_type: str, resource_name: str) -> str:
-    assert resource_type, 'The resource type must not be empty'
-    assert resource_name, 'The resource name must not be empty'
-    
+    assert resource_type, "The resource type must not be empty"
+    assert resource_name, "The resource name must not be empty"
+
     if _name_is_invalid(resource_type):
-        raise ValueError(
-            "Resource type '%s' is invalid" % resource_type)
+        raise ValueError(f"Resource type '{resource_type}' is invalid")
     if _name_is_invalid(resource_name):
-        raise ValueError(
-            "Resource name '%s' is invalid" % resource_name)
+        raise ValueError(f"Resource name '{resource_name}' is invalid")
     for path in _get_search_paths():
-        resource_path = os.path.join(path, RESOURCE_INDEX_SUBFOLDER, resource_type, resource_name)
+        resource_path = os.path.join(
+            path, RESOURCE_INDEX_SUBFOLDER, resource_type, resource_name
+        )
         if os.path.isfile(resource_path):
             return path
     raise LookupError(
-        "Could not find the resource '%s' of type '%s'" % (resource_name, resource_type))
+        f"Could not find the resource '{resource_name}' of type '{resource_type}'"
+    )
+
 
 # Definition taken from ROS 2 ament_index_python
 # https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/resources.py#L34
 def _name_is_invalid(resource_name):
-    return ('/' in resource_name) or ('\\' in resource_name)
+    return ("/" in resource_name) or ("\\" in resource_name)
+
 
 # Definition taken from ROS 2 ament_index_python
 # https://github.com/ament/ament_index/blob/humble/ament_index_python/ament_index_python/search_paths.py#L20
-def _get_search_paths() -> List[str]:
+def _get_search_paths() -> list[str]:
     ament_prefix_path = os.environ.get(AMENT_PREFIX_PATH_ENV_VAR)
     if not ament_prefix_path:
         raise EnvironmentError(
@@ -91,6 +100,7 @@ def _get_search_paths() -> List[str]:
 
     paths = ament_prefix_path.split(os.pathsep)
     return [p for p in paths if p and os.path.exists(p)]
+
 
 def _resolve_packages_paths(urdf: bytes) -> bytes:
     urdf_str = urdf.decode("utf-8")
