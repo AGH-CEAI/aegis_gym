@@ -1,6 +1,6 @@
 from typing import Literal
 
-import torch
+import torch as th
 import genesis as gs
 from genesis.utils.geom import (
     transform_quat_by_quat,
@@ -52,22 +52,22 @@ class Manipulator:
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
-            torch.tensor([4500, 4500, 3500, 3500, 2000, 2000, 100, 100]),
+            th.tensor([4500, 4500, 3500, 3500, 2000, 2000, 100, 100]),
         )
         self._robot_entity.set_dofs_kv(
-            torch.tensor([450, 450, 350, 350, 200, 200, 10, 10]),
+            th.tensor([450, 450, 350, 350, 200, 200, 10, 10]),
         )
         self._robot_entity.set_dofs_force_range(
-            torch.tensor([-87, -87, -87, -87, -12, -12, -100, -100]),
-            torch.tensor([87, 87, 87, 87, 12, 12, 100, 100]),
+            th.tensor([-87, -87, -87, -87, -12, -12, -100, -100]),
+            th.tensor([87, 87, 87, 87, 12, 12, 100, 100]),
         )
 
     def _init(self):
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
         self._gripper_dim = 2  # number of gripper joints
 
-        self._arm_dof_idx = torch.arange(self._arm_dof_dim, device=self._device)
-        self._fingers_dof = torch.arange(
+        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
+        self._fingers_dof = th.arange(
             self._arm_dof_dim,
             self._arm_dof_dim + self._gripper_dim,
             device=self._device,
@@ -81,20 +81,20 @@ class Manipulator:
         if self._args["default_gripper_dof"] is not None:
             self._default_joint_angles += self._args["default_gripper_dof"]
 
-    def reset(self, envs_idx: torch.IntTensor):
+    def reset(self, envs_idx: th.IntTensor):
         if len(envs_idx) == 0:
             return
         self.reset_home(envs_idx)
 
-    def reset_home(self, envs_idx: torch.IntTensor | None = None):
+    def reset_home(self, envs_idx: th.IntTensor | None = None):
         if envs_idx is None:
-            envs_idx = torch.arange(self._num_envs, device=self._device)
-        default_joint_angles = torch.tensor(
-            self._default_joint_angles, dtype=torch.float32, device=self._device
+            envs_idx = th.arange(self._num_envs, device=self._device)
+        default_joint_angles = th.tensor(
+            self._default_joint_angles, dtype=th.float32, device=self._device
         ).repeat(len(envs_idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=envs_idx)
 
-    def apply_action(self, action: torch.Tensor, open_gripper: bool) -> None:
+    def apply_action(self, action: th.Tensor, open_gripper: bool) -> None:
         """
         Apply the action to the robot.
         """
@@ -112,7 +112,7 @@ class Manipulator:
             q_pos[:, self._fingers_dof] = self._gripper_close_dof
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def _gs_ik(self, action: torch.Tensor) -> torch.Tensor:
+    def _gs_ik(self, action: th.Tensor) -> th.Tensor:
         """
         Genesis inverse kinematics
         """
@@ -131,7 +131,7 @@ class Manipulator:
         )
         return q_pos
 
-    def _dls_ik(self, action: torch.Tensor) -> torch.Tensor:
+    def _dls_ik(self, action: th.Tensor) -> th.Tensor:
         """
         Damped least squares inverse kinematics
         """
@@ -139,17 +139,17 @@ class Manipulator:
         lambda_val = 0.01
         jacobian = self._robot_entity.get_jacobian(link=self._ee_link)
         jacobian_T = jacobian.transpose(1, 2)
-        lambda_matrix = (lambda_val**2) * torch.eye(
+        lambda_matrix = (lambda_val**2) * th.eye(
             n=jacobian.shape[1], device=self._device
         )
         delta_joint_pos = (
             jacobian_T
-            @ torch.inverse(jacobian @ jacobian_T + lambda_matrix)
+            @ th.inverse(jacobian @ jacobian_T + lambda_matrix)
             @ delta_pose.unsqueeze(-1)
         ).squeeze(-1)
         return self._robot_entity.get_qpos() + delta_joint_pos
 
-    def go_to_goal(self, goal_pose: torch.Tensor, open_gripper: bool = True):
+    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: bool = True):
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
             pos=goal_pose[:, :3],
@@ -167,28 +167,28 @@ class Manipulator:
         return self._robot_entity.get_pos()
 
     @property
-    def ee_pose(self) -> torch.Tensor:
+    def ee_pose(self) -> th.Tensor:
         """
         The end-effector pose (the hand pose)
         """
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
-        return torch.cat([pos, quat], dim=-1)
+        return th.cat([pos, quat], dim=-1)
 
     # @property
-    # def left_finger_pose(self) -> torch.Tensor:
+    # def left_finger_pose(self) -> th.Tensor:
     #     pos, quat = self._left_finger_link.get_pos(), self._left_finger_link.get_quat()
-    #     return torch.cat([pos, quat], dim=-1)
+    #     return th.cat([pos, quat], dim=-1)
 
     # @property
-    # def right_finger_pose(self) -> torch.Tensor:
+    # def right_finger_pose(self) -> th.Tensor:
     #     pos, quat = (
     #         self._right_finger_link.get_pos(),
     #         self._right_finger_link.get_quat(),
     #     )
-    #     return torch.cat([pos, quat], dim=-1)
+    #     return th.cat([pos, quat], dim=-1)
 
     # @property
-    # def center_finger_pose(self) -> torch.Tensor:
+    # def center_finger_pose(self) -> th.Tensor:
     #     """
     #     The center finger pose is the average of the left and right finger poses.
     #     """
@@ -196,4 +196,4 @@ class Manipulator:
     #     right_finger_pose = self.right_finger_pose
     #     center_finger_pos = (left_finger_pose[:, :3] + right_finger_pose[:, :3]) / 2
     #     center_finger_quat = left_finger_pose[:, 3:7]
-    #     return torch.cat([center_finger_pos, center_finger_quat], dim=-1)
+    #     return th.cat([center_finger_pos, center_finger_quat], dim=-1)

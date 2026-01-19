@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 import genesis as gs
+
+# TODO reimplement to remove this dependnecy
 from ament_index_python.packages import get_package_share_directory
 from rsl_rl.runners import OnPolicyRunner
 

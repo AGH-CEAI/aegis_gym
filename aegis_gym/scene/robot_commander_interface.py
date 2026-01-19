@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 import torch as th
+from tensordict import TensorDict
 
 
 class RobotCommanderInterface(ABC):
@@ -23,11 +25,24 @@ class RobotCommanderInterface(ABC):
         )
 
     @abstractmethod
-    def get_joint_positions(self) -> th.Tensor:
+    def read_state(self) -> None:
+        """Updates internal state. Requirement for an external communication."""
         raise NotImplementedError
 
     @abstractmethod
-    def get_joint_velocities(self) -> th.Tensor:
+    def get_state_tensordict(self) -> TensorDict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_positions(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_velocities(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_joints_efforts(self) -> th.Tensor:
         raise NotImplementedError
 
     @abstractmethod
@@ -43,25 +58,25 @@ class RobotCommanderInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_wrench(self) -> th.Tensor:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_base_position(self) -> th.Tensor:
         raise NotImplementedError
 
     @abstractmethod
-    def control_dofs_position(
-        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
-    ) -> None:
+    def control_dofs_position(self, target_pos: th.Tensor) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    def control_dofs_position_servo(
-        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
-    ) -> None:
+    def control_dofs_position_servo(self, target_pos: Optional[th.Tensor]) -> None:
         raise NotImplementedError
 
     @abstractmethod
     def control_dofs_velocity_servo(
         self,
-        target_vel: th.Tensor | None,
+        target_vel: Optional[th.Tensor],
     ) -> None:
         raise NotImplementedError
 
@@ -69,29 +84,23 @@ class RobotCommanderInterface(ABC):
     def control_tcp_position(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
-        max_vel: float = 0.3,
-        max_accel: float = 0.3,
+        target_ori: Optional[th.Tensor],
     ) -> None:
         raise NotImplementedError
 
-    # TODO(issue#33) - Change quats to Euler angles in servo
     @abstractmethod
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
-        max_vel: float = 0.3,
-        max_accel: float = 0.3,
+        target_ori_euler: Optional[th.Tensor],
     ) -> None:
         raise NotImplementedError
 
-    # TODO(issue#33) - Change quats to Euler angles in servo
     @abstractmethod
     def control_tcp_velocity_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor,
+        target_ori_euler: Optional[th.Tensor],
     ) -> None:
         raise NotImplementedError
 

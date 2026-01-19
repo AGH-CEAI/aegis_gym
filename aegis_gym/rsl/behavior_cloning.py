@@ -4,7 +4,7 @@ from collections import deque
 from collections.abc import Iterator
 
 import numpy as np
-import torch
+import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
@@ -35,7 +35,7 @@ class BehaviorCloning:
         self._policy = Policy(cfg["policy"], action_dim).to(device)
 
         # Initialize optimizer
-        self._optimizer = torch.optim.Adam(
+        self._optimizer = th.optim.Adam(
             self._policy.parameters(), lr=cfg["learning_rate"]
         )
 
@@ -55,8 +55,8 @@ class BehaviorCloning:
 
     def learn(self, num_learning_iterations: int, log_dir: str) -> None:
         self._rewbuffer = deque(maxlen=100)
-        self._cur_reward_sum = torch.zeros(
-            self._env.num_envs, dtype=torch.float, device=self._device
+        self._cur_reward_sum = th.zeros(
+            self._env.num_envs, dtype=th.float, device=self._device
         )
         self._buffer.clear()
 
@@ -100,7 +100,7 @@ class BehaviorCloning:
                 self._optimizer.zero_grad()
                 total_loss.backward()
                 self._optimizer.step()
-                torch.nn.utils.clip_grad_norm_(
+                th.nn.utils.clip_grad_norm_(
                     self._policy.parameters(), self._cfg["max_grad_norm"]
                 )
 
@@ -156,8 +156,8 @@ class BehaviorCloning:
         tf_writer.close()
 
     def _compute_pose_loss(
-        self, pred_poses: torch.Tensor, target_poses: torch.Tensor
-    ) -> torch.Tensor:
+        self, pred_poses: th.Tensor, target_poses: th.Tensor
+    ) -> th.Tensor:
         """Compute pose loss with separate position and orientation components."""
         # Split into position and orientation
         pred_pos = pred_poses[:, :3]
@@ -177,8 +177,8 @@ class BehaviorCloning:
         # Note: we use this as a proxy for the actual distance between two quaternions
         # because the impact of the orientation loss (auxiliary task) is not significant
         # compared to the action loss (main task)
-        quat_dot = torch.sum(pred_quat * target_quat, dim=1)
-        quat_loss = torch.mean(1.0 - torch.abs(quat_dot))
+        quat_dot = th.sum(pred_quat * target_quat, dim=1)
+        quat_loss = th.mean(1.0 - th.abs(quat_dot))
 
         return pos_loss + quat_loss
 
@@ -186,7 +186,7 @@ class BehaviorCloning:
         """Collect experience from environment using stereo rgb images and object poses."""
         # Get state observation
         obs = self._env.get_observations()
-        with torch.inference_mode():
+        with th.inference_mode():
             for _ in range(self._num_steps_per_env):
                 rgb_obs = self._env.get_observations_vis(normalize=True)
 
@@ -198,7 +198,7 @@ class BehaviorCloning:
 
                 # Get object pose in camera frame
                 # object_pose_camera = self._get_object_pose_in_camera_frame()
-                object_pose = torch.cat(
+                object_pose = th.cat(
                     [
                         self._env.object.get_pos(),
                         self._env.object.get_quat(),
@@ -213,9 +213,9 @@ class BehaviorCloning:
                 student_action = self._policy(rgb_obs.float(), ee_pose.float())
 
                 # Simple Dagger: use student action if its difference with teacher action is less than 0.5
-                action_diff = torch.norm(student_action - teacher_action, dim=-1)
+                action_diff = th.norm(student_action - teacher_action, dim=-1)
                 condition = (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
-                action = torch.where(condition, student_action, teacher_action)
+                action = th.where(condition, student_action, teacher_action)
 
                 next_obs, reward, done, _ = self._env.step(action)
                 self._cur_reward_sum += reward
@@ -235,12 +235,12 @@ class BehaviorCloning:
             "current_iter": self._current_iter,
             "config": self._cfg,
         }
-        torch.save(checkpoint, path)
+        th.save(checkpoint, path)
         print(f"Model saved to {path}")
 
     def load(self, path: str) -> None:
         """Load model checkpoint."""
-        checkpoint = torch.load(path, map_location=self._device, weights_only=False)
+        checkpoint = th.load(path, map_location=self._device, weights_only=False)
         self._policy.load_state_dict(checkpoint["model_state_dict"])
         self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.current_iter = checkpoint["current_iter"]
@@ -248,7 +248,7 @@ class BehaviorCloning:
 
     def load_finetuned_model(self, path: str) -> None:
         """Load a fine-tuned model checkpoint."""
-        checkpoint = torch.load(path, map_location=self._device, weights_only=False)
+        checkpoint = th.load(path, map_location=self._device, weights_only=False)
         self._policy.load_state_dict(checkpoint["model_state_dict"])
         self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self._current_iter = checkpoint["current_iter"]
@@ -266,7 +266,7 @@ class ExperienceBuffer:
         state_dim: int,
         action_dim: int,
         device: str = "cpu",
-        dtype: torch.dtype | None = None,
+        dtype: th.dtype | None = None,
     ):
         self._num_envs = num_envs
         self._max_size = max_size
@@ -278,25 +278,23 @@ class ExperienceBuffer:
         self._size = 0
 
         # Buffers for data
-        self._rgb_obs = torch.empty(
+        self._rgb_obs = th.empty(
             max_size, num_envs, *img_shape, dtype=dtype, device=device
         )
-        self._robot_pose = torch.empty(
+        self._robot_pose = th.empty(
             max_size, num_envs, state_dim, dtype=dtype, device=device
         )
-        self._object_poses = torch.empty(
-            max_size, num_envs, 7, dtype=dtype, device=device
-        )
-        self._actions = torch.empty(
+        self._object_poses = th.empty(max_size, num_envs, 7, dtype=dtype, device=device)
+        self._actions = th.empty(
             max_size, num_envs, action_dim, dtype=dtype, device=device
         )
 
     def add(
         self,
-        rgb_obs: torch.Tensor,
-        robot_pose: torch.Tensor,
-        object_poses: torch.Tensor,
-        actions: torch.Tensor,
+        rgb_obs: th.Tensor,
+        robot_pose: th.Tensor,
+        object_poses: th.Tensor,
+        actions: th.Tensor,
     ) -> None:
         """Add experience to buffer."""
         self._ptr = (self._ptr + 1) % self._max_size
@@ -308,12 +306,12 @@ class ExperienceBuffer:
 
     def get_batches(
         self, num_mini_batches: int, num_epochs: int
-    ) -> Iterator[dict[str, torch.Tensor]]:
+    ) -> Iterator[dict[str, th.Tensor]]:
         """Generate batches for training."""
         # calculate the size of each mini-batch
         batch_size = self._size // num_mini_batches
         for _ in range(num_epochs):
-            indices = torch.randperm(self._size)
+            indices = th.randperm(self._size)
             for batch_idx in range(0, self._size, batch_size):
                 batch_indices = indices[batch_idx : batch_idx + batch_size]
 
@@ -430,7 +428,7 @@ class Policy(nn.Module):
         layers.append(nn.Linear(mlp_input_dim, config["output_dim"]))
         return nn.Sequential(*layers)
 
-    def get_features(self, rgb_obs: torch.Tensor) -> list[torch.Tensor]:
+    def get_features(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
         # Split rgb images
         camera_features = []
         for i in range(self.num_cameras):
@@ -440,28 +438,26 @@ class Policy(nn.Module):
 
         return camera_features
 
-    def forward(
-        self, rgb_obs: torch.Tensor, state_obs: torch.Tensor | None = None
-    ) -> dict:
+    def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None) -> dict:
         """Forward pass with shared stereo encoder for rgb images."""
         # Get features
         features_list = self.get_features(rgb_obs)
 
         # Concatenate features (much more efficient than concatenating raw images)
-        combined_features = torch.cat(features_list, dim=-1)
+        combined_features = th.cat(features_list, dim=-1)
         # Feature fusion
         fused_features = self.feature_fusion(combined_features)
 
         # Add state information if available
         if state_obs is not None and self.state_obs_dim is not None:
-            final_features = torch.cat([fused_features, state_obs], dim=-1)
+            final_features = th.cat([fused_features, state_obs], dim=-1)
         else:
             final_features = fused_features
 
         # Predict actions
         return self.mlp(final_features)
 
-    def predict_pose(self, rgb_obs: torch.Tensor) -> tuple[torch.Tensor]:
+    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor]:
         """Predict pose from rgb images and state observations."""
         features_list = self.get_features(rgb_obs)
         poses = tuple(self.pose_mlp(features) for features in features_list)
