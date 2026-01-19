@@ -85,46 +85,43 @@ def main():
 
     max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
 
-    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with torch.no_grad():
         if args.record:
             print("Recording video...")
-            if env.cfg["camera_setup"] == "default":
+            if env_cfg["camera_setup"] == "default":
                 env.record_cam.start_recording()
                 env.scene_cam.start_recording()
                 env.tool_left_cam.start_recording()
                 env.tool_right_cam.start_recording()
-            elif env.cfg["camera_setup"] == "scene_dual":
+            elif env_cfg["camera_setup"] == "scene_dual":
                 env.record_cam.start_recording()
                 env.scene_left_cam.start_recording()
                 env.scene_right_cam.start_recording()
             else:
-                raise RuntimeError(f"Unknown camera_setup: {env.cfg['camera_setup']}")
+                raise RuntimeError(f"Unknown camera_setup: {env_cfg['camera_setup']}")
         for step in range(max_sim_step):
             if args.stage == "rl":
                 actions = policy(obs)
             else:
-                # Get stereo grayscale images and ensure float32
-                # rgb_obs = env.get_stereo_rgb_images(normalize=True).float()
-                rgb_obs = env.get_stereo_rgb_images(normalize=True).float()
+                rgb_obs = env.get_observations_vis(normalize=True).float()
                 ee_pose = env.robot.ee_pose.float()
 
                 actions = policy(rgb_obs, ee_pose)
 
                 # Collect frame for video recording
                 if args.record:
-                    env.vis_cam.render()  # render the visualization camera
+                    env.record_cam.render()  # render the visualization camera
 
             obs, rews, dones, infos = env.step(actions)
         env.grasp_and_lift_demo()
         if args.record:
             print("Stopping video recording...")
-            if env.cfg["camera_setup"] == "default":
+            if env_cfg["camera_setup"] == "default":
                 env.record_cam.stop_recording(
                     save_to_filename=args.video_path,
                     fps=env_cfg["max_visualize_FPS"],
                 )
-                env.tool_right_cam.stop_recording(
+                env.scene_cam.stop_recording(
                     save_to_filename="scene_cam.mp4",
                     fps=env_cfg["max_visualize_FPS"],
                 )
@@ -136,7 +133,7 @@ def main():
                     save_to_filename="tool_right_cam.mp4",
                     fps=env_cfg["max_visualize_FPS"],
                 )
-            elif env.cfg["camera_setup"] == "scene_dual":
+            elif env_cfg["camera_setup"] == "scene_dual":
                 env.record_cam.stop_recording(
                     save_to_filename=args.video_path,
                     fps=env_cfg["max_visualize_FPS"],
