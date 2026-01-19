@@ -1,5 +1,7 @@
+import asyncio
 from typing import Optional
 
+import numpy as np
 import torch as th
 
 from tensordict import TensorDict
@@ -29,14 +31,15 @@ class RobotCommanderROS(RobotCommanderInterface):
         self._robot_client = robot_client
 
         # Dynamically obtain joints names
-        self.joint_names = list(self._robot_client.get_joint_names())[1:]
+        self.joint_names = asyncio.run(self._robot_client.get_joint_names())[1:]
+        self.default_orientaton = np.array([0, 0, 0, 1], dtype=np.float32)
 
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
 
     def read_state(self) -> None:
-        state = self._robot_client.get_all()
+        state = asyncio.run(self._robot_client.get_all())
         self._state = TensorDict(
             {
                 "pose": th.from_numpy(state["pose"]),
@@ -68,132 +71,134 @@ class RobotCommanderROS(RobotCommanderInterface):
     def get_tcp_pose(self) -> th.Tensor:
         return self._state["pose"].to(device=self.device, dtype=th.float32)
 
+    def get_wrench(self) -> th.Tensor:
+        return self._state["wrench"].to(device=self.device, dtype=th.float32)
+
     def get_base_position(self) -> th.Tensor:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
-    def control_dofs_position(
-        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
-    ) -> None:
-        # TODO implement Moveit2 control via gRPC
-        pass
+    def control_dofs_position(self, target_pos: th.Tensor) -> None:
+        # TODO re-enable servo func
         # if self.robot_director.servo_enabled:
         #     self.robot_director.servo_disable()
 
-        # target_pos_np = target_pos.detach().cpu().numpy()
-        # target_pos_dict = {
-        #     name: float(pos) for name, pos in zip(self.joint_names, target_pos_np)
-        # }
-        # self.robot_director.joint_move(
-        #     joint_positions=target_pos_dict, max_vel=max_vel, max_accel=max_accel
-        # )
+        target_pos_np = target_pos.detach().cpu().numpy()
+        asyncio.run(
+            self._robot_client.goto_joints(
+                names=self.joint_names,
+                positions=target_pos_np,
+            )
+        )
 
+    # TODO(issue#35) provide APIs for both servoing
+    # implement in grpc_server handling of
+    # https://github.com/moveit/moveit2/blob/fec72cb44c71d226254a886c07bdc7a3737daedc/moveit_ros/moveit_servo/src/servo_calcs.cpp#L1043
     def control_dofs_position_servo(
-        self, target_pos: th.Tensor, max_vel: float = 0.3, max_accel: float = 0.3
+        self, target_pos: Optional[th.Tensor] = None
     ) -> None:
         # TODO enable servo control
-        pass
-        # TODO(issue#35) - Unify servoing into position or velocities commands
-        # self.control_dofs_velocity_servo(target_vel=target_pos)
-
-    def control_dofs_velocity_servo(
-        self,
-        target_vel: th.Tensor | None = None,
-    ) -> None:
-        # TODO enable servo control
-        pass
-
         # if not self.robot_director.servo_enabled:
         #     self.robot_director.servo_enable()
 
-        # if target_vel is None:
-        #     target_vel_tuple = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        # else:
-        #     target_vel_tuple = tuple(target_vel.detach().cpu().numpy())
+        if target_pos is None:
+            target_pos_np = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        else:
+            target_pos_np = target_pos.detach().cpu().numpy()
 
-        # self.robot_director.servo_jog(
-        #     joint_names=tuple(self.joint_names),
-        #     velocities=target_vel_tuple,
-        # )
+        asyncio.run(
+            self._robot_client.servo_joint(
+                joint_names=self.joint_names,
+                displacements=target_pos_np,
+                velocities=None,
+            )
+        )
+
+    def control_dofs_velocity_servo(
+        self,
+        target_vel: Optional[th.Tensor] = None,
+    ) -> None:
+        # TODO enable servo control
+        # if not self.robot_director.servo_enabled:
+        #     self.robot_director.servo_enable()
+
+        if target_vel is None:
+            target_vel_np = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        else:
+            target_vel_np = target_vel.detach().cpu().numpy()
+
+        asyncio.run(
+            self._robot_client.servo_joint(
+                joint_names=self.joint_names,
+                displacements=None,
+                velocities=target_vel_np,
+            )
+        )
 
     def control_tcp_position(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor | None = None,
-        max_vel: float = 0.3,
-        max_accel: float = 0.3,
+        target_ori: Optional[th.Tensor] = None,
     ) -> None:
-        # TODO implement Moveit2 control via gRPC
-        pass
+        # TODO re-enable servo func
         # if self.robot_director.servo_enabled:
         #     self.robot_director.servo_disable()
 
-        # if target_ori is None:
-        #     target_ori = th.tensor(
-        #         [1.0, 0.0, 0.0, 0.0],
-        #         dtype=th.float32,
-        #         device=self.device,
-        #     )
+        target_pos_np = target_pos.detach().cpu().numpy()
+        if target_ori is None:
+            target_ori_np = self.default_orientaton
+        else:
+            target_ori_np = target_ori.detach().cpu().numpy()
 
-        # target_pos_np = target_pos.detach().cpu().numpy()
-        # target_ori_np = target_ori.detach().cpu().numpy()
-
-        # target_pos_tuple = tuple(float(v) for v in target_pos_np)
-        # target_ori_tuple = tuple(float(v) for v in target_ori_np)
-
-        # self.robot_director.pose_move(
-        #     position=target_pos_tuple,
-        #     quat_xyzw=target_ori_tuple,
-        #     max_vel=max_vel,
-        #     max_accel=max_accel,
-        # )
+        asyncio.run(
+            self._robot_client.goto_pose(
+                position=target_pos_np,
+                orientation=target_ori_np,
+            )
+        )
 
     # TODO(issue#33): Change servo API to Euler angles
     def control_tcp_position_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor | None = None,  # HACK interface mismatch for default None
-        max_vel: float = 0.3,
-        max_accel: float = 0.3,
+        target_ori_euler: Optional[th.Tensor] = None,
     ) -> None:
-        # TODO enable servo control
-        pass
+        # TODO re-enable servo func
+        # if not self.robot_director.servo_enabled:
+        #     self.robot_director.servo_enable()
 
-        # TODO(issue#35) - Unify servoing into position or velocities commands
-        # self.control_tcp_velocity_servo(target_pos, target_ori)
+        # TODO(issue#35) provide APIs for both servoing
+        # implement in grpc_server handling of
+        # https://github.com/moveit/moveit2/blob/fec72cb44c71d226254a886c07bdc7a3737daedc/moveit_ros/moveit_servo/src/servo_calcs.cpp#L1043
+        raise NotImplementedError
 
     # TODO(issue#33): Change servo API to Euler angles
     def control_tcp_velocity_servo(
         self,
         target_pos: th.Tensor,
-        target_ori: th.Tensor | None = None,
+        target_ori_euler: Optional[th.Tensor] = None,
     ) -> None:
-        # TODO enable servo control
-        pass
+        # TODO re-enable servo func
         # if not self.robot_director.servo_enabled:
         #     self.robot_director.servo_enable()
 
-        # if target_ori is None:
-        #     target_ori_tuple = tuple([0.0, 0.0, 0.0])
-        # else:
-        #     target_ori_np = target_ori.detach().cpu().numpy()
-        #     target_ori_tuple = tuple(quaternion_to_euler(q_xyzw=target_ori_np))
+        target_pos_np = target_pos.detach().cpu().numpy()
+        if target_ori_euler is None:
+            target_ori_euler_np = self.default_orientaton
+        else:
+            target_ori_euler_np = target_ori_euler.detach().cpu().numpy()
 
-        # target_pos_np = target_pos.detach().cpu().numpy()
-        # target_pos_tuple = tuple(float(v) for v in target_pos_np)
-
-        # self.robot_director.servo_move(
-        #     linear=target_pos_tuple,
-        #     angular=target_ori_tuple,
-        # )
+        asyncio.run(
+            self._robot_client.servo_tcp(
+                linear=target_pos_np,
+                angular=target_ori_euler_np,
+            )
+        )
 
     def move_to_home(self) -> None:
-        # TODO implement Moveit2 control via gRPC
-        pass
-        # if self.robot_director.servo_enabled:
-        #     self.robot_director.servo_disable()
         # # TODO(issue#34) There are edge positions where the Moveit2 planner can't plan the trajectory to home position. This issue breaks the training.
-        # self.robot_director.joint_move(
-        #     joint_positions=self.dof_home_dict,
-        #     max_vel=0.5,
-        #     max_accel=0.5,
-        # )
+        asyncio.run(
+            self._robot_client.goto_joints(
+                names=tuple(self.dof_home_dict.keys()),
+                positions=tuple(self.dof_home_dict.values()),
+            )
+        )
