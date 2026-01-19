@@ -24,6 +24,7 @@ class GraspEnv(VecEnv):
         robot_cfg: dict,
         show_viewer: bool = False,
     ) -> None:
+        self.device = gs.device
         self.num_envs = env_cfg["num_envs"]
         self.num_obs = env_cfg["num_obs"]
         self.num_privileged_obs = None
@@ -33,7 +34,9 @@ class GraspEnv(VecEnv):
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.show_cell = env_cfg["visualize_cell"]
         self.camera_setup = env_cfg["camera_setup"]
-        self.device = gs.device
+        self.box_size = env_cfg["box_size"]
+        self.table_size = env_cfg["table_size"]
+        self.workbench_size = env_cfg["workbench_size"]
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
         self.sim_substeps = env_cfg["sim_substeps"]
@@ -113,11 +116,11 @@ class GraspEnv(VecEnv):
         if self.show_cell:
             self.table = self.scene.add_entity(
                 gs.morphs.Box(
-                    size=env_cfg["table_size"],
+                    size=self.table_size,
                     pos=(
-                        env_cfg["table_size"][0] / 2 + env_cfg["workbench_size"][0] / 2,
+                        self.table_size[0] / 2 + self.workbench_size[0] / 2,
                         0.0,
-                        env_cfg["table_size"][2] / 2 - env_cfg["workbench_size"][2],
+                        self.table_size[2] / 2 - self.workbench_size[2],
                     ),
                     fixed=True,
                 ),
@@ -128,7 +131,7 @@ class GraspEnv(VecEnv):
         # == add object ==
         self.object = self.scene.add_entity(
             gs.morphs.Box(
-                size=env_cfg["box_size"],
+                size=self.box_size,
                 fixed=env_cfg["box_fixed"],
                 collision=env_cfg["box_collision"],
             ),
@@ -252,10 +255,10 @@ class GraspEnv(VecEnv):
         random_x = (
             torch.rand(num_reset, device=self.device) * 0.22 + 0.36
         )  # 0.36 – 0.58
-        random_y = (
-            torch.rand(num_reset, device=self.device) - 0.5
-        ) * 0.5  # -0.25 – 0.25
-        random_z = torch.ones(num_reset, device=self.device) * 0.025  # 0.15 – 0.15
+        random_y = (torch.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
+        random_z = torch.ones(num_reset, device=self.device) * (
+            self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
+        )
         random_pos = torch.stack([random_x, random_y, random_z], dim=-1)
 
         # downward facing quaternion to align with the hand
@@ -406,15 +409,14 @@ class GraspEnv(VecEnv):
         ee_pos = self.robot.ee_pose[:, :3]
         ee_quat = self.robot.ee_pose[:, 3:7]
         keypoints_offset = self.keypoints_offset
-        # there is a offset between the finger tip and the finger base frame
-        # finger_tip_z_offset = torch.tensor(
-        #     [0.0, 0.0, -0.06],
-        #     device=self.device,
-        #     dtype=gs.tc_float,
-        # ).repeat(self.num_envs, 1)
+        object_offset = torch.tensor(
+            [0.0, 0.0, -0.08],
+            device=self.device,
+            dtype=gs.tc_float,
+        ).repeat(self.num_envs, 1)
 
         finger_pos_keypoints = self._to_world_frame(
-            ee_pos,  # + finger_tip_z_offset,
+            ee_pos + object_offset,
             ee_quat,
             keypoints_offset,
         )
@@ -466,7 +468,9 @@ class GraspEnv(VecEnv):
 
     def grasp_and_lift_demo(self) -> None:
         total_steps = 500
+        grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
+        goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
         lift_height = 0.3
         lift_pose = goal_pose.clone()
@@ -481,11 +485,13 @@ class GraspEnv(VecEnv):
             [0.2, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0], device=self.device
         ).repeat(self.num_envs, 1)
         for i in range(total_steps):
-            if i < total_steps / 4:  # grasping
+            if i < total_steps / 5:  # go down
+                self.robot.go_to_goal(goal_pose, open_gripper=True)
+            elif i < total_steps * 2 / 5:  # grasping
                 self.robot.go_to_goal(goal_pose, open_gripper=False)
-            elif i < total_steps / 2:  # lifting
+            elif i < total_steps * 3 / 5:  # lifting
                 self.robot.go_to_goal(lift_pose, open_gripper=False)
-            elif i < total_steps * 3 / 4:  # final
+            elif i < total_steps * 4 / 5:  # final
                 self.robot.go_to_goal(final_pose, open_gripper=False)
             else:  # reset
                 self.robot.go_to_goal(reset_pose, open_gripper=True)
