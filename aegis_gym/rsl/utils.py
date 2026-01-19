@@ -2,6 +2,7 @@ import re
 import subprocess
 import tempfile
 from importlib import metadata
+from natsort import natsorted
 from pathlib import Path
 from typing import Any, Callable
 
@@ -66,7 +67,7 @@ def load_teacher_policy(env: Any, rl_train_cfg: dict, exp_name: str) -> Callable
         f for f in log_dir.iterdir() if re.match(r"model_\d+\.pt", f.name)
     ]
     try:
-        *_, last_ckpt = sorted(checkpoint_files)
+        *_, last_ckpt = natsorted(checkpoint_files)
     except ValueError as e:
         raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
     assert last_ckpt is not None, f"No checkpoint found in {log_dir}"
@@ -89,7 +90,7 @@ def load_rl_policy(env: Any, train_cfg: dict, log_dir: Path) -> Callable:
         raise FileNotFoundError(f"No checkpoint files found in {log_dir}")
 
     try:
-        *_, last_ckpt = sorted(checkpoint_files)
+        *_, last_ckpt = natsorted(checkpoint_files)
     except ValueError as e:
         raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
     runner.load(last_ckpt)
@@ -111,7 +112,7 @@ def load_bc_policy(env: Any, bc_cfg: dict, log_dir: Path) -> Callable:
         raise FileNotFoundError(f"No checkpoint files found in {log_dir}")
 
     try:
-        *_, last_ckpt = sorted(checkpoint_files)
+        *_, last_ckpt = natsorted(checkpoint_files)
     except ValueError as e:
         raise FileNotFoundError(f"No checkpoint files found in {log_dir}") from e
     print(f"Loaded BC checkpoint from {last_ckpt}")
