@@ -85,6 +85,7 @@ def main():
 
     max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
 
+    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with torch.no_grad():
         if args.record:
             print("Recording video...")

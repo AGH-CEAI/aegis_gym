@@ -2,9 +2,10 @@ import re
 import subprocess
 import tempfile
 from importlib import metadata
-from natsort import natsorted
 from pathlib import Path
 from typing import Any, Callable
+
+from natsort import natsorted
 
 import genesis as gs
 from ament_index_python.packages import get_package_share_directory
