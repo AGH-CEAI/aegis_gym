@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-46](https://github.com/AGH-CEAI/pull/46) - Added TCP-to-object Grasp environment.
 - [PR-40](https://github.com/AGH-CEAI/pull/40) - Added scene and tool cameras setup for Grasp environment.
 - [PR-39](https://github.com/AGH-CEAI/pull/39) - Added Grasp environment compatible with RSL-RL.
 - [PR-32](https://github.com/AGH-CEAI/pull/32) - `ROSRoboticCommander`: Added servoing (twist/jog) with MoveIt2 Servo.
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-46](https://github.com/AGH-CEAI/pull/46) - Fixed model sorting and typos.
 - [PR-26](https://github.com/AGH-CEAI/pull/26) - Fixed pose retrieval for Genesis entities.
 - [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Fixed TCP link handling in Genesis.
 
