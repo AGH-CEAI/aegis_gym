@@ -9,7 +9,7 @@ import torch as th
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..scene import (
+from ...scene import (
     SceneDirectorType,
     SceneDirectorInterface,
     RobotCommanderInterface,
@@ -17,7 +17,7 @@ from ..scene import (
     EntityType,
     Target,
 )
-from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
+from ..env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 ENV_CFG = {
     "max_episode_length": 1000,
