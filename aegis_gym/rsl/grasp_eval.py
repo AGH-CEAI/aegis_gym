@@ -6,7 +6,7 @@ import torch as th
 import genesis as gs
 
 from utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
-from grasp_env import GraspEnv
+from ..envs.grasp_env import GraspEnv
 
 
 def main():

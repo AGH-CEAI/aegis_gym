@@ -1,3 +1,4 @@
+import asyncio
 import math
 
 import numpy as np
@@ -10,20 +11,43 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
 )
 
-from manipulator import Manipulator
+try:
+    from aegis_grpc_client import AegisRobotClient
+except ImportError:
+    print(
+        "Failed to import aegis_grpc_client. "
+        "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
+    )
+    raise
+
+from ..scene import (
+    SceneDirectorType,
+)
+from ..ros import RobotCommanderROS
+from ..sim.genesis.robot_commander_genesis import RobotCommanderSimGenesis
+from ..rsl.manipulator import Manipulator
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
 
 
 class GraspEnv(VecEnv):
+    def __del__(self) -> None:
+        if not self.scene_type == SceneDirectorType.ROS:
+            return
+        if self._robot_client.is_connected:
+            asyncio.run(self._robot_client.disconnect())
+
     def __init__(
         self,
         env_cfg: dict,
         reward_cfg: dict,
         robot_cfg: dict,
         show_viewer: bool = False,
+        scene_type: SceneDirectorType = SceneDirectorType.SIM_GENESIS,
     ) -> None:
+        self.scene_type = scene_type
+
         self.num_envs = env_cfg["num_envs"]
         self.num_obs = env_cfg["num_obs"]
         self.num_privileged_obs = None
@@ -69,6 +93,16 @@ class GraspEnv(VecEnv):
         return self.env_cfg
 
     def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
+        if self.scene_type == SceneDirectorType.MOCK:
+            return
+        if self.scene_type == SceneDirectorType.ROS:
+            self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
+            asyncio.run(self._robot_client.connect())
+            self.robot_comm = RobotCommanderROS(self._robot_client)
+            return
+
+        # SceneDirectorType.SIM_GENESIS
+        self._robot_client = None
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
@@ -107,6 +141,9 @@ class GraspEnv(VecEnv):
             args=robot_cfg,
             show_cell=self.show_cell,
             device=gs.device,
+        )
+        self.robot_comm = RobotCommanderSimGenesis(
+            self.robot,
         )
 
         # == add table ==
