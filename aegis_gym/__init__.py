@@ -5,8 +5,8 @@ try:
 except PackageNotFoundError:
     __version__ = "unknown"
 
-from .scene.scene_director_factory import SceneDirectorType
-from .register_envs import register_envs
+# from .scene.scene_director_factory import SceneDirectorType
+# from .register_envs import register_envs
 
 
-ENV_IDS = register_envs(SceneDirectorType.ROS)
+# ENV_IDS = register_envs(SceneDirectorType.ROS)
