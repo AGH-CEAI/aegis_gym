@@ -2,7 +2,7 @@ import argparse
 import pickle
 from pathlib import Path
 
-import torch
+import torch as th
 import genesis as gs
 
 from utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
@@ -36,7 +36,7 @@ def main():
     args = parser.parse_args()
 
     # Set PyTorch default dtype to float32 for better performance
-    torch.set_default_dtype(torch.float32)
+    th.set_default_dtype(th.float32)
 
     gs.init()
 
@@ -86,7 +86,7 @@ def main():
     max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
-    with torch.no_grad():
+    with th.no_grad():
         if args.record:
             print("Recording video...")
             if env_cfg["camera_setup"] == "default":

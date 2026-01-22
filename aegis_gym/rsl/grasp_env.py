@@ -1,5 +1,5 @@
 import math
-import torch
+import torch as th
 
 import numpy as np
 import genesis as gs
@@ -44,7 +44,7 @@ class GraspEnv(VecEnv):
 
         self.env_cfg = env_cfg
         self.reward_scales = reward_cfg
-        self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
+        self.action_scales = th.tensor(env_cfg["action_scales"], device=self.device)
 
         self._init_scene(env_cfg, robot_cfg, show_viewer)
         self.scene.build(n_envs=env_cfg["num_envs"])
@@ -225,7 +225,7 @@ class GraspEnv(VecEnv):
         for name in self.reward_scales.keys():
             self.reward_scales[name] *= self.ctrl_dt
             self.reward_functions[name] = getattr(self, "_reward_" + name)
-            self.episode_sums[name] = torch.zeros(
+            self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=gs.device, dtype=gs.tc_float
             )
 
@@ -234,15 +234,15 @@ class GraspEnv(VecEnv):
         )
 
     def _init_buffers(self) -> None:
-        self.episode_length_buf = torch.zeros(
+        self.episode_length_buf = th.zeros(
             (self.num_envs,), device=gs.device, dtype=gs.tc_int
         )
-        self.reset_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=gs.device)
-        self.goal_pose = torch.zeros(self.num_envs, 7, device=gs.device)
+        self.reset_buf = th.zeros(self.num_envs, dtype=th.bool, device=gs.device)
+        self.goal_pose = th.zeros(self.num_envs, 7, device=gs.device)
         self.extras = dict()
         self.extras["observations"] = dict()
 
-    def reset_idx(self, envs_idx: torch.Tensor) -> None:
+    def reset_idx(self, envs_idx: th.Tensor) -> None:
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -252,35 +252,33 @@ class GraspEnv(VecEnv):
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = (
-            torch.rand(num_reset, device=self.device) * 0.22 + 0.36
-        )  # 0.36 – 0.58
-        random_y = (torch.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
-        random_z = torch.ones(num_reset, device=self.device) * (
+        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
+        random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
+        random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
         )
-        random_pos = torch.stack([random_x, random_y, random_z], dim=-1)
+        random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
         # downward facing quaternion to align with the hand
-        q_downward = torch.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).repeat(
+        q_downward = th.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).repeat(
             num_reset, 1
         )
         # randomly yaw the object
         random_yaw = (
-            torch.rand(num_reset, device=self.device) * 2 * math.pi - math.pi
+            th.rand(num_reset, device=self.device) * 2 * math.pi - math.pi
         ) * 0.25
-        q_yaw = torch.stack(
+        q_yaw = th.stack(
             [
-                torch.cos(random_yaw / 2),
-                torch.zeros(num_reset, device=self.device),
-                torch.zeros(num_reset, device=self.device),
-                torch.sin(random_yaw / 2),
+                th.cos(random_yaw / 2),
+                th.zeros(num_reset, device=self.device),
+                th.zeros(num_reset, device=self.device),
+                th.sin(random_yaw / 2),
             ],
             dim=-1,
         )
         goal_yaw = transform_quat_by_quat(q_yaw, q_downward)
 
-        self.goal_pose[envs_idx] = torch.cat([random_pos, goal_yaw], dim=-1)
+        self.goal_pose[envs_idx] = th.cat([random_pos, goal_yaw], dim=-1)
         self.object.set_pos(random_pos, envs_idx=envs_idx)
         self.object.set_quat(goal_yaw, envs_idx=envs_idx)
 
@@ -288,19 +286,17 @@ class GraspEnv(VecEnv):
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
-                torch.mean(self.episode_sums[key][envs_idx]).item()
+                th.mean(self.episode_sums[key][envs_idx]).item()
                 / self.env_cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
     def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
-        self.reset_idx(torch.arange(self.num_envs, device=gs.device))
+        self.reset_idx(th.arange(self.num_envs, device=gs.device))
         return self.get_observations(), self.extras
 
-    def step(
-        self, actions: torch.Tensor
-    ) -> tuple[TensorDict, torch.Tensor, torch.Tensor, dict]:
+    def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
         # update time
         self.episode_length_buf += 1
 
@@ -316,7 +312,7 @@ class GraspEnv(VecEnv):
             self.reset_idx(env_reset_idx)
 
         # compute reward based on task
-        reward = torch.zeros_like(self.reset_buf, device=gs.device, dtype=gs.tc_float)
+        reward = th.zeros_like(self.reset_buf, device=gs.device, dtype=gs.tc_float)
         for name, reward_func in self.reward_functions.items():
             rew = reward_func() * self.reward_scales[name]
             reward += rew
@@ -331,7 +327,7 @@ class GraspEnv(VecEnv):
     def get_privileged_observations(self) -> None:
         return None
 
-    def is_episode_complete(self) -> torch.Tensor:
+    def is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
 
         # check if the end-effector is in the valid position
@@ -339,7 +335,7 @@ class GraspEnv(VecEnv):
 
         # fill time out buffer for reward/value bootstrapping
         time_out_idx = (time_out_buf).nonzero(as_tuple=False).reshape((-1,))
-        self.extras["time_outs"] = torch.zeros_like(
+        self.extras["time_outs"] = th.zeros_like(
             self.reset_buf, device=gs.device, dtype=gs.tc_float
         )
         self.extras["time_outs"][time_out_idx] = 1.0
@@ -358,11 +354,11 @@ class GraspEnv(VecEnv):
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
-        obs_tensor = torch.cat(obs_components, dim=-1)
+        obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
 
-    def get_stereo_rgb_images(self, normalize: bool = True) -> torch.Tensor:
+    def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
         rgb_left, _, _, _ = self.scene_left_cam.render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
@@ -376,14 +372,14 @@ class GraspEnv(VecEnv):
 
         # normalize if requested
         if normalize:
-            rgb_left = torch.clamp(rgb_left, min=0.0, max=255.0) / 255.0
-            rgb_right = torch.clamp(rgb_right, min=0.0, max=255.0) / 255.0
+            rgb_left = th.clamp(rgb_left, min=0.0, max=255.0) / 255.0
+            rgb_right = th.clamp(rgb_right, min=0.0, max=255.0) / 255.0
 
         # concatenate left and right rgb images along channel dimension
-        stereo_rgb = torch.cat([rgb_left, rgb_right], dim=1)
+        stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
         return stereo_rgb
 
-    def get_observations_vis(self, normalize: bool = True) -> torch.Tensor:
+    def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
         match self.camera_setup:
             case "default":
                 cams = [self.scene_cam, self.tool_left_cam, self.tool_right_cam]
@@ -399,17 +395,17 @@ class GraspEnv(VecEnv):
             )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:
-                rgb = torch.clamp(rgb, 0.0, 255.0) / 255.0
+                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
             rgb_list.append(rgb)
 
-        rgb_multi = torch.cat(rgb_list, dim=1)
+        rgb_multi = th.cat(rgb_list, dim=1)
         return rgb_multi
 
-    def _reward_keypoints(self) -> torch.Tensor:
+    def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]
         ee_quat = self.robot.ee_pose[:, 3:7]
         keypoints_offset = self.keypoints_offset
-        object_offset = torch.tensor(
+        object_offset = th.tensor(
             [0.0, 0.0, -0.08],
             device=self.device,
             dtype=gs.tc_float,
@@ -423,18 +419,16 @@ class GraspEnv(VecEnv):
         object_pos_keypoints = self._to_world_frame(
             self.object.get_pos(), self.object.get_quat(), keypoints_offset
         )
-        dist = torch.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(
-            -1
-        )
-        return torch.exp(-dist)
+        dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
+        return th.exp(-dist)
 
     def _to_world_frame(
         self,
-        position: torch.Tensor,  # [N, 3]
-        quaternion: torch.Tensor,  # [N, 4]
-        keypoints_offset: torch.Tensor,  # [N, 7, 3]
-    ) -> torch.Tensor:
-        world = torch.zeros_like(keypoints_offset)
+        position: th.Tensor,  # [N, 3]
+        quaternion: th.Tensor,  # [N, 4]
+        keypoints_offset: th.Tensor,  # [N, 7, 3]
+    ) -> th.Tensor:
+        world = th.zeros_like(keypoints_offset)
         for k in range(keypoints_offset.shape[1]):
             world[:, k] = position + transform_by_quat(
                 keypoints_offset[:, k], quaternion
@@ -444,12 +438,12 @@ class GraspEnv(VecEnv):
     @staticmethod
     def get_keypoint_offsets(
         batch_size: int, device: str, unit_length: float = 0.5
-    ) -> torch.Tensor:
+    ) -> th.Tensor:
         """
         Get uniformly-spaced keypoints along a line of unit length, centered at body center.
         """
         keypoint_offsets = (
-            torch.tensor(
+            th.tensor(
                 [
                     [0, 0, 0],  # origin
                     [-1.0, 0, 0],  # x-negative
@@ -460,7 +454,7 @@ class GraspEnv(VecEnv):
                     [0, 0, 1.0],  # z-positive
                 ],
                 device=device,
-                dtype=torch.float32,
+                dtype=th.float32,
             )
             * unit_length
         )
@@ -481,7 +475,7 @@ class GraspEnv(VecEnv):
         final_pose[:, 1] = 0.0
         final_pose[:, 2] = 0.4
         # reset pose (home pose)
-        reset_pose = torch.tensor(
+        reset_pose = th.tensor(
             [0.2, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0], device=self.device
         ).repeat(self.num_envs, 1)
         for i in range(total_steps):
