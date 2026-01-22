@@ -50,6 +50,19 @@ ENV_CFG = {
     "visualize_camera": False,
     "visualize_cell": False,
     "camera_setup": "default",  # options: default, scene_dual
+    "reward_scales": {
+        "keypoints": 1.0,
+    },
+    "robot_cfg": {
+        "ee_link_name": "robotiq_hande_end",
+        "gripper_link_names": [
+            "robotiq_hande_left_finger",
+            "robotiq_hande_right_finger",
+        ],
+        "default_arm_dof": [0.0, -2.09, 2.09, -1.57, -1.57, 0.0],
+        "default_gripper_dof": [0.025, 0.025],
+        "ik_method": "dls_ik",
+    },
 }
 
 
@@ -62,8 +75,6 @@ class GraspEnv(VecEnv):
 
     def __init__(
         self,
-        reward_cfg: dict,
-        robot_cfg: dict,
         render_mode: str = EnvRenderMode.NONE.name,
         observation_type: str = EnvObservationType.STATE.name,
         control_type: str = EnvControlType.JOINTS.name,
@@ -90,13 +101,13 @@ class GraspEnv(VecEnv):
         self.max_episode_length = math.ceil(cfg["episode_length_s"] / self.ctrl_dt)
 
         self.cfg = cfg
-        self.reward_scales = reward_cfg
+        self.reward_scales = cfg["reward_scales"]
         self.action_scales = th.tensor(cfg["action_scales"], device=self.device)
 
         show_viewer = False
         if render_mode == EnvRenderMode.HUMAN.name:
             show_viewer = True
-        self._init_scene(cfg, robot_cfg, show_viewer)
+        self._init_scene(cfg, cfg["robot_cfg"], show_viewer)
         self.scene.build(n_envs=cfg["num_envs"])
 
         self.robot.set_pd_gains()
