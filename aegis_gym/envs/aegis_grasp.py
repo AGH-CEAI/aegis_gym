@@ -83,39 +83,49 @@ class GraspEnv(VecEnv):
         device: str = "cuda",
         cfg: dict = ENV_CFG,
     ) -> None:
+        self.render_mode = EnvRenderMode(render_mode)
+        self.observation_type = EnvObservationType(observation_type)  # Unused
+        self.control_type = EnvControlType(control_type)  # Unused
+        self.reward_type = EnvRewardType(reward_type)  # Unused
         self.scene_type = scene_type
-
-        self.num_envs = cfg["num_envs"]
-        self.num_obs = cfg["num_obs"]
-        self.num_privileged_obs = None
-        self.num_actions = cfg["num_actions"]
-        self.image_width = cfg["image_resolution"][0]
-        self.image_height = cfg["image_resolution"][1]
-        self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = cfg["visualize_cell"]
-        self.camera_setup = cfg["camera_setup"]
-        self.device = gs.device
-
-        self.ctrl_dt = cfg["ctrl_dt"]
-        self.sim_substeps = cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(cfg["episode_length_s"] / self.ctrl_dt)
-
+        self.device = self._get_device(device)
         self.cfg = cfg
-        self.reward_scales = cfg["reward_scales"]
-        self.action_scales = th.tensor(cfg["action_scales"], device=self.device)
 
-        show_viewer = False
-        if render_mode == EnvRenderMode.HUMAN.name:
-            show_viewer = True
-        self._init_scene(cfg, cfg["robot_cfg"], show_viewer)
-        self.scene.build(n_envs=cfg["num_envs"])
+        self._exctract_config()
 
+        # Genesis depended code
+        self._init_scene()
+        self.scene.build(n_envs=self.cfg["num_envs"])
         self.robot.set_pd_gains()
         self._attach_cameras()
-
         self._init_reward_functions()
         self._init_buffers()
+
         self.reset()
+
+    def _get_device(self, device_str: str) -> th.device:
+        # TODO this should be extracted somewhere higher
+        if self.scene_type == SceneDirectorType.SIM_GENESIS:
+            return gs.device
+        return th.device(device_str)
+
+    def _exctract_config(self) -> None:
+        self.num_envs = self.cfg["num_envs"]
+        self.num_obs = self.cfg["num_obs"]
+        self.num_privileged_obs = None
+        self.num_actions = self.cfg["num_actions"]
+        self.image_width = self.cfg["image_resolution"][0]
+        self.image_height = self.cfg["image_resolution"][1]
+        self.rgb_image_shape = (3, self.image_height, self.image_width)
+        self.show_cell = self.cfg["visualize_cell"]
+        self.camera_setup = self.cfg["camera_setup"]
+
+        self.ctrl_dt = self.cfg["ctrl_dt"]
+        self.sim_substeps = self.cfg["sim_substeps"]
+        self.max_episode_length = math.ceil(self.cfg["episode_length_s"] / self.ctrl_dt)
+
+        self.reward_scales = self.cfg["reward_scales"]
+        self.action_scales = th.tensor(self.cfg["action_scales"], device=self.device)
 
     # Required by rsl_rl
     @property
@@ -127,12 +137,11 @@ class GraspEnv(VecEnv):
     def step_dt(self) -> float:
         return self.ctrl_dt
 
-    # Required by rsl_rl
-    @property
-    def cfg(self) -> dict:
-        return self.cfg
+    def _init_scene(self) -> None:
+        env_cfg = self.cfg
+        robot_cfg = self.cfg["robot_cfg"]
+        show_viewer = self.render_mode == EnvRenderMode.HUMAN
 
-    def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         if self.scene_type == SceneDirectorType.MOCK:
             return
         if self.scene_type == SceneDirectorType.ROS:
