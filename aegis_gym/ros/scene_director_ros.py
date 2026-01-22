@@ -27,10 +27,20 @@ class SceneDirectorROS(SceneDirectorInterface):
         if self.robot_client.is_connected:
             asyncio.run(self.robot_client.disconnect())
 
-    def __init__(self, device: str = "cuda", enable_scene_camera: bool = False) -> None:
+    def __init__(
+        self,
+        device: str = "cuda",
+        env_cfg: dict = {},
+    ) -> None:
         if hasattr(self, "_initialized") and self._initialized:
             return
         super().__init__(device)
+
+        self.num_envs = env_cfg.get("num_envs", 1)
+        if self.num_envs > 1:
+            raise ValueError(
+                "The `num_envs` is greater than 1 for controlling just 1 robot station!!!"
+            )
 
         self.robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
         asyncio.run(self.robot_client.connect())
