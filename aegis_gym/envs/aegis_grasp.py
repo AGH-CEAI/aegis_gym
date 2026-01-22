@@ -34,10 +34,10 @@ ENV_CFG = {
     "ctrl_dt": 0.01,
     "sim_substeps": 2,  # 2 or 32
     "box_size": [0.03, 0.08, 0.06],
-    "table_size": [0.55, 0.84, 0.82],
-    "workbench_size": [0.64, 1.0, 0.806],
     "box_collision": False,
     "box_fixed": True,
+    "table_size": [0.55, 0.84, 0.82],
+    "workbench_size": [0.64, 1.0, 0.806],
     "image_resolution": (64, 64),
     "use_rasterizer": False,
     "visualize_camera": False,

@@ -35,12 +35,11 @@ class TargetSimGenesis(Target):
 
 
 class BoxSimGenesis(Box):
-    def __init__(self, scene: gs.Scene, n_envs: int = 1, device: str = "cuda"):
+    def __init__(self, scene: gs.Scene, device: str = "cuda"):
         super().__init__(device)
         self._scene = scene
         self._pose: th.Tensor = None
         self._obj: RigidEntity = None
-        self.n_envs = n_envs
 
     def create(self, cfg: dict) -> None:
         self._size = cfg.get("box_size", (0.03, 0.08, 0.06))
