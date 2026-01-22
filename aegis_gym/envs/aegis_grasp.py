@@ -1,7 +1,7 @@
 import asyncio
 import math
+from typing import Literal
 
-import numpy as np
 import torch as th
 from tensordict import TensorDict
 from rsl_rl.env import VecEnv
@@ -11,21 +11,14 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
 )
 
-try:
-    from aegis_grpc_client import AegisRobotClient
-except ImportError:
-    print(
-        "Failed to import aegis_grpc_client. "
-        "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
-    )
-    raise
-
 from ..scene import (
     SceneDirectorType,
+    SceneDirectorInterface,
+    RobotCommanderInterface,
+    get_scene_director,
+    EntityType,
+    Box,
 )
-from ..ros import RobotCommanderROS
-from ..sim.genesis.robot_commander_genesis import RobotCommanderSimGenesis
-from ..rsl.manipulator import Manipulator
 from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 # Further example
@@ -66,7 +59,7 @@ ENV_CFG = {
 }
 
 
-class GraspEnv(VecEnv):
+class AegisGraspEnv(VecEnv):
     def __del__(self) -> None:
         if not self.scene_type == SceneDirectorType.ROS:
             return
@@ -90,17 +83,18 @@ class GraspEnv(VecEnv):
         self.scene_type = scene_type
         self.device = self._get_device(device)
         self.cfg = cfg
-
         self._exctract_config()
 
-        # Genesis depended code
-        self._init_scene()
-        self.scene.build(n_envs=self.cfg["num_envs"])
-        self.robot.set_pd_gains()
-        self._attach_cameras()
+        self.scene: SceneDirectorInterface = get_scene_director(
+            scene_type, enable_scene_camera=True, env_cfg=cfg
+        )
+        self.object: Box = self.scene.add_entity(EntityType.BOX)
+        self.object.create(cfg=self.cfg)
+        self.scene.build()
+        self.robot: RobotCommanderInterface = self.scene.get_robot_commander()
+
         self._init_reward_functions()
         self._init_buffers()
-
         self.reset()
 
     def _get_device(self, device_str: str) -> th.device:
@@ -118,7 +112,7 @@ class GraspEnv(VecEnv):
         self.image_height = self.cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.show_cell = self.cfg["visualize_cell"]
-        self.camera_setup = self.cfg["camera_setup"]
+        self.camera_setup: Literal["default", "scene_dual"] = self.cfg["camera_setup"]
 
         self.ctrl_dt = self.cfg["ctrl_dt"]
         self.sim_substeps = self.cfg["sim_substeps"]
@@ -129,179 +123,13 @@ class GraspEnv(VecEnv):
 
     # Required by rsl_rl
     @property
-    def unwrapped(self) -> "GraspEnv":
+    def unwrapped(self) -> "AegisGraspEnv":
         return self
 
     # Required by rsl_rl
     @property
     def step_dt(self) -> float:
         return self.ctrl_dt
-
-    def _init_scene(self) -> None:
-        env_cfg = self.cfg
-        robot_cfg = self.cfg["robot_cfg"]
-        show_viewer = self.render_mode == EnvRenderMode.HUMAN
-
-        if self.scene_type == SceneDirectorType.MOCK:
-            return
-        if self.scene_type == SceneDirectorType.ROS:
-            self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
-            asyncio.run(self._robot_client.connect())
-            self.robot_comm = RobotCommanderROS(self._robot_client)
-            return
-
-        # SceneDirectorType.SIM_GENESIS
-        self._robot_client = None
-        # == setup scene ==
-        self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(
-                dt=self.ctrl_dt, substeps=self.sim_substeps
-            ),
-            rigid_options=gs.options.RigidOptions(
-                dt=self.ctrl_dt,
-                constraint_solver=gs.constraint_solver.Newton,
-                enable_collision=True,
-                enable_joint_limit=True,
-            ),
-            vis_options=gs.options.VisOptions(
-                rendered_envs_idx=list(range(min(env_cfg["num_envs"], 10)))
-            ),
-            viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.ctrl_dt),
-                camera_pos=(2.0, 0.0, 2.5),
-                camera_lookat=(0.0, 0.0, 0.5),
-                camera_fov=40,
-            ),
-            profiling_options=gs.options.ProfilingOptions(show_FPS=False),
-            renderer=gs.options.renderers.BatchRenderer(
-                use_rasterizer=env_cfg["use_rasterizer"],
-            ),
-            show_viewer=show_viewer,
-        )
-
-        # == add ground ==
-        plane_z = -0.82 if self.show_cell else 0.0
-        self.scene.add_entity(gs.morphs.Plane(pos=(0, 0, plane_z)))
-
-        # == add robot ==
-        self.robot = Manipulator(
-            num_envs=self.num_envs,
-            scene=self.scene,
-            args=robot_cfg,
-            show_cell=self.show_cell,
-            device=gs.device,
-        )
-        self.robot_comm = RobotCommanderSimGenesis(
-            self.robot,
-        )
-
-        # == add table ==
-        if self.show_cell:
-            self.table = self.scene.add_entity(
-                gs.morphs.Box(
-                    size=env_cfg["table_size"],
-                    pos=(
-                        env_cfg["table_size"][0] / 2 + env_cfg["workbench_size"][0] / 2,
-                        0.0,
-                        env_cfg["table_size"][2] / 2 - env_cfg["workbench_size"][2],
-                    ),
-                    fixed=True,
-                ),
-                surface=gs.surfaces.Default(color=(0.5, 0.5, 0.5)),
-                material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
-            )
-
-        # == add object ==
-        self.object = self.scene.add_entity(
-            gs.morphs.Box(
-                size=env_cfg["box_size"],
-                fixed=env_cfg["box_fixed"],
-                collision=env_cfg["box_collision"],
-            ),
-            # material=gs.materials.Rigid(gravity_compensation=1),
-            surface=gs.surfaces.Rough(
-                diffuse_texture=gs.textures.ColorTexture(
-                    color=(1.0, 0.0, 0.0),
-                ),
-            ),
-        )
-
-        # == add cameras ==
-        match self.camera_setup:
-            case "default":
-                self._add_camera(name="scene_cam", fov=40)
-                self._add_camera(name="tool_left_cam", fov=30)
-                self._add_camera(name="tool_right_cam", fov=30)
-            case "scene_dual":
-                self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
-                self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
-
-        if self.cfg["visualize_camera"]:
-            self.record_cam = self.scene.add_camera(
-                res=(1280, 720),
-                pos=(1.5, 0.0, 0.2),
-                lookat=(0.0, 0.0, 0.2),
-                fov=60,
-                GUI=self.cfg["visualize_camera"],
-                debug=True,
-            )
-
-    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
-    def _add_camera(
-        self,
-        name: str,
-        pos: tuple = (0.0, 0.0, 0.0),
-        fov: float = 40,  # deg
-        lookat: tuple = (0.0, 0.0, 0.0),
-        res: tuple = None,
-    ):
-        if res is None:
-            res = (self.image_width, self.image_height)
-        setattr(
-            self,
-            name,
-            self.scene.add_camera(
-                res=res,
-                pos=pos,
-                lookat=lookat,
-                fov=fov,
-                GUI=self.cfg["visualize_camera"],
-            ),
-        )
-
-    def _attach_cameras(self):
-        if self.camera_setup != "default":
-            return
-
-        scene_offset_T = np.array(
-            [
-                [0.0, 0.0, -1.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, -1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            dtype=np.float32,
-        )
-        tool_offset_T = np.array(
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, -0.03],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            dtype=np.float32,
-        )
-
-        cams_to_attach = [
-            ("scene_cam", "cam_scene_rgb_camera_frame", scene_offset_T),
-            ("tool_left_cam", "cam_tool_left", tool_offset_T),
-            ("tool_right_cam", "cam_tool_right", tool_offset_T),
-        ]
-
-        for cam_name, link_name, offset in cams_to_attach:
-            cam = getattr(self, cam_name)
-            cam.attach(self.robot._robot_entity.get_link(link_name), offset)
-            cam.move_to_attach()
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()

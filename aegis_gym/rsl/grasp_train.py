@@ -7,7 +7,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
 from utils import check_rsl_rl_version, load_teacher_policy
-from ..envs.grasp_env import GraspEnv
+from ..envs.aegis_grasp import AegisGraspEnv
 from .grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
 
 
@@ -39,7 +39,7 @@ def main():
     # === env ===
     # BC only needs a small number of envs
     env_cfg["num_envs"] = args.num_envs if args.stage == "rl" else 10
-    env = GraspEnv(
+    env = AegisGraspEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_scales,
         robot_cfg=robot_cfg,

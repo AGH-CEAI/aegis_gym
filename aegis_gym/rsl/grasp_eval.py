@@ -6,7 +6,7 @@ import torch as th
 import genesis as gs
 
 from utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
-from ..envs.grasp_env import GraspEnv
+from ..envs.aegis_grasp import AegisGraspEnv
 
 
 def main():
@@ -67,7 +67,7 @@ def main():
     # modify simsubsteps for evaluation
     env_cfg["sim_substeps"] = args.sim_substeps
 
-    env = GraspEnv(
+    env = AegisGraspEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,

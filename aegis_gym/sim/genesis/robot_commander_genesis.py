@@ -2,9 +2,9 @@ from typing import Optional
 
 import torch as th
 from tensordict import TensorDict
-from genesis.engine.entities.rigid_entity import RigidEntity
 
 from ...scene.robot_commander_interface import RobotCommanderInterface
+from .manipulator import Manipulator
 
 
 class RobotCommanderSimGenesis(RobotCommanderInterface):
@@ -16,10 +16,11 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         return cls._instance
 
     def __init__(
-        self, gs_robot: RigidEntity, motor_dofs: tuple[str], device: str = "cuda"
+        self, manipulator: Manipulator, motor_dofs: tuple[str], device: str = "cuda"
     ):
         super().__init__(device)
-        self.robot = gs_robot
+        self.manipulator = manipulator
+        self.gs_robot = manipulator.get_robot_entity()
         self.motor_dofs = motor_dofs
         self.tcp_link_name = "robotiq_hande_end"
         self.base_link_name = "world"
@@ -41,10 +42,10 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         )
 
     def get_joint_positions(self) -> th.Tensor:
-        return self.robot.get_dofs_position(self.motor_dofs).clone().detach()
+        return self.gs_robot.get_dofs_position(self.motor_dofs).clone().detach()
 
     def get_joint_velocities(self) -> th.Tensor:
-        return self.robot.get_dofs_velocity(self.motor_dofs).clone().detach()
+        return self.gs_robot.get_dofs_velocity(self.motor_dofs).clone().detach()
 
     # TODO get F/T data from genesis
     def get_joints_efforts(self) -> th.Tensor:
@@ -53,15 +54,13 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         )
 
     def get_tcp_position(self) -> th.Tensor:
-        return self.robot.get_link(self.tcp_link_name).get_pos().clone().detach()
+        return self.gs_robot.get_link(self.tcp_link_name).get_pos().clone().detach()
 
     def get_tcp_orientation(self) -> th.Tensor:
-        return self.robot.get_link(self.tcp_link_name).get_quat().clone().detach()
+        return self.gs_robot.get_link(self.tcp_link_name).get_quat().clone().detach()
 
     def get_tcp_pose(self) -> th.Tensor:
-        pos = self.get_tcp_position()
-        ori = self.get_tcp_orientation()
-        return th.cat([pos, ori])
+        return self.manipulator.ee_pose
 
     # TODO get F/T data from genesis
     def get_wrench(self) -> th.Tensor:
@@ -70,7 +69,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         )
 
     def get_base_position(self) -> th.Tensor:
-        return self.robot.get_link(self.base_link_name).get_pos().clone().detach()
+        return self.manipulator.base_pos
 
     # TODO(issue#9): Limit velocity and acceleration for Genesis robot commander
 
@@ -82,7 +81,7 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         raise NotImplementedError
 
     def control_dofs_position_servo(self, target_pos: Optional[th.Tensor]) -> None:
-        self.robot.control_dofs_position(target_pos, self.motor_dofs)
+        self.gs_robot.control_dofs_position(target_pos, self.motor_dofs)
 
     def control_dofs_velocity_servo(
         self,
@@ -103,25 +102,8 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
         target_pos: th.Tensor,
         target_ori_euler: Optional[th.Tensor],
     ) -> None:
-        if target_ori_euler is None:
-            target_ori_euler = th.tensor(
-                # TODO(issue#25): Investigate TCP frame reference discrepancy
-                [0.0, 0.7071, 0.0, 0.7071],
-                # [1.0, 0.0, 0.0, 0.0],
-                dtype=th.float32,
-                device=self.device,
-            )
-
-        pos_np = target_pos.detach().cpu().numpy()
-        ori_np = target_ori_euler.detach().cpu().numpy()
-
-        qpos = self.robot.inverse_kinematics(
-            link=self.robot.get_link(self.tcp_link_name),
-            pos=pos_np,
-            quat=ori_np,
-        )[self.motor_dofs[0] : self.motor_dofs[-1] + 1]
-
-        self.robot.control_dofs_position(qpos, self.motor_dofs)
+        # TODO handle the manipulator API
+        self.manipulator.apply_action(target_pos, open_gripper=True)
 
     def control_tcp_velocity_servo(
         self,
@@ -130,15 +112,15 @@ class RobotCommanderSimGenesis(RobotCommanderInterface):
     ) -> None:
         raise NotImplementedError
 
-    def move_to_home(self) -> None:
+    def move_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
         # TODO(issue#8) Do we need trajectory to home in simulation?
         # self.control_dofs_position(self.dof_home)
-        self._teleport_to_home()
+        self.manipulator.reset_home(envs_idx)
 
     def _teleport_to_home(self) -> None:
-        self.robot.set_dofs_position(
+        self.gs_robot.set_dofs_position(
             position=self.dof_home,
             dofs_idx_local=self.motor_dofs,
             zero_velocity=True,
         )
-        self.robot.zero_all_dofs_velocity()
+        self.gs_robot.zero_all_dofs_velocity()

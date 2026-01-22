@@ -7,7 +7,7 @@ from genesis.utils.geom import (
     xyz_to_quat,
 )
 
-from utils import generate_aegis_urdf
+from ..utils_ros import generate_aegis_urdf
 
 
 class Manipulator:
@@ -48,6 +48,10 @@ class Manipulator:
         self._ik_method: Literal["rel_pose", "dls"] = args["ik_method"]
 
         self._init()
+
+    @property
+    def get_robot_entity(self) -> gs.Entity:
+        return self._robot_entity
 
     def set_pd_gains(self):
         # set control gains

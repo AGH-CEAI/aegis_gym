@@ -24,6 +24,7 @@ class SceneDirectorType(StrEnum):
 def get_scene_director(
     mode: SceneDirectorType = SceneDirectorType.ROS,
     enable_scene_camera: bool = False,
+    env_cfg: dict = {},
 ) -> SceneDirectorInterface:
     if is_mock_needed():
         print("\n> Deteceted pytest env, using MOCK env implementations.")
@@ -40,10 +41,10 @@ def get_scene_director(
                 SceneDirectorROS = None
 
             if SceneDirectorROS:
-                return SceneDirectorROS(enable_scene_camera=enable_scene_camera)
-            warnings.warn(
-                "\n[IMPORT ERROR] Failed to import SceneDirectorROS. Double check if the ROS is sourced properly via `source /opt/ros/ROS_DISTRO/setup.sh`."
-            )
+                return SceneDirectorROS(
+                    enable_scene_camera=enable_scene_camera, env_cfg=env_cfg
+                )
+            warnings.warn("\n[IMPORT ERROR] Failed to import SceneDirectorROS.")
             raise ImportError
 
         case SceneDirectorType.SIM_GENESIS:
@@ -53,12 +54,14 @@ def get_scene_director(
                 SceneDirectorSimGenesis = None
 
             if SceneDirectorSimGenesis:
-                return SceneDirectorSimGenesis(enable_scene_camera=enable_scene_camera)
+                return SceneDirectorSimGenesis(
+                    enable_scene_camera=enable_scene_camera, env_cfg=env_cfg
+                )
             warnings.warn(
                 "\n[IMPORT ERROR] Failed to import SceneDirectorSimGenesis. Double check if the 'aegis_gym' is instatalled with optional dependencies: 'pip3 install ./aegis_gym.whl[sim-genesis]'."
             )
             raise ImportError
 
         case _:
-            print(f"[VALUE ERROR] Not defined RobotCommanderInterface '{mode.name}'.")
+            print(f"[VALUE ERROR] Not defined SceneDirectorType '{mode.name}'.")
             raise ValueError
