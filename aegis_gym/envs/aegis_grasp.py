@@ -31,6 +31,27 @@ from ..rsl.manipulator import Manipulator
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
 
 
+ENV_CFG = {
+    "num_envs": 10,
+    "num_obs": 14,
+    "num_actions": 6,
+    "action_scales": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+    "episode_length_s": 3.0,
+    "ctrl_dt": 0.01,
+    "sim_substeps": 2,  # 2 or 32
+    "box_size": [0.03, 0.08, 0.06],
+    "table_size": [0.55, 0.84, 0.82],
+    "workbench_size": [0.64, 1.0, 0.806],
+    "box_collision": False,
+    "box_fixed": True,
+    "image_resolution": (64, 64),
+    "use_rasterizer": False,
+    "visualize_camera": False,
+    "visualize_cell": False,
+    "camera_setup": "default",  # options: default, scene_dual
+}
+
+
 class GraspEnv(VecEnv):
     def __del__(self) -> None:
         if not self.scene_type == SceneDirectorType.ROS:
@@ -40,35 +61,35 @@ class GraspEnv(VecEnv):
 
     def __init__(
         self,
-        env_cfg: dict,
         reward_cfg: dict,
         robot_cfg: dict,
         show_viewer: bool = False,
         scene_type: SceneDirectorType = SceneDirectorType.SIM_GENESIS,
+        cfg: dict = ENV_CFG,
     ) -> None:
         self.scene_type = scene_type
 
-        self.num_envs = env_cfg["num_envs"]
-        self.num_obs = env_cfg["num_obs"]
+        self.num_envs = cfg["num_envs"]
+        self.num_obs = cfg["num_obs"]
         self.num_privileged_obs = None
-        self.num_actions = env_cfg["num_actions"]
-        self.image_width = env_cfg["image_resolution"][0]
-        self.image_height = env_cfg["image_resolution"][1]
+        self.num_actions = cfg["num_actions"]
+        self.image_width = cfg["image_resolution"][0]
+        self.image_height = cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = env_cfg["visualize_cell"]
-        self.camera_setup = env_cfg["camera_setup"]
+        self.show_cell = cfg["visualize_cell"]
+        self.camera_setup = cfg["camera_setup"]
         self.device = gs.device
 
-        self.ctrl_dt = env_cfg["ctrl_dt"]
-        self.sim_substeps = env_cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
+        self.ctrl_dt = cfg["ctrl_dt"]
+        self.sim_substeps = cfg["sim_substeps"]
+        self.max_episode_length = math.ceil(cfg["episode_length_s"] / self.ctrl_dt)
 
-        self.env_cfg = env_cfg
+        self.cfg = cfg
         self.reward_scales = reward_cfg
-        self.action_scales = th.tensor(env_cfg["action_scales"], device=self.device)
+        self.action_scales = th.tensor(cfg["action_scales"], device=self.device)
 
-        self._init_scene(env_cfg, robot_cfg, show_viewer)
-        self.scene.build(n_envs=env_cfg["num_envs"])
+        self._init_scene(cfg, robot_cfg, show_viewer)
+        self.scene.build(n_envs=cfg["num_envs"])
 
         self.robot.set_pd_gains()
         self._attach_cameras()
@@ -90,7 +111,7 @@ class GraspEnv(VecEnv):
     # Required by rsl_rl
     @property
     def cfg(self) -> dict:
-        return self.env_cfg
+        return self.cfg
 
     def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
         if self.scene_type == SceneDirectorType.MOCK:
@@ -187,13 +208,13 @@ class GraspEnv(VecEnv):
                 self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
                 self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
 
-        if self.env_cfg["visualize_camera"]:
+        if self.cfg["visualize_camera"]:
             self.record_cam = self.scene.add_camera(
                 res=(1280, 720),
                 pos=(1.5, 0.0, 0.2),
                 lookat=(0.0, 0.0, 0.2),
                 fov=60,
-                GUI=self.env_cfg["visualize_camera"],
+                GUI=self.cfg["visualize_camera"],
                 debug=True,
             )
 
@@ -216,7 +237,7 @@ class GraspEnv(VecEnv):
                 pos=pos,
                 lookat=lookat,
                 fov=fov,
-                GUI=self.env_cfg["visualize_camera"],
+                GUI=self.cfg["visualize_camera"],
             ),
         )
 
@@ -319,7 +340,7 @@ class GraspEnv(VecEnv):
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self.env_cfg["episode_length_s"]
+                / self.cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
