@@ -26,6 +26,7 @@ from ..scene import (
 from ..ros import RobotCommanderROS
 from ..sim.genesis.robot_commander_genesis import RobotCommanderSimGenesis
 from ..rsl.manipulator import Manipulator
+from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -63,8 +64,12 @@ class GraspEnv(VecEnv):
         self,
         reward_cfg: dict,
         robot_cfg: dict,
-        show_viewer: bool = False,
-        scene_type: SceneDirectorType = SceneDirectorType.SIM_GENESIS,
+        render_mode: str = EnvRenderMode.NONE.name,
+        observation_type: str = EnvObservationType.STATE.name,
+        control_type: str = EnvControlType.JOINTS.name,
+        reward_type: str = EnvRewardType.DENSE.name,
+        scene_type: SceneDirectorType = SceneDirectorType.MOCK,
+        device: str = "cuda",
         cfg: dict = ENV_CFG,
     ) -> None:
         self.scene_type = scene_type
@@ -88,6 +93,9 @@ class GraspEnv(VecEnv):
         self.reward_scales = reward_cfg
         self.action_scales = th.tensor(cfg["action_scales"], device=self.device)
 
+        show_viewer = False
+        if render_mode == EnvRenderMode.HUMAN.name:
+            show_viewer = True
         self._init_scene(cfg, robot_cfg, show_viewer)
         self.scene.build(n_envs=cfg["num_envs"])
 
