@@ -1,6 +1,5 @@
 import argparse
 import pickle
-import time
 from pathlib import Path
 
 import genesis as gs
@@ -8,19 +7,6 @@ import torch as th
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
-from envs.grasp_env import GraspEnv
-
-try:
-    from envs.grasp_env_ros import GraspEnvROS
-except ImportError as e:
-    print(
-        f">>>> WARNING: Can not import GraspEnvROS. Error:\n"
-        f"{e}\n"
-        f">>>> Trying to continue in 3s..."
-    )
-    time.sleep(3.0)
-    GraspEnvROS = None
-
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
 from utils import check_rsl_rl_version, load_teacher_policy
 
@@ -54,6 +40,8 @@ def main():
 
     env = None
     if args.control == "sim":
+        from envs.grasp_env import GraspEnv
+
         gs.init(logging_level="warning", precision="32")
         env = GraspEnv(
             env_cfg=env_cfg,
@@ -62,6 +50,11 @@ def main():
             show_viewer=args.vis,
         )
     if args.control == "real":
+        try:
+            from envs.grasp_env_ros import GraspEnvROS
+        except ImportError as e:
+            print(f">>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting")
+            return
         env = GraspEnvROS(
             env_cfg=env_cfg,
             reward_cfg=reward_scales,
