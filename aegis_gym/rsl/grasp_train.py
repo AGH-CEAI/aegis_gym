@@ -5,10 +5,10 @@ from pathlib import Path
 import genesis as gs
 from rsl_rl.runners import OnPolicyRunner
 
-from .behavior_cloning import BehaviorCloning
-from .envs.grasp_env import GraspEnv
-from .grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
-from .utils import check_rsl_rl_version, load_teacher_policy
+from behavior_cloning import BehaviorCloning
+from envs.grasp_env import GraspEnv
+from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
+from utils import check_rsl_rl_version, load_teacher_policy
 
 
 def main():

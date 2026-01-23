@@ -7,7 +7,7 @@ from genesis.utils.geom import (
     xyz_to_quat,
 )
 
-from ..utils import generate_aegis_urdf
+from .utils import generate_aegis_urdf
 
 
 class Manipulator:
