@@ -1,12 +1,26 @@
 import argparse
 import pickle
+import time
 from pathlib import Path
 
 import genesis as gs
+import torch as th
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
 from envs.grasp_env import GraspEnv
+
+try:
+    from envs.grasp_env_ros import GraspEnvROS
+except ImportError as e:
+    print(
+        f">>>> WARNING: Can not import GraspEnvROS. Error:\n"
+        f"{e}\n"
+        f">>>> Trying to continue in 3s..."
+    )
+    time.sleep(3.0)
+    GraspEnvROS = None
+
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
 from utils import check_rsl_rl_version, load_teacher_policy
 
@@ -18,11 +32,9 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=300)
-    parser.add_argument("--stage", type=str, default="rl")
+    parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
+    parser.add_argument("--control", type=str, choices=["sim", "real"], default="sim")
     args = parser.parse_args()
-
-    # === init ===
-    gs.init(logging_level="warning", precision="32")
 
     # === task cfgs and training algos cfgs ===
     env_cfg, reward_scales, robot_cfg = get_task_cfgs()
@@ -39,12 +51,28 @@ def main():
     # === env ===
     # BC only needs a small number of envs
     env_cfg["num_envs"] = args.num_envs if args.stage == "rl" else 10
-    env = GraspEnv(
-        env_cfg=env_cfg,
-        reward_cfg=reward_scales,
-        robot_cfg=robot_cfg,
-        show_viewer=args.vis,
-    )
+
+    env = None
+    if args.control == "sim":
+        gs.init(logging_level="warning", precision="32")
+        env = GraspEnv(
+            env_cfg=env_cfg,
+            reward_cfg=reward_scales,
+            robot_cfg=robot_cfg,
+            show_viewer=args.vis,
+        )
+    if args.control == "real":
+        env = GraspEnvROS(
+            env_cfg=env_cfg,
+            reward_cfg=reward_scales,
+            robot_cfg=robot_cfg,
+            show_viewer=args.vis,
+            device=th.device("cuda" if th.cuda.is_available() else "cpu"),
+        )
+
+    if env is None:
+        print("> Env is not configured. Exiting...")
+        return
 
     # === runner ===
     if args.stage == "bc":
