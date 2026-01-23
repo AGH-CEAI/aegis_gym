@@ -49,6 +49,7 @@ class GraspEnvROS(VecEnv):
         self.camera_setup: Literal["default", "scene_dual"] = self.cfg["camera_setup"]
 
         self.box_size = self.cfg["box_size"]
+        self.box_orientation = (0.0, 1.0, 0.0, 0.0)
         self.table_size = self.cfg["table_size"]
         self.workbench_size = self.cfg["workbench_size"]
 
