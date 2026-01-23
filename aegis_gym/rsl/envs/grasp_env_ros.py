@@ -4,8 +4,44 @@ from typing import Literal
 import torch as th
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
+from genesis.utils.geom import transform_by_quat
 
 from .manipulator_ros import ManipulatorROS
+
+
+class Object:
+    def __init__(
+        self,
+        size: th.Tensor,
+        pos: th.Tensor,
+        quat: th.Tensor,
+        num_envs: int = 1,
+        device: th.device = th.device("cpu"),
+    ):
+        self.device = device
+        self.num_envs = num_envs
+        self.size = size
+
+        self.pos = pos.repeat(self.num_envs, 1)
+        self.quat = quat.repeat(self.num_envs, 1)
+        self._init_pos = self.pos.clone()
+        self._init_quat = self.quat.clone()
+
+    def reset(self, envs_idx: int) -> None:
+        self.pos = self._init_pos.clone()
+        self.quat = self._init_quat.clone()
+
+    def get_pos(self) -> th.Tensor:
+        return self.pos
+
+    def get_quat(self) -> th.Tensor:
+        return self.quat
+
+    def set_pos(self, pos: th.Tensor, envs_idx: int) -> None:
+        self.pos = pos
+
+    def set_quat(self, quat: th.Tensor, envs_idx: int) -> None:
+        self.quat = quat
 
 
 class GraspEnvROS(VecEnv):
@@ -19,7 +55,7 @@ class GraspEnvROS(VecEnv):
     ) -> None:
         self.cfg = env_cfg
         self.device = device
-        self.show_ciewer = show_viewer
+        self.show_viewer = show_viewer
 
         self._exctract_config()
         self.reward_scales = reward_cfg
@@ -30,8 +66,13 @@ class GraspEnvROS(VecEnv):
             device=self.device,
         )
 
-        # TODO: an entity with get_pose() method
-        self.object = None
+        self.object = Object(
+            size=self.box_size,
+            pos=th.tensor(self.box_position, device=self.device),
+            quat=th.tensor(self.box_orientation, device=self.device),
+            num_envs=self.num_envs,
+            device=self.device,
+        )
 
         self._init_reward_functions()
         self._init_buffers()
@@ -50,10 +91,11 @@ class GraspEnvROS(VecEnv):
 
         self.box_size = self.cfg["box_size"]
         self.box_orientation = (0.0, 1.0, 0.0, 0.0)
+        self.box_position = (-0.626, -0.028, -0.028)
         self.table_size = self.cfg["table_size"]
         self.workbench_size = self.cfg["workbench_size"]
 
-        # Probably not the wisest choice, it should be hardcoded
+        # Probably not the wisest choice, it should be dynamically obtained from config
         # self.ctrl_dt = self.cfg["ctrl_dt"]
         self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
 
@@ -107,39 +149,7 @@ class GraspEnvROS(VecEnv):
 
         # reset robot
         self.robot.reset(envs_idx)
-
-        # reset object
-        # TODO - needs an object entity
-        # num_reset = len(envs_idx)
-        # random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
-        # random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
-        # random_z = th.ones(num_reset, device=self.device) * (
-        #     self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
-        # )
-        # random_pos = th.stack([random_x, random_y, random_z], dim=-1)
-
-        # # downward facing quaternion to align with the hand
-        # q_downward = th.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).repeat(
-        #     num_reset, 1
-        # )
-        # # randomly yaw the object
-        # random_yaw = (
-        #     th.rand(num_reset, device=self.device) * 2 * math.pi - math.pi
-        # ) * 0.25
-        # q_yaw = th.stack(
-        #     [
-        #         th.cos(random_yaw / 2),
-        #         th.zeros(num_reset, device=self.device),
-        #         th.zeros(num_reset, device=self.device),
-        #         th.sin(random_yaw / 2),
-        #     ],
-        #     dim=-1,
-        # )
-        # goal_yaw = transform_quat_by_quat(q_yaw, q_downward)
-
-        # self.goal_pose[envs_idx] = th.cat([random_pos, goal_yaw], dim=-1)
-        # self.object.set_pos(random_pos, envs_idx=envs_idx)
-        # self.object.set_quat(goal_yaw, envs_idx=envs_idx)
+        self.object.reset(envs_idx)
 
         # fill extras
         self.extras["episode"] = {}
@@ -205,67 +215,25 @@ class GraspEnvROS(VecEnv):
             self.robot.ee_pose[:, :3],
             self.robot.ee_pose[:, 3:7],
         )
-        # TODO get object entity
-        # obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
+        obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
 
         obs_components = [
-            # TODO apply object state space
-            # ee_pos - obj_pos,  # 3D position difference
+            ee_pos - obj_pos,  # 3D position difference
             ee_quat,  # current orientation (w, x, y, z)
-            # obj_pos,  # goal position
-            # obj_quat,  # goal orientation (w, x, y, z)
+            obj_pos,  # goal position
+            obj_quat,  # goal orientation (w, x, y, z)
         ]
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
 
     def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
-        # Currently no IMAGES
         # TODO implement gRPC image transportation
-
-        # rgb_left, _, _, _ = self.scene_left_cam.render(
-        #     rgb=True, depth=False, segmentation=False, normal=False
-        # )
-        # rgb_right, _, _, _ = self.scene_right_cam.render(
-        #     rgb=True, depth=False, segmentation=False, normal=False
-        # )
-
-        # # convert to the NCHW format
-        # rgb_left = rgb_left.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
-        # rgb_right = rgb_right.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
-
-        # # normalize if requested
-        # if normalize:
-        #     rgb_left = th.clamp(rgb_left, min=0.0, max=255.0) / 255.0
-        #     rgb_right = th.clamp(rgb_right, min=0.0, max=255.0) / 255.0
-
-        # # concatenate left and right rgb images along channel dimension
-        # stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
-        # return stereo_rgb
-        return th.zeros(3, dtype=th.float32, device=self.device)
+        raise NotImplementedError
 
     def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
+        # TODO implement gRPC image transportation
         raise NotImplementedError
-        # match self.camera_setup:
-        #     case "default":
-        #         cams = [self.scene_cam, self.tool_left_cam, self.tool_right_cam]
-        #     case "scene_dual":
-        #         cams = [self.scene_left_cam, self.scene_right_cam]
-        #     case _:
-        #         raise ValueError(f"Unknown camera setup {self.camera_setup}")
-
-        # rgb_list = []
-        # for cam in cams:
-        #     rgb, _, _, _ = cam.render(
-        #         rgb=True, depth=False, segmentation=False, normal=False
-        #     )
-        #     rgb = rgb.permute(0, 3, 1, 2)[:, :3]
-        #     if normalize:
-        #         rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
-        #     rgb_list.append(rgb)
-
-        # rgb_multi = th.cat(rgb_list, dim=1)
-        # return rgb_multi
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]
@@ -282,11 +250,11 @@ class GraspEnvROS(VecEnv):
             ee_quat,
             keypoints_offset,
         )
-        # TODO object entity
-        # object_pos_keypoints = self._to_world_frame(
-        #     self.object.get_pos(), self.object.get_quat(), keypoints_offset
-        # )
-        # dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
+
+        object_pos_keypoints = self._to_world_frame(
+            self.object.get_pos(), self.object.get_quat(), keypoints_offset
+        )
+        dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         dist = th.norm(finger_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
 
@@ -298,10 +266,9 @@ class GraspEnvROS(VecEnv):
     ) -> th.Tensor:
         world = th.zeros_like(keypoints_offset)
         for k in range(keypoints_offset.shape[1]):
-            # TODO
-            # world[:, k] = position + transform_by_quat(
-            #     keypoints_offset[:, k], quaternion
-            # )
+            world[:, k] = position + transform_by_quat(
+                keypoints_offset[:, k], quaternion
+            )
             world[:, k] = position
         return world
 
