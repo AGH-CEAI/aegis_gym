@@ -1,7 +1,6 @@
 import asyncio
-from typing import Literal, Optional
+from typing import Optional
 
-import numpy as np
 import torch as th
 from tensordict import TensorDict
 
@@ -17,16 +16,16 @@ except ImportError:
 
 class ManipulatorROS:
     _instance: Optional["ManipulatorROS"] = None
-    
+
     def __new__(cls, *args, **kwargs) -> "ManipulatorROS":
         if cls._instance is None:
             cls._instance = super(ManipulatorROS, cls).__new__(cls)
         return cls._instance
-    
+
     def __del__(self) -> None:
         if self.robot_client.is_connected:
             asyncio.run(self.robot_client.disconnect())
-    
+
     def __init__(
         self,
         num_envs: int,
@@ -35,20 +34,20 @@ class ManipulatorROS:
     ):
         if hasattr(self, "_initialized") and self._initialized:
             return
-        
+
         self.num_envs = num_envs
         if self.num_envs > 1:
             raise ValueError(
                 "The `num_envs` is greater than 1 for controlling just 1 robot station!!!"
             )
-        
+
         self._num_envs = num_envs
         self._args = args
         self._device = device
 
         # TODO get from cfg
-        self.ctrl_dt = 1 / 250.0 # 1/servo_f
-        
+        self.ctrl_dt = 1 / 250.0  # 1/servo_f
+
         self.dof_home_dict = {
             "shoulder_pan_joint": 0.0,
             "shoulder_lift_joint": -2.09,
@@ -59,10 +58,10 @@ class ManipulatorROS:
             # "robotiq_hande_left_finger_joint": 0.025,
             # "robotiq_hande_right_finger_joint": 0.025,
         }
-                
+
         self.robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
         asyncio.run(self.robot_client.connect())
-        
+
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
@@ -78,7 +77,7 @@ class ManipulatorROS:
                 "joints_eff": th.from_numpy(state["joints_eff"]),
             }
         )
-    
+
     def get_state_tensordict(self) -> TensorDict:
         return self._state
 
@@ -113,7 +112,7 @@ class ManipulatorROS:
 
     def reset_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
         self._move_to_home()
-        
+
     def _move_to_home(self) -> None:
         asyncio.run(
             self._robot_client.goto_joints(
@@ -122,28 +121,31 @@ class ManipulatorROS:
             )
         )
 
-    def apply_action(self, action: th.Tensor, open_gripper: Optional[bool] = None) -> None:
-        
+    def apply_action(
+        self, action: th.Tensor, open_gripper: Optional[bool] = None
+    ) -> None:
         # Change position commands into velocities for the MoveIt2 Servo
         delta_velocity = action[:, :3] / self.ctrl_dt
         delta_angular = action[:, 3:6] / self.ctrl_dt
-        
+
         asyncio.run(
             self._robot_client.servo_tcp(
                 linear=delta_velocity,
                 angular=delta_angular,
             )
         )
-        
+
         if open_gripper is None:
             return
-        
+
         if open_gripper:
             asyncio.run(self._robot_client.gripper_open())
         else:
             asyncio.run(self._robot_client.gripper_close())
 
-    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None) -> None:
+    def go_to_goal(
+        self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
+    ) -> None:
         target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
         target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
 
@@ -153,10 +155,10 @@ class ManipulatorROS:
                 orientation=target_ori_np,
             )
         )
-        
+
         if open_gripper is None:
             return
-        
+
         if open_gripper:
             asyncio.run(self._robot_client.gripper_open())
         else:

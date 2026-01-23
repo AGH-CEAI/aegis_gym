@@ -10,7 +10,7 @@ from genesis.utils.geom import (
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
-from manipulator import Manipulator
+from aegis_gym.aegis_gym.rsl.envs.manipulator import Manipulator
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
