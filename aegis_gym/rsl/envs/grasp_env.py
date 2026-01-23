@@ -1,16 +1,16 @@
 import math
-import torch as th
 
-import numpy as np
 import genesis as gs
+import numpy as np
+import torch as th
+from rsl_rl.env import VecEnv
+from tensordict import TensorDict
 from genesis.utils.geom import (
     transform_by_quat,
     transform_quat_by_quat,
 )
-from rsl_rl.env import VecEnv
-from tensordict import TensorDict
 
-from aegis_gym.aegis_gym.rsl.envs.manipulator import Manipulator
+from .manipulator import Manipulator
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
