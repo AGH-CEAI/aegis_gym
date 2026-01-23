@@ -30,7 +30,7 @@ class ManipulatorROS:
         self,
         num_envs: int,
         args: dict,
-        device: str = "cpu",
+        device: th.device = th.device("cpu"),
     ):
         if hasattr(self, "_initialized") and self._initialized:
             return
