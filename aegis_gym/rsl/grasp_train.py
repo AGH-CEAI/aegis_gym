@@ -27,6 +27,11 @@ def main():
     rl_train_cfg = get_rl_cfg(args.exp_name, args.max_iterations)
     bc_train_cfg = get_bc_cfg()
 
+    project_suffix = f"_{args.stage}-{args.control}"
+    rl_train_cfg["neptune_project"] += project_suffix
+    rl_train_cfg["wandb_project"] += project_suffix
+    rl_train_cfg["clearml_project"] += project_suffix
+
     # === log dir ===
     log_dir = Path("logs") / f"{args.exp_name + '_' + args.stage}"
     log_dir.mkdir(parents=True, exist_ok=True)
