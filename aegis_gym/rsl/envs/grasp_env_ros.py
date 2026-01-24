@@ -53,12 +53,12 @@ class GraspEnvROS(VecEnv):
         show_viewer: bool = False,
         device: th.device = th.device("cpu"),
     ) -> None:
-        self.cfg = env_cfg
+        self._cfg = env_cfg
+        self._cfg["reward_scales"] = reward_cfg
         self.device = device
         self.show_viewer = show_viewer
 
         self._exctract_config()
-        self.reward_scales = reward_cfg
 
         self.robot = ManipulatorROS(
             num_envs=self.num_envs,
@@ -79,31 +79,32 @@ class GraspEnvROS(VecEnv):
         self.reset()
 
     def _exctract_config(self) -> None:
-        self.num_envs = self.cfg["num_envs"]
-        self.num_obs = self.cfg["num_obs"]
+        self.num_envs = self._cfg["num_envs"]
+        self.num_obs = self._cfg["num_obs"]
         self.num_privileged_obs = None
-        self.num_actions = self.cfg["num_actions"]
-        self.image_width = self.cfg["image_resolution"][0]
-        self.image_height = self.cfg["image_resolution"][1]
+        self.num_actions = self._cfg["num_actions"]
+        self.image_width = self._cfg["image_resolution"][0]
+        self.image_height = self._cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = self.cfg["visualize_cell"]
-        self.camera_setup: Literal["default", "scene_dual"] = self.cfg["camera_setup"]
-
-        self.box_size = self.cfg["box_size"]
+        self.show_cell = self._cfg["visualize_cell"]
+        self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
+        self.box_size = self._cfg["box_size"]
         self.box_orientation = (0.0, 1.0, 0.0, 0.0)
         self.box_position = (-0.626, -0.028, -0.028)
-        self.table_size = self.cfg["table_size"]
-        self.workbench_size = self.cfg["workbench_size"]
+        self.table_size = self._cfg["table_size"]
+        self.workbench_size = self._cfg["workbench_size"]
 
         # Probably not the wisest choice, it should be dynamically obtained from config
-        # self.ctrl_dt = self.cfg["ctrl_dt"]
+        # self.ctrl_dt = self._cfg["ctrl_dt"]
         self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
 
-        self.sim_substeps = self.cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(self.cfg["episode_length_s"] / self.ctrl_dt)
+        self.sim_substeps = self._cfg["sim_substeps"]
+        self.max_episode_length = math.ceil(
+            self._cfg["episode_length_s"] / self.ctrl_dt
+        )
 
-        self.reward_scales = self.cfg["reward_scales"]
-        self.action_scales = th.tensor(self.cfg["action_scales"], device=self.device)
+        self.reward_scales = self._cfg["reward_scales"]
+        self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
 
     # Required by rsl_rl
     @property
@@ -118,7 +119,7 @@ class GraspEnvROS(VecEnv):
     # Required by rsl_rl
     @property
     def cfg(self) -> dict:
-        return self.cfg
+        return self._cfg
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -156,7 +157,7 @@ class GraspEnvROS(VecEnv):
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self.cfg["episode_length_s"]
+                / self._cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
@@ -172,7 +173,7 @@ class GraspEnvROS(VecEnv):
         # apply action based on task
         actions = actions * self.action_scales
 
-        self.robot.apply_action(actions, open_gripper=True)
+        self.robot.apply_action(actions)
         self.robot.read_state()
 
         # check termination
