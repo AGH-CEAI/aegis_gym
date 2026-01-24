@@ -19,7 +19,7 @@ def main():
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
-    parser.add_argument("--control", type=str, choices=["sim", "real"], default="sim")
+    parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     args = parser.parse_args()
 
     # === task cfgs and training algos cfgs ===
@@ -49,7 +49,7 @@ def main():
             robot_cfg=robot_cfg,
             show_viewer=args.vis,
         )
-    if args.control == "real":
+    if args.control == "ros":
         try:
             from envs.grasp_env_ros import GraspEnvROS
         except ImportError as e:
