@@ -1,4 +1,7 @@
-from typing import Literal
+import time
+import warnings
+from pathlib import Path
+from typing import Literal, Optional
 
 import torch as th
 import genesis as gs
@@ -6,8 +9,6 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
     xyz_to_quat,
 )
-
-from .utils import generate_aegis_urdf
 
 
 class Manipulator:
@@ -25,10 +26,14 @@ class Manipulator:
         self._num_envs = num_envs
         self._args = args
 
+        # TODO can't automatically disable/enable cell - switch models?
+        self._urdf_path = self._resolve_aegis_urdf(args["urdf_path"])
+        print(f"[GraspEnv::Manipulator] The robot's URDF path: {self._urdf_path}")
+
         # == Genesis configurations ==
         material: gs.materials.Rigid = gs.materials.Rigid()
         morph: gs.morphs.URDF = gs.morphs.URDF(
-            file=generate_aegis_urdf(show_cell),
+            file=self._urdf_path,
             fixed=True,
             pos=(0.0, 0.0, 0.0),
             quat=(1.0, 0.0, 0.0, 0.0),
@@ -48,6 +53,24 @@ class Manipulator:
         self._ik_method: Literal["rel_pose", "dls"] = args["ik_method"]
 
         self._init()
+
+    def _resolve_aegis_urdf(self, urdf_path_str: Optional[str] = None) -> Path:
+        default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
+
+        if urdf_path_str is not None:
+            urdf_path = Path(urdf_path_str).expanduser().resolve()
+            if urdf_path.exists():
+                return urdf_path
+            warnings.warn(
+                f"The given URDF file '{default_path}' doesn't exist! Trying to read the default file in 5s..."
+            )
+            time.sleep(5.0)
+
+        if not default_path.exists():
+            raise FileNotFoundError(
+                f"Couldn't resolve the path to the URDF file: Default file '{default_path}' doesn't exist!"
+            )
+        return default_path
 
     def set_pd_gains(self):
         # set control gains
