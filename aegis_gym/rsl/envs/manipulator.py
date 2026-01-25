@@ -1,10 +1,11 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import torch as th
 import genesis as gs
+from clearml import Dataset
 from genesis.utils.geom import (
     transform_quat_by_quat,
     xyz_to_quat,
@@ -24,10 +25,14 @@ class Manipulator:
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
+        self._urdf_model_id = args["urdf_model_id"]
 
-        # TODO can't automatically disable/enable cell - switch models?
-        self._urdf_path = self._resolve_aegis_urdf(args["urdf_path"])
-        print(f"[GraspEnv::Manipulator] The robot's URDF path: {self._urdf_path}")
+        if self._urdf_model_id:
+            print(
+                f"[GraspEnv::Manipulator] URDF ClearML dataset ID: {self._urdf_model_id}"
+            )
+        self._urdf_path = self._resolve_aegis_urdf()
+        print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
         material: gs.materials.Rigid = gs.materials.Rigid()
@@ -53,17 +58,28 @@ class Manipulator:
 
         self._init()
 
-    def _resolve_aegis_urdf(self, urdf_path_str: Optional[str] = None) -> Path:
+    def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
 
-        if urdf_path_str is not None:
-            urdf_path = Path(urdf_path_str).expanduser().resolve()
-            if urdf_path.exists():
-                return urdf_path
-            warnings.warn(
-                f"The given URDF file '{default_path}' doesn't exist! Trying to read the default file in 5s..."
-            )
-            time.sleep(5.0)
+        if self._urdf_model_id is not None:
+            dataset = Dataset.get(dataset_id=self._urdf_model_id)
+            local_path = Path(dataset.get_local_copy())
+
+            urdf_files = list(local_path.rglob("*.urdf"))
+            if not urdf_files:
+                raise FileNotFoundError(
+                    f"No URDF file in dataset {self._urdf_model_id}"
+                )
+            if len(urdf_files) > 1:
+                raise RuntimeError(
+                    f"Found {len(urdf_files)} URDF files in dataset {self._urdf_model_id}, expected just one"
+                )
+            return str(urdf_files[0])
+
+        warnings.warn(
+            "There is no given ClearML dataset ID for the URDF assets! Trying to read the default directory in 5s.."
+        )
+        time.sleep(5.0)
 
         if not default_path.exists():
             raise FileNotFoundError(
