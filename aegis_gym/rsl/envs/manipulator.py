@@ -17,7 +17,6 @@ class Manipulator:
         num_envs: int,
         scene: gs.Scene,
         args: dict,
-        show_cell: bool,
         device: str = "cpu",
     ):
         # == set members ==
