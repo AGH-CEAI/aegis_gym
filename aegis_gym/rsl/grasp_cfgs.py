@@ -118,7 +118,7 @@ def get_task_cfgs():
         "num_obs": 14,
         "num_actions": 6,
         "action_scales": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
-        "episode_length_s": 300.0,
+        "episode_length_s": 3.0,
         "ctrl_dt": 0.01,
         "sim_substeps": 2,  # 2 or 32
         "box_size": [0.03, 0.08, 0.06],
