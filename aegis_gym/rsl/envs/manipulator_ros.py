@@ -63,13 +63,15 @@ class ManipulatorROS:
         self._run_coro(self._robot_client.gripper_open())
         self._gripper_last_action = True
 
+        self._run_coro(self._robot_client.servo_disable())
+        self._servo_enabled = False
+
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
 
         # cleanup() will be called at interpreter exit
         atexit.register(self.cleanup)
-
         self._initialized = True
 
     def cleanup(self) -> None:
@@ -154,6 +156,18 @@ class ManipulatorROS:
     def get_base_position(self) -> th.Tensor:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
+    def _servo_enable(self) -> None:
+        if self._servo_enabled:
+            return
+        self._run_coro(self._robot_client.servo_enable())
+        self._servo_enabled = True
+
+    def _servo_disable(self) -> None:
+        if not self._servo_enabled:
+            return
+        self._run_coro(self._robot_client.servo_disable())
+        self._servo_enabled = False
+
     def reset(self, envs_idx: th.IntTensor) -> None:
         if len(envs_idx) == 0:
             return
@@ -163,6 +177,7 @@ class ManipulatorROS:
         self._move_to_home()
 
     def _move_to_home(self) -> None:
+        self._servo_disable()
         self._run_coro(
             self._robot_client.goto_joints(
                 names=tuple(self.dof_home_dict.keys()),
@@ -173,6 +188,7 @@ class ManipulatorROS:
     def apply_action(
         self, action: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
+        self._servo_enable()
         # Control only one real robot
         action = action.squeeze(dim=0)
 
@@ -199,6 +215,8 @@ class ManipulatorROS:
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
+        self._servo_disable()
+
         target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
         target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
 
