@@ -46,10 +46,11 @@ def upload_robot_assets(
     logger.info(f"   Files to upload: {len(list(folder_path.rglob('*')))}")
 
     # Create dataset (automatically increments version if exists)
+    parent_list = [parent] if parent else None
     dataset = Dataset.create(
         dataset_name=dataset_name,
         dataset_project=dataset_project,
-        parent_datasets=[parent],
+        parent_datasets=parent_list,
         description=description or "Robot simulator assets",
     )
 
