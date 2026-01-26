@@ -256,7 +256,6 @@ class GraspEnvROS(VecEnv):
             self.object.get_pos(), self.object.get_quat(), keypoints_offset
         )
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
-        dist = th.norm(finger_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
 
     def _to_world_frame(
@@ -270,7 +269,6 @@ class GraspEnvROS(VecEnv):
             world[:, k] = position + transform_by_quat(
                 keypoints_offset[:, k], quaternion
             )
-            world[:, k] = position
         return world
 
     @staticmethod
