@@ -145,6 +145,9 @@ def get_task_cfgs():
         "default_arm_dof": [0.0, -2.09, 2.09, -1.57, -1.57, 0.0],
         "default_gripper_dof": [0.025, 0.025],
         "ik_method": "dls_ik",
-        "urdf_model_id": "16f3a020b5c746b2bf8673a5ab9ef27c",
+        "urdf_model_id": {
+            "cell": "08c47ceaacbf48bf8aaad7238a2525bf",
+            "no_cell": "16f3a020b5c746b2bf8673a5ab9ef27c",
+        },
     }
     return env_cfg, reward_scales, robot_cfg

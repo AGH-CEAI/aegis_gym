@@ -18,6 +18,7 @@ class Manipulator:
         num_envs: int,
         scene: gs.Scene,
         args: dict,
+        show_cell: bool,
         device: str = "cpu",
     ):
         # == set members ==
@@ -25,7 +26,11 @@ class Manipulator:
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
-        self._urdf_model_id = args["urdf_model_id"]
+
+        if show_cell:
+            self._urdf_model_id = args["urdf_model_id"]["cell"]
+        else:
+            self._urdf_model_id = args["urdf_model_id"]["no_cell"]
 
         if self._urdf_model_id:
             print(

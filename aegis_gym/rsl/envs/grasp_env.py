@@ -108,6 +108,7 @@ class GraspEnv(VecEnv):
             num_envs=self.num_envs,
             scene=self.scene,
             args=robot_cfg,
+            show_cell=self.show_cell,
             device=gs.device,
         )
 
