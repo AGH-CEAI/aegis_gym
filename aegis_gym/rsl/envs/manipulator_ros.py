@@ -89,13 +89,8 @@ class ManipulatorROS:
     def read_state(self) -> None:
         state = self._run_coro(self._robot_client.get_all())
         self._state = TensorDict(
-            {
-                "pose": th.from_numpy(state["pose"]),
-                "wrench": th.from_numpy(state["wrench"]),
-                "joints_pos": th.from_numpy(state["joints_pos"]),
-                "joints_vel": th.from_numpy(state["joints_vel"]),
-                "joints_eff": th.from_numpy(state["joints_eff"]),
-            }
+            {k: th.from_numpy(v).to(self.device) for k, v in state.items()},
+            device=self.device,
         )
 
     def get_state_tensordict(self) -> TensorDict:
