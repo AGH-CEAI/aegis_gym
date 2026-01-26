@@ -73,12 +73,12 @@ class ManipulatorROS:
         self._state: Optional[TensorDict] = None
         self.read_state()
 
-        # cleanup() will be called at interpreter exit
-        atexit.register(self.cleanup)
+        # shutdown() will be called at interpreter exit
+        atexit.register(self.shutdown)
         self._initialized = True
         print("[GraspEnvROS][ManipulatorROS] Finalized initialization")
 
-    def cleanup(self) -> None:
+    def shutdown(self) -> None:
         """
         Explicitly clean up gRPC connection and event loop.
         Should be called before program exit or when done with the robot.
