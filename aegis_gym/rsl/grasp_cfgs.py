@@ -17,9 +17,9 @@ def get_rl_cfg(exp_name: str, max_iterations: int) -> dict:
         "run_name": "",
         # Logger
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
-        "neptune_project": "aegis_grasp",
-        "wandb_project": "aegis_grasp",
-        "clearml_project": "aegis_grasp",
+        "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
+        "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
+        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
         "algorithm": {
             "class_name": "PPO",
             # Training
