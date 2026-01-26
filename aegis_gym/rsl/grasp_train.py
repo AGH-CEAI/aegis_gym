@@ -17,6 +17,7 @@ def main():
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
+    parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
@@ -53,6 +54,7 @@ def main():
             reward_cfg=reward_scales,
             robot_cfg=robot_cfg,
             show_viewer=args.vis,
+            enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
         try:

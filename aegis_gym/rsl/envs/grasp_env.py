@@ -11,6 +11,7 @@ from genesis.utils.geom import (
 )
 
 from .manipulator import Manipulator
+from .plotjuggler_udp import PlotJugglerUDP
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -23,7 +24,13 @@ class GraspEnv(VecEnv):
         reward_cfg: dict,
         robot_cfg: dict,
         show_viewer: bool = False,
+        enable_plot_juggler: bool = False,
     ) -> None:
+        if enable_plot_juggler:
+            self._pj = PlotJugglerUDP(host="127.0.0.1", port=9870)
+            print("[GraspEnv] Enabled UDP server for PlotJuggler at 127.0.0.1:9870")
+        self._enable_pj_logging = enable_plot_juggler
+
         self.device = gs.device
         self.num_envs = env_cfg["num_envs"]
         self.num_obs = env_cfg["num_obs"]
@@ -55,6 +62,7 @@ class GraspEnv(VecEnv):
 
         self._init_reward_functions()
         self._init_buffers()
+
         self.reset()
 
     # Required by rsl_rl
@@ -294,6 +302,7 @@ class GraspEnv(VecEnv):
     def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
+        self._log_state_to_plot_juggler()
         return self.get_observations(), self.extras
 
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
@@ -305,6 +314,7 @@ class GraspEnv(VecEnv):
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
+        self._log_state_to_plot_juggler()
 
         # check termination
         env_reset_idx = self.is_episode_complete()
@@ -490,3 +500,33 @@ class GraspEnv(VecEnv):
             else:  # reset
                 self.robot.go_to_goal(reset_pose, open_gripper=True)
             self.scene.step()
+
+    def _log_state_to_plot_juggler(self) -> None:
+        if not self._enable_pj_logging:
+            return
+
+        joint_names = [
+            "shoulder_pan_joint",
+            "shoulder_lift_joint",
+            "elbow_joint",
+            "wrist_1_joint",
+            "wrist_2_joint",
+            "wrist_3_joint",
+        ]
+
+        data = {}
+        robot = self.robot._robot_entity
+        for name in joint_names:
+            j = robot.get_joint(name=name)
+            for idx in j.dofs_idx_local:
+                # Query each DOF individually to get scalar values
+                pos = robot.get_dofs_position([idx])
+                vel = robot.get_dofs_velocity([idx])
+                force = robot.get_dofs_force([idx])
+
+                # Convert to float - handle both tensor and array shapes
+                data[f"aegis/{name}/pos"] = float(pos.flatten()[0])
+                data[f"aegis/{name}/vel"] = float(vel.flatten()[0])
+                data[f"aegis/{name}/force"] = float(force.flatten()[0])
+
+        self._pj.send(data)
