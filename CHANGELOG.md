@@ -9,17 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-46](https://github.com/AGH-CEAI/pull/46) - Added TCP-to-object Grasp environment.
-- [PR-40](https://github.com/AGH-CEAI/pull/40) - Added scene and tool cameras setup for Grasp environment.
-- [PR-39](https://github.com/AGH-CEAI/pull/39) - Added Grasp environment compatible with RSL-RL.
-- [PR-32](https://github.com/AGH-CEAI/pull/32) - `ROSRoboticCommander`: Added servoing (twist/jog) with MoveIt2 Servo.
-- [PR-31](https://github.com/AGH-CEAI/pull/31) - Introduced control frequency parameter to decouple policy updates from physics steps in Genesis.
-- [PR-28](https://github.com/AGH-CEAI/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
-- [PR-26](https://github.com/AGH-CEAI/pull/26) - Added support for multimodal observations in environments.
-- [PR-26](https://github.com/AGH-CEAI/pull/26) - Added a scene camera to Genesis simulation for visual observations.
-- [PR-21](https://github.com/AGH-CEAI/pull/21) - Added Cartesian control for Genesis robot commander.
-- [PR-19](https://github.com/AGH-CEAI/pull/19) - Added Cartesian control for ROS robot commander.
-- [PR-17](https://github.com/AGH-CEAI/pull/17) - Added Cartesian control for Reacher environment.
+- [PR-48](https://github.com/AGH-CEAI/aegis_gym/pull/48) - Added real robot control via gRPC in RSL-RL Grasp env.
+- [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Added TCP-to-object Grasp environment.
+- [PR-40](https://github.com/AGH-CEAI/aegis_gym/pull/40) - Added scene and tool cameras setup for Grasp environment.
+- [PR-39](https://github.com/AGH-CEAI/aegis_gym/pull/39) - Added Grasp environment compatible with RSL-RL.
+- [PR-32](https://github.com/AGH-CEAI/aegis_gym/pull/32) - `ROSRoboticCommander`: Added servoing (twist/jog) with MoveIt2 Servo.
+- [PR-31](https://github.com/AGH-CEAI/aegis_gym/pull/31) - Introduced control frequency parameter to decouple policy updates from physics steps in Genesis.
+- [PR-28](https://github.com/AGH-CEAI/aegis_gym/pull/28) - `AegisReacher`: Observation normalization for TCP and Target positions.
+- [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Added support for multimodal observations in environments.
+- [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Added a scene camera to Genesis simulation for visual observations.
+- [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Added Cartesian control for Genesis robot commander.
+- [PR-19](https://github.com/AGH-CEAI/aegis_gym/pull/19) - Added Cartesian control for ROS robot commander.
+- [PR-17](https://github.com/AGH-CEAI/aegis_gym/pull/17) - Added Cartesian control for Reacher environment.
 - [PR-11,12,13,14,15](https://github.com/AGH-CEAI/aegis_gym/pull/5) - Added Genesis simulator.
 - [PR-2](https://github.com/AGH-CEAI/aegis_gym/pull/2) - Added reinforcement learning Reacher environment for the Aegis robot station.
 - [PR-1](https://github.com/AGH-CEAI/aegis_gym/pull/1) - Initial package with boilerplate and gymnasium API.
@@ -45,8 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- [PR-46](https://github.com/AGH-CEAI/pull/46) - Fixed model sorting and typos.
-- [PR-26](https://github.com/AGH-CEAI/pull/26) - Fixed pose retrieval for Genesis entities.
+- [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Fixed model sorting and typos.
+- [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Fixed pose retrieval for Genesis entities.
 - [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Fixed TCP link handling in Genesis.
 
 ### Security
