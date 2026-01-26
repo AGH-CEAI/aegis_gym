@@ -60,7 +60,7 @@ class ManipulatorROS:
         }
 
         self._loop = asyncio.new_event_loop()
-        self._loop_thread = threading.Thread(target=self._loop.run_forever, daemon=True)
+        self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
         self._loop_thread.start()
 
         self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
