@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import threading
 from typing import Optional
 from concurrent.futures import Future
@@ -72,6 +73,46 @@ class ManipulatorROS:
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
+
+        # cleanup() will be called at interpreter exit
+        atexit.register(self.cleanup)
+
+        self._initialized = True
+
+    def cleanup(self) -> None:
+        """
+        Explicitly clean up gRPC connection and event loop.
+        Should be called before program exit or when done with the robot.
+        """
+        # Only clean up once
+        if hasattr(self, "_cleaned_up") and self._cleaned_up:
+            return
+
+        try:
+            # Disconnect gRPC client
+            if hasattr(self, "_robot_client") and self._robot_client.is_connected:
+                self._run_coro(self._robot_client.disconnect())
+        except Exception as e:
+            print(f"Error disconnecting robot client: {e}")
+
+        try:
+            # Stop the event loop
+            if hasattr(self, "_loop") and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+
+            # Wait for thread to finish
+            if hasattr(self, "_loop_thread") and self._loop_thread.is_alive():
+                self._loop_thread.join(timeout=5.0)
+                if self._loop_thread.is_alive():
+                    print("Warning: Event loop thread did not stop within timeout")
+        except Exception as e:
+            print(f"Error stopping event loop: {e}")
+        finally:
+            # Close the loop
+            if hasattr(self, "_loop") and not self._loop.is_closed():
+                self._loop.close()
+
+        self._cleaned_up = True
 
     def _run_loop(self) -> None:
         """Run the event loop forever in a background thread."""
