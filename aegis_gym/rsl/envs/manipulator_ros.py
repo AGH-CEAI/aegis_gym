@@ -25,13 +25,6 @@ class ManipulatorROS:
             cls._instance = super(ManipulatorROS, cls).__new__(cls)
         return cls._instance
 
-    def __del__(self) -> None:
-        if hasattr(self, "_robot_client") and self._robot_client.is_connected:
-            self._run_coro(self._robot_client.disconnect())
-        if hasattr(self, "_loop") and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
-            self._loop_thread.join(timeout=2.0)
-
     def __init__(
         self,
         num_envs: int,
