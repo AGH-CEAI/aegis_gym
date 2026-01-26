@@ -63,7 +63,10 @@ class ManipulatorROS:
         self._run_coro(self._robot_client.gripper_open())
         self._gripper_last_action = True
 
-        self._run_coro(self._robot_client.servo_disable())
+        try:
+            self._run_coro(self._robot_client.servo_disable())
+        except RuntimeError:
+            pass
         self._servo_enabled = False
 
         # Prepare initial observation
@@ -73,6 +76,7 @@ class ManipulatorROS:
         # cleanup() will be called at interpreter exit
         atexit.register(self.cleanup)
         self._initialized = True
+        print("[GraspEnvROS][ManipulatorROS] Finalized initialization")
 
     def cleanup(self) -> None:
         """
@@ -82,6 +86,11 @@ class ManipulatorROS:
         # Only clean up once
         if hasattr(self, "_cleaned_up") and self._cleaned_up:
             return
+
+        try:
+            self._run_coro(self._robot_client.servo_disable())
+        except RuntimeError:
+            pass
 
         try:
             # Disconnect gRPC client
@@ -174,6 +183,7 @@ class ManipulatorROS:
         self.reset_home(envs_idx)
 
     def reset_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+        print("[GraspEnvROS][ManipulatorROS] Moving to home")
         self._move_to_home()
 
     def _move_to_home(self) -> None:
