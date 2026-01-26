@@ -1,11 +1,11 @@
 ---
-name: Pre-Commit
+name: Pre-commit (Prek)
 
-on:
-  push:
+on: [push]
 
 jobs:
-  pre-commit:
-    uses: ros-controls/ros2_control_ci/.github/workflows/reusable-pre-commit.yml@master
-    with:
-      ros_distro: humble
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: j178/prek-action@v1
