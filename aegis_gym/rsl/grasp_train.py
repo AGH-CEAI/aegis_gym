@@ -65,7 +65,6 @@ def main():
             env_cfg=env_cfg,
             reward_cfg=reward_scales,
             robot_cfg=robot_cfg,
-            show_viewer=args.vis,
             device=device,
         )
 

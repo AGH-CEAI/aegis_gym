@@ -50,13 +50,11 @@ class GraspEnvROS(VecEnv):
         env_cfg: dict,
         reward_cfg: dict,
         robot_cfg: dict,
-        show_viewer: bool = False,
         device: th.device = th.device("cpu"),
     ) -> None:
         self._cfg = env_cfg
         self._cfg["reward_scales"] = reward_cfg
         self.device = device
-        self.show_viewer = show_viewer
 
         self._exctract_config()
 
@@ -86,7 +84,6 @@ class GraspEnvROS(VecEnv):
         self.image_width = self._cfg["image_resolution"][0]
         self.image_height = self._cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = self._cfg["visualize_cell"]
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
         self.box_size = self._cfg["box_size"]
         self.box_orientation = (0.0, 1.0, 0.0, 0.0)
@@ -98,7 +95,6 @@ class GraspEnvROS(VecEnv):
         # self.ctrl_dt = self._cfg["ctrl_dt"]
         self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
 
-        self.sim_substeps = self._cfg["sim_substeps"]
         self.max_episode_length = math.ceil(
             self._cfg["episode_length_s"] / self.ctrl_dt
         )
