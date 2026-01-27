@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
-      # TODO reactive automatic tests
+      # TODO(issue#52) reactive automatic tests
       # - name: Run tests
       #   run: poetry run pytest -v -s
 
