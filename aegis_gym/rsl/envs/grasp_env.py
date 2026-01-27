@@ -42,7 +42,6 @@ class GraspEnv(VecEnv):
         self.show_cell = env_cfg["visualize_cell"]
         self.camera_setup = env_cfg["camera_setup"]
         self.box_size = env_cfg["box_size"]
-        self.box_orientation = (0.0, 1.0, 0.0, 0.0)
         self.table_size = env_cfg["table_size"]
         self.workbench_size = env_cfg["workbench_size"]
 
@@ -117,6 +116,7 @@ class GraspEnv(VecEnv):
             num_envs=self.num_envs,
             scene=self.scene,
             args=robot_cfg,
+            show_cell=self.show_cell,
             device=gs.device,
         )
 
@@ -268,7 +268,7 @@ class GraspEnv(VecEnv):
         random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
         # downward facing quaternion to align with the hand
-        q_downward = th.tensor(self.box_orientation, device=self.device).repeat(
+        q_downward = th.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).repeat(
             num_reset, 1
         )
         # randomly yaw the object

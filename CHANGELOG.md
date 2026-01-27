@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - Utility script for uploading the URDF assets to the ClearML server as a dataset.
+- [PR-48](https://github.com/AGH-CEAI/aegis_gym/pull/48) - Added real robot control via gRPC in RSL-RL Grasp env.
 - [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Added TCP-to-object Grasp environment.
 - [PR-40](https://github.com/AGH-CEAI/aegis_gym/pull/40) - Added scene and tool cameras setup for Grasp environment.
 - [PR-39](https://github.com/AGH-CEAI/aegis_gym/pull/39) - Added Grasp environment compatible with RSL-RL.
