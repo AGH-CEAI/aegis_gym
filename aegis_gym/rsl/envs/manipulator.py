@@ -18,6 +18,7 @@ class Manipulator:
         num_envs: int,
         scene: gs.Scene,
         args: dict,
+        show_cell: bool,
         device: str = "cpu",
     ):
         # == set members ==
@@ -25,7 +26,11 @@ class Manipulator:
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
-        self._urdf_model_id = args["urdf_model_id"]
+
+        if show_cell:
+            self._urdf_model_id = args["urdf_model_id"]["cell"]
+        else:
+            self._urdf_model_id = args["urdf_model_id"]["no_cell"]
 
         if self._urdf_model_id:
             print(
@@ -62,8 +67,14 @@ class Manipulator:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
 
         if self._urdf_model_id is not None:
-            dataset = Dataset.get(dataset_id=self._urdf_model_id)
-            local_path = Path(dataset.get_local_copy())
+            try:
+                dataset = Dataset.get(dataset_id=self._urdf_model_id)
+                local_path = Path(dataset.get_local_copy())
+            except ValueError:
+                warnings.warn(
+                    "Failed to obtain the dataset: `{e}`. Fallbacking to the default path..."
+                )
+                return default_path
 
             urdf_files = list(local_path.rglob("*.urdf"))
             if not urdf_files:
