@@ -1,3 +1,6 @@
+---
+name: Package build (or release)
+
 on:
   push:
     branches: [devel]
