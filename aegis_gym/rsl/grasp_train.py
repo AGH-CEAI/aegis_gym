@@ -76,8 +76,10 @@ def main():
     if args.stage == "bc":
         teacher_policy = load_teacher_policy(env, rl_train_cfg, args.exp_name)
         bc_train_cfg["teacher_policy"] = teacher_policy
-        runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
-        runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
+        runner = BehaviorCloning(
+            env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
+        )
+        runner.learn(num_learning_iterations=args.max_iterations)
     else:
         runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
         runner.learn(

@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from collections import deque
 from collections.abc import Iterator
 
@@ -7,18 +8,38 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+from clearml import Task
+
+from rsl_rl.utils.logger import Logger
 
 
 class BehaviorCloning:
     """Multi-task behavior cloning with action prediction and object pose estimation"""
 
-    def __init__(self, env, cfg: dict, teacher: nn.Module, device: str = "cpu"):
+    def __init__(
+        self, env, cfg: dict, teacher: nn.Module, log_dir: Path, device: str = "cpu"
+    ):
         self._env = env
         self._cfg = cfg
         self._device = device
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
+
+        if Task.current_task():
+            Task.current_task().close()
+
+        self.logger = None
+        if log_dir is not None:
+            self.logger = Logger(
+                log_dir=str(log_dir),
+                cfg=cfg,
+                env_cfg=getattr(env, "cfg", {}),
+                num_envs=env.num_envs,
+                is_distributed=False,
+                gpu_world_size=1,
+                gpu_global_rank=0,
+                device=device,
+            )
 
         if env.camera_setup == "default":
             num_cameras = 3
@@ -52,15 +73,13 @@ class BehaviorCloning:
 
         # Training state
         self._current_iter = 0
-
-    def learn(self, num_learning_iterations: int, log_dir: str) -> None:
         self._rewbuffer = deque(maxlen=100)
         self._cur_reward_sum = th.zeros(
             self._env.num_envs, dtype=th.float, device=self._device
         )
-        self._buffer.clear()
 
-        tf_writer = SummaryWriter(log_dir)
+    def learn(self, num_learning_iterations: int) -> None:
+        self._buffer.clear()
 
         for it in range(num_learning_iterations):
             # Collect experience
@@ -99,10 +118,10 @@ class BehaviorCloning:
                 # Backward pass
                 self._optimizer.zero_grad()
                 total_loss.backward()
-                self._optimizer.step()
                 th.nn.utils.clip_grad_norm_(
                     self._policy.parameters(), self._cfg["max_grad_norm"]
                 )
+                self._optimizer.step()
 
                 total_action_loss += action_loss
                 total_pose_loss += pose_loss
@@ -120,19 +139,17 @@ class BehaviorCloning:
 
             fps = (self._num_steps_per_env * self._env.num_envs) / (forward_time)
             # Logging
-            if (it + 1) % self._cfg["log_freq"] == 0:
+            if self.logger is not None and (it + 1) % self._cfg["log_freq"] == 0:
                 current_lr = self._optimizer.param_groups[0]["lr"]
 
-                tf_writer.add_scalar("loss/action_loss", avg_action_loss, it)
-                tf_writer.add_scalar("loss/pose_loss", avg_pose_loss, it)
-                tf_writer.add_scalar(
-                    "loss/total_loss", avg_action_loss + avg_pose_loss, it
+                self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
+                self.logger.writer.add_scalar("Loss/pose", avg_pose_loss.item(), it)
+                self.logger.writer.add_scalar(
+                    "Loss/total", (avg_action_loss + avg_pose_loss).item(), it
                 )
-                tf_writer.add_scalar("lr", current_lr, it)
-                tf_writer.add_scalar("buffer_size", self._buffer.size, it)
-                tf_writer.add_scalar("speed/forward", forward_time, it)
-                tf_writer.add_scalar("speed/backward", backward_time, it)
-                tf_writer.add_scalar("speed/fps", int(fps), it)
+                self.logger.writer.add_scalar("Perf/fps", fps, it)
+                self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
+                self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
 
                 #
                 print("--------------------------------")
@@ -146,14 +163,19 @@ class BehaviorCloning:
                 info_str += f" | FPS:           {int(fps)}"
                 print(info_str)
 
-                if len(self._rewbuffer) > 0:
-                    tf_writer.add_scalar("reward/mean", np.mean(self._rewbuffer), it)
+                if self.logger is not None and len(self._rewbuffer) > 0:
+                    self.logger.writer.add_scalar(
+                        "Reward/mean", np.mean(self._rewbuffer), it
+                    )
 
             # Save checkpoints periodically
             if (it + 1) % self._cfg["save_freq"] == 0:
-                self.save(os.path.join(log_dir, f"checkpoint_{it + 1:04d}.pt"))
-
-        tf_writer.close()
+                ckpt_path = os.path.join(
+                    self.logger.log_dir, f"checkpoint_{it + 1:04d}.pt"
+                )
+                self.save(ckpt_path)
+                if self.logger is not None:
+                    self.logger.save_model(ckpt_path, it + 1)
 
     def _compute_pose_loss(
         self, pred_poses: th.Tensor, target_poses: th.Tensor
@@ -438,7 +460,9 @@ class Policy(nn.Module):
 
         return camera_features
 
-    def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None) -> dict:
+    def forward(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
+    ) -> th.Tensor:
         """Forward pass with shared stereo encoder for rgb images."""
         # Get features
         features_list = self.get_features(rgb_obs)

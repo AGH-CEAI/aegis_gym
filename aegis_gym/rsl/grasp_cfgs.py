@@ -109,6 +109,12 @@ def get_bc_cfg() -> dict:
         "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
+        # Logger
+        "logger": "clearml",  # tensorboard, neptune, wandb, clearml
+        "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
+        "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
+        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
+        "algorithm": {"rnd_cfg": None},
     }
 
 
