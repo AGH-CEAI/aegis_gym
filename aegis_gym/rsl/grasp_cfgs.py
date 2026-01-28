@@ -119,8 +119,9 @@ def get_task_cfgs():
         "num_actions": 6,
         "action_scales": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
         "episode_length_s": 3.0,
-        "ctrl_dt": 0.01,
-        "sim_substeps": 2,  # 2 or 32
+        # "ctrl_dt": 0.01,
+        "ctrl_dt": 0.002,  # 1 / 500 Hz (RTDE protocol freq), original 0.01
+        "sim_substeps": 1,  # disabled for calibration, original: 2 or 32
         "box_size": [0.03, 0.08, 0.06],
         "table_size": [0.55, 0.84, 0.82],
         "workbench_size": [0.64, 1.0, 0.806],
