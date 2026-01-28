@@ -142,6 +142,9 @@ class Manipulator:
             self._default_joint_angles, dtype=th.float32, device=self._device
         ).repeat(len(envs_idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=envs_idx)
+        self._robot_entity.control_dofs_position(
+            position=default_joint_angles, envs_idx=envs_idx
+        )
 
     def apply_action(self, action: th.Tensor, open_gripper: bool) -> None:
         """
@@ -159,6 +162,10 @@ class Manipulator:
             q_pos[:, self._fingers_dof] = self._gripper_open_dof
         else:
             q_pos[:, self._fingers_dof] = self._gripper_close_dof
+        self._robot_entity.control_dofs_position(position=q_pos)
+
+    def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
+        q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
 
     def _gs_ik(self, action: th.Tensor) -> th.Tensor:

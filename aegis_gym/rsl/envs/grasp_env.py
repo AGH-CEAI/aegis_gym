@@ -333,6 +333,20 @@ class GraspEnv(VecEnv):
         dones = self.reset_buf
         return obs, reward, dones, self.extras
 
+    def calib_run(self, joints_diff: th.Tensor, steps: int) -> None:
+        idle_steps = int(0.2 * steps)
+        print(f">>> Idling for {idle_steps} steps.")
+        for _ in range(idle_steps):
+            self.scene.step()
+            self._log_state_to_plot_juggler()
+
+        move_steps = int(0.8 * steps)
+        print(f">>> Moving to relative goal for {move_steps} steps.")
+        self.robot.apply_dof_rel_action(joints_diff)
+        for _ in range(move_steps):
+            self.scene.step()
+            self._log_state_to_plot_juggler()
+
     # currently not in use
     def get_privileged_observations(self) -> None:
         return None
@@ -525,8 +539,8 @@ class GraspEnv(VecEnv):
                 force = robot.get_dofs_force([idx])
 
                 # Convert to float - handle both tensor and array shapes
-                data[f"aegis/{name}/pos"] = float(pos.flatten()[0])
-                data[f"aegis/{name}/vel"] = float(vel.flatten()[0])
-                data[f"aegis/{name}/force"] = float(force.flatten()[0])
+                data[f"joint_states/{name}/position"] = float(pos.flatten()[0])
+                data[f"joint_states/{name}/velocity"] = float(vel.flatten()[0])
+                data[f"joint_states/{name}/effort"] = float(force.flatten()[0])
 
         self._pj.send(data)
