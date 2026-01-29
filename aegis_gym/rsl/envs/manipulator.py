@@ -101,15 +101,21 @@ class Manipulator:
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
-            th.tensor([600, 4500, 3500, 3500, 2000, 2000, 100, 100]),
+            th.tensor([600, 6200, 3500, 3500, 2000, 2000, 100, 100]),
         )
         self._robot_entity.set_dofs_kv(
-            th.tensor([101, 450, 350, 350, 200, 200, 10, 10]),
+            th.tensor([101, 1050, 350, 350, 200, 200, 10, 10]),
         )
         self._robot_entity.set_dofs_force_range(
-            th.tensor([-7, -87, -87, -87, -12, -12, -100, -100]),
-            th.tensor([7, 87, 87, 87, 12, 12, 100, 100]),
+            th.tensor([-7, -29, -87, -87, -12, -12, -100, -100]),
+            th.tensor([7, 29, 87, 87, 12, 12, 100, 100]),
         )
+        self._robot_entity.set_dofs_armature(
+            th.tensor([0.0, 0.06, 0.015, 0.015, 0.015, 0.015, 0.015, 0.015]),
+        )
+        # self._robot_entity.set_dofs_stiffness(
+        #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
+        # )
 
     def _init(self):
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
