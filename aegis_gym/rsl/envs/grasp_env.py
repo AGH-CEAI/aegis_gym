@@ -334,13 +334,13 @@ class GraspEnv(VecEnv):
         return obs, reward, dones, self.extras
 
     def calib_run(self, joints_diff: th.Tensor, steps: int) -> None:
-        idle_steps = int(0.2 * steps)
+        idle_steps = int(0.05 * steps)
         print(f">>> Idling for {idle_steps} steps.")
         for _ in range(idle_steps):
             self.scene.step()
             self._log_state_to_plot_juggler()
 
-        move_steps = int(0.8 * steps)
+        move_steps = int(0.95 * steps)
         print(f">>> Moving to relative goal for {move_steps} steps.")
         self.robot.apply_dof_rel_action(joints_diff)
         for _ in range(move_steps):
