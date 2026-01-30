@@ -9,7 +9,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from clearml import Task
-
 from rsl_rl.utils.logger import Logger
 
 
@@ -25,6 +24,10 @@ class BehaviorCloning:
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
+        # ClearML allows only one active Task per process.
+        # Since RSL-RL creates its own ClearML Task during RL training,
+        # we explicitly close any existing Task here to allow Behavior Cloning
+        # to create and log to a new, separate ClearML Task.
         if Task.current_task():
             Task.current_task().close()
 

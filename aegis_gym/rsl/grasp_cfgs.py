@@ -1,3 +1,13 @@
+def get_logger_cfg() -> dict:
+    return {
+        # Logger
+        "logger": "clearml",  # tensorboard, neptune, wandb, clearml
+        "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
+        "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
+        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
+    }
+
+
 def get_rl_cfg(exp_name: str, max_iterations: int) -> dict:
     # stage 1: privileged reinforcement learning
     return {
@@ -15,11 +25,6 @@ def get_rl_cfg(exp_name: str, max_iterations: int) -> dict:
         "save_interval": 100,  # Check for potential saves every `save_interval` iterations
         "experiment_name": exp_name,
         "run_name": "",
-        # Logger
-        "logger": "clearml",  # tensorboard, neptune, wandb, clearml
-        "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
-        "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
-        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
         "algorithm": {
             "class_name": "PPO",
             # Training
@@ -109,11 +114,6 @@ def get_bc_cfg() -> dict:
         "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
-        # Logger
-        "logger": "clearml",  # tensorboard, neptune, wandb, clearml
-        "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
-        "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
-        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
         "algorithm": {"rnd_cfg": None},
     }
 
