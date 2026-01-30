@@ -150,6 +150,10 @@ class BehaviorCloning:
                 self.logger.writer.add_scalar(
                     "Loss/total", (avg_action_loss + avg_pose_loss).item(), it
                 )
+                self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
+                self.logger.writer.add_scalar(
+                    "Train/buffer_size", self._buffer.size, it
+                )
                 self.logger.writer.add_scalar("Perf/fps", fps, it)
                 self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
                 self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
