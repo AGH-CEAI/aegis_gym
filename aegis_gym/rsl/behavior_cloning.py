@@ -145,38 +145,18 @@ class BehaviorCloning:
             if self.logger is not None and (it + 1) % self._cfg["log_freq"] == 0:
                 current_lr = self._optimizer.param_groups[0]["lr"]
 
-                self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
-                self.logger.writer.add_scalar("Loss/pose", avg_pose_loss.item(), it)
-                self.logger.writer.add_scalar(
-                    "Loss/total", (avg_action_loss + avg_pose_loss).item(), it
+                self._log_metrics(
+                    it=it,
+                    avg_action_loss=avg_action_loss,
+                    avg_pose_loss=avg_pose_loss,
+                    current_lr=current_lr,
+                    fps=fps,
+                    forward_time=forward_time,
+                    backward_time=backward_time,
                 )
-                self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
-                self.logger.writer.add_scalar(
-                    "Train/buffer_size", self._buffer.size, it
-                )
-                self.logger.writer.add_scalar("Perf/fps", fps, it)
-                self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
-                self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
-
-                #
-                print("--------------------------------")
-                info_str = f" | Iteration:     {it + 1:04d}\n"
-                info_str += f" | Action Loss:   {avg_action_loss:.6f}\n"
-                info_str += f" | Pose Loss:     {avg_pose_loss:.6f}\n"
-                info_str += f" | Total Loss:    {avg_action_loss + avg_pose_loss:.6f}\n"
-                info_str += f" | Learning Rate: {current_lr:.6f}\n"
-                info_str += f" | Forward Time:  {forward_time:.2f}s\n"
-                info_str += f" | Backward Time: {backward_time:.2f}s\n"
-                info_str += f" | FPS:           {int(fps)}"
-                print(info_str)
-
-                if self.logger is not None and len(self._rewbuffer) > 0:
-                    self.logger.writer.add_scalar(
-                        "Reward/mean", np.mean(self._rewbuffer), it
-                    )
 
             # Save checkpoints periodically
-            if (it + 1) % self._cfg["save_freq"] == 0:
+            if self.logger is not None and (it + 1) % self._cfg["save_freq"] == 0:
                 ckpt_path = os.path.join(
                     self.logger.log_dir, f"checkpoint_{it + 1:04d}.pt"
                 )
@@ -255,6 +235,49 @@ class BehaviorCloning:
                     self._cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist()
                 )
                 self._cur_reward_sum[new_ids] = 0
+
+    def _log_metrics(
+        self,
+        it: int,
+        avg_action_loss: th.Tensor,
+        avg_pose_loss: th.Tensor,
+        current_lr: float,
+        fps: float,
+        forward_time: float,
+        backward_time: float,
+    ) -> None:
+        total_loss = avg_action_loss + avg_pose_loss
+
+        self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
+        self.logger.writer.add_scalar("Loss/pose", avg_pose_loss.item(), it)
+        self.logger.writer.add_scalar("Loss/total", total_loss.item(), it)
+        self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
+        self.logger.writer.add_scalar("Train/buffer_size", self._buffer.size, it)
+        self.logger.writer.add_scalar("Perf/fps", fps, it)
+        self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
+        self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
+
+        mean_reward = None
+        if len(self._rewbuffer) > 0:
+            mean_reward = float(np.mean(self._rewbuffer))
+            self.logger.writer.add_scalar("Reward/mean", mean_reward, it)
+
+        print("--------------------------------")
+        info_str = (
+            f" | Iteration:     {it + 1:04d}\n"
+            f" | Action Loss:   {avg_action_loss:.6f}\n"
+            f" | Pose Loss:     {avg_pose_loss:.6f}\n"
+            f" | Total Loss:    {total_loss:.6f}\n"
+            f" | Learning Rate: {current_lr:.6f}\n"
+            f" | Forward Time:  {forward_time:.2f}s\n"
+            f" | Backward Time: {backward_time:.2f}s\n"
+            f" | FPS:           {int(fps)}"
+        )
+
+        if mean_reward is not None:
+            info_str += f"\n | Mean Reward:   {mean_reward:.4f}"
+
+        print(info_str)
 
     def save(self, path: str) -> None:
         """Save model checkpoint."""
