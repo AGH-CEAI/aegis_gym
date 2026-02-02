@@ -108,7 +108,7 @@ def main():
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
             runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
-        case "ros":
+        case "rl":
             runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
