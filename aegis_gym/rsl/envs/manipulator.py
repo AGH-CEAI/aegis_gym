@@ -101,18 +101,18 @@ class Manipulator:
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
-            th.tensor([6200, 6200, 6500, 3500, 2500, 3500, 100, 100]),
+            th.tensor([6200, 6200, 6800, 3500, 2500, 3500, 100, 100]),
         )
         self._robot_entity.set_dofs_kv(
-            th.tensor([1050, 1125, 250, 180, 320, 590, 10, 10]),
+            th.tensor([1050, 1125, 280, 180, 320, 590, 10, 10]),
         )
         self._robot_entity.set_dofs_force_range(
             th.tensor([-15, -27, -49, -10, -7, -7, -100, -100]),
             th.tensor([15, 27, 49, 10, 7, 7, 100, 100]),
         )
-        self._robot_entity.set_dofs_armature(
-            th.tensor([0.0, 0.0, 0.015, 0.0, 0.0, 0.0, 0.0, 0.0]),
-        )
+        # self._robot_entity.set_dofs_armature(
+        #     th.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        # )
         # self._robot_entity.set_dofs_stiffness(
         #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
         # )
