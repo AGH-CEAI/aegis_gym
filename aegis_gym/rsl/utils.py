@@ -69,7 +69,7 @@ def load_rl_policy(env: Any, train_cfg: dict, log_dir: Path) -> Callable:
 def load_bc_policy(env: Any, bc_cfg: dict, log_dir: Path) -> Callable:
     """Load behavior cloning policy."""
     # Create behavior cloning instance
-    bc_runner = BehaviorCloning(env, bc_cfg, None, device=gs.device)
+    bc_runner = BehaviorCloning(env, bc_cfg, None, log_dir, device=gs.device)
 
     # Find the latest checkpoint
     checkpoint_files = [

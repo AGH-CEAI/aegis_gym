@@ -5,8 +5,8 @@ from pathlib import Path
 import torch as th
 import genesis as gs
 
-from .envs.grasp_env import GraspEnv
-from .utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
+from envs.grasp_env import GraspEnv
+from utils import check_rsl_rl_version, load_rl_policy, load_bc_policy
 
 
 def main():
