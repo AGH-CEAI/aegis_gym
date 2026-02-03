@@ -7,7 +7,7 @@ import torch as th
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
-from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
+from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import check_rsl_rl_version, load_teacher_policy
 
 
@@ -26,11 +26,14 @@ def main():
     env_cfg, reward_scales, robot_cfg = get_task_cfgs()
     rl_train_cfg = get_rl_cfg(args.exp_name, args.max_iterations)
     bc_train_cfg = get_bc_cfg()
+    logger_cfg = get_logger_cfg()
 
     project_suffix = f"_{args.stage}-{args.control}"
-    rl_train_cfg["neptune_project"] += project_suffix
-    rl_train_cfg["wandb_project"] += project_suffix
-    rl_train_cfg["clearml_project"] += project_suffix
+    logger_cfg["wandb_project"] += project_suffix
+    logger_cfg["clearml_project"] += project_suffix
+    logger_cfg["neptune_project"] += project_suffix
+    rl_train_cfg.update(logger_cfg)
+    bc_train_cfg.update(logger_cfg)
 
     # === log dir ===
     log_dir = Path("logs") / f"{args.exp_name + '_' + args.stage}"
@@ -76,8 +79,10 @@ def main():
     if args.stage == "bc":
         teacher_policy = load_teacher_policy(env, rl_train_cfg, args.exp_name)
         bc_train_cfg["teacher_policy"] = teacher_policy
-        runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
-        runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
+        runner = BehaviorCloning(
+            env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
+        )
+        runner.learn(num_learning_iterations=args.max_iterations)
     else:
         runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
         runner.learn(
