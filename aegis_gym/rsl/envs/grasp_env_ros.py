@@ -174,6 +174,7 @@ class GraspEnvROS(VecEnv):
     def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
+        self.robot.read_state()
         return self.get_observations(), self.extras
 
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
@@ -320,6 +321,7 @@ class GraspEnvROS(VecEnv):
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
     def grasp_and_lift_demo(self) -> None:
+        self.robot.read_state()
         total_steps = 500
         grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
