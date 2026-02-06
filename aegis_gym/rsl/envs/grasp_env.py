@@ -65,6 +65,9 @@ class GraspEnv(VecEnv):
         self._init_reward_functions()
         self._init_buffers()
 
+        self.action_max_cart = 0.0
+        self.action_max_euler = 0.0
+
         self.reset()
 
     # Required by rsl_rl
@@ -314,6 +317,26 @@ class GraspEnv(VecEnv):
 
         # apply action based on task
         actions = actions * self.action_scales
+        action_max_cart = th.max(th.abs(actions[:3]))
+        action_max_euler = th.max(th.abs(actions[3:]))
+        self.action_max_cart = (
+            action_max_cart
+            if action_max_cart > self.action_max_cart
+            else self.action_max_cart
+        )
+        self.action_max_euler = (
+            action_max_euler
+            if action_max_euler > self.action_max_euler
+            else self.action_max_euler
+        )
+
+        if (
+            action_max_cart == self.action_max_cart
+            or action_max_euler == self.action_max_euler
+        ):
+            print(
+                f"> MAX (so far) cart [m]: {self.action_max_cart} | euler [rad]: {self.action_max_euler}"
+            )
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
