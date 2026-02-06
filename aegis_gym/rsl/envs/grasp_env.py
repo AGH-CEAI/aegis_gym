@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 import genesis as gs
 import numpy as np
@@ -27,8 +28,10 @@ class GraspEnv(VecEnv):
         enable_plot_juggler: bool = False,
     ) -> None:
         if enable_plot_juggler:
-            self._pj = PlotJugglerUDP(host="127.0.0.1", port=9870)
-            print("[GraspEnv] Enabled UDP server for PlotJuggler at 127.0.0.1:9870")
+            ip = "127.0.0.1"
+            port = 9870
+            self._pj = PlotJugglerUDP(host=ip, port=port)
+            print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
         self._enable_pj_logging = enable_plot_juggler
 
         self.device = gs.device
@@ -333,17 +336,50 @@ class GraspEnv(VecEnv):
         dones = self.reset_buf
         return obs, reward, dones, self.extras
 
-    def calib_run(self, joints_diff: th.Tensor, steps: int) -> None:
-        idle_steps = int(0.05 * steps)
+    def calib_run(
+        self,
+        joints_diff: Optional[th.Tensor] = None,
+        cart_diff: Optional[th.tensor] = None,
+        steps: int = 100,
+    ) -> None:
+        idle_steps = 300  # int(0.4 * steps)
         print(f">>> Idling for {idle_steps} steps.")
         for _ in range(idle_steps):
             self.scene.step()
             self._log_state_to_plot_juggler()
 
-        move_steps = int(0.95 * steps)
+        move_steps = int(steps)
+        steps_per_action = int(
+            250 / 10
+        )  # Control Frequency divided by Policy Frequency
+        # move_per_action = 0.106 / 1000 * steps_per_action # about 2.65 mm
+        move_per_action = 0.196 / 500 * steps_per_action  # about 9,8mm
+        steady_error_compensation_coeff = 1.03  # 1.087 #1.044 # 1.0472
+
         print(f">>> Moving to relative goal for {move_steps} steps.")
-        self.robot.apply_dof_rel_action(joints_diff)
-        for _ in range(move_steps):
+        if joints_diff is not None:
+            self.robot.apply_dof_rel_action(joints_diff)
+        elif cart_diff is not None:
+            from math import ceil
+
+            print(f">>> Steps per action: {steps_per_action}.")
+            print(f">>> Movement per action: {move_per_action} m.")
+            actions_num = int(ceil(move_steps / steps_per_action))
+            print(
+                f">>> Assuming, that the goal will be reachable in: {actions_num} actions."
+            )
+
+            scaled_cart_diff = cart_diff / actions_num * steady_error_compensation_coeff
+            print(f">>> Scaled down target: {scaled_cart_diff}")
+            for action_id in range(actions_num):
+                print(f">>> Applying action #{action_id + 1}")
+                self.robot.apply_action(scaled_cart_diff, open_gripper=True)
+                for _ in range(steps_per_action):
+                    self.scene.step()
+                    self._log_state_to_plot_juggler()
+
+        print(f">>> Idling for {idle_steps} steps.")
+        for _ in range(idle_steps):
             self.scene.step()
             self._log_state_to_plot_juggler()
 
@@ -542,5 +578,21 @@ class GraspEnv(VecEnv):
                 data[f"joint_states/{name}/position"] = float(pos.flatten()[0])
                 data[f"joint_states/{name}/velocity"] = float(vel.flatten()[0])
                 data[f"joint_states/{name}/effort"] = float(force.flatten()[0])
+
+        all_link_positions = robot.get_links_pos()
+        # all_link_quats = robot.get_links_quat()
+
+        link_positions = all_link_positions[0]
+        # link_quats = all_link_quats[0]
+
+        ee_idx = -1  # Last link = end effector
+        position = link_positions[ee_idx]
+
+        data["ee/position/x"] = float(position[0])
+        data["ee/position/y"] = float(position[1])
+        data["ee/position/z"] = float(position[2])
+        # data["ee/orientation/roll"] = float(roll)
+        # data["ee/orientation/pitch"] = float(pitch)
+        # data["ee/orientation/yaw"] = float(yaw)
 
         self._pj.send(data)

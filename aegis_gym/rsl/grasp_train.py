@@ -30,6 +30,7 @@ def main():
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     parser.add_argument("--calibration-move", type=str_to_list, default=None)
+    parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     parser.add_argument("--calibration-steps", type=int, default=500)
     args = parser.parse_args()
 
@@ -85,19 +86,28 @@ def main():
         return
 
     # === calibration movement ===
-    if args.calibration_move:
-        n_j = len(args.calibration_move)
+    if args.calibration_move or args.calibration_move_cart:
+        cart_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         joints_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        joints_diff[:n_j] = args.calibration_move
         steps = args.calibration_steps
 
-        print(f">>> Starting relative joints movement of {joints_diff}")
+        if args.calibration_move:
+            n_j = len(args.calibration_move)
+            joints_diff[:n_j] = args.calibration_move
+            print(f">>> Starting relative joints movement of {joints_diff}")
+            joints_diff = th.tensor(joints_diff, device=device)
+            joints_diff[:6] *= th.pi / 180.0
+            joints_diff.unsqueeze(dim=0)
+            env.calib_run(joints_diff=joints_diff, steps=steps)
 
-        joints_diff = th.tensor(joints_diff, device=device)
-        joints_diff[:6] *= th.pi / 180.0
-        joints_diff.unsqueeze(dim=0)
+        if args.calibration_move_cart:
+            n_j = len(args.calibration_move_cart)
+            cart_diff[:n_j] = args.calibration_move_cart
+            print(f">>> Starting relative cartesian movement of {cart_diff}")
+            cart_diff = th.tensor([cart_diff], device=device)
+            cart_diff.unsqueeze(dim=0)
+            env.calib_run(cart_diff=cart_diff, steps=steps)
 
-        env.calib_run(joints_diff, steps=steps)
         print(">>> Finished relative joints movement.")
         exit()
 
