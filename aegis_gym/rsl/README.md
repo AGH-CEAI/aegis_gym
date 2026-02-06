@@ -13,6 +13,7 @@
 ```bash
 python3 grasp_train.py --stage=rl
 python3 grasp_train.py --stage=rl --num_envs=1
+python3 grasp_train.py --stage=rl --num_envs=1 --control=ros
 ```
 - Train the student BC policy (requires a trained RL teacher):
 ```bash

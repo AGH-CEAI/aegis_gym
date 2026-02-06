@@ -34,6 +34,9 @@ def main():
     parser.add_argument("--calibration-steps", type=int, default=500)
     args = parser.parse_args()
 
+    # Set PyTorch default dtype to float32 for better performance
+    th.set_default_dtype(th.float32)
+
     # === task cfgs and training algos cfgs ===
     env_cfg, reward_scales, robot_cfg = get_task_cfgs()
     rl_train_cfg = get_rl_cfg(args.exp_name, args.max_iterations)
@@ -114,7 +117,9 @@ def main():
     # === runner ===
     match args.stage:
         case "bc":
-            teacher_policy = load_teacher_policy(env, rl_train_cfg, args.exp_name)
+            teacher_policy = load_teacher_policy(
+                env, rl_train_cfg, args.exp_name, device
+            )
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
             runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)

@@ -49,15 +49,28 @@ class GraspEnv(VecEnv):
         self.workbench_size = env_cfg["workbench_size"]
 
         self.ctrl_dt = env_cfg["ctrl_dt"]
-        self.sim_substeps = env_cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
+        self.policy_dt = env_cfg["policy_dt"]
+        self.sim_steps_per_action = math.ceil(env_cfg["policy_dt"] / env_cfg["ctrl_dt"])
+        # self.sim_substeps = env_cfg["sim_substeps"]
+        self.sim_substeps = self.sim_steps_per_action
+        self.max_episode_length = math.ceil(
+            env_cfg["episode_length_s"] / self.policy_dt
+        )
+
+        self.max_action_movemnt = 0.0098  # m, hardcoded
+        print(
+            f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt}Hz | Action: {self.sim_steps_per_action} steps | Action max dist: {self.max_action_movemnt} m"
+        )
 
         self.env_cfg = env_cfg
         self.reward_scales = reward_cfg
         self.action_scales = th.tensor(env_cfg["action_scales"], device=self.device)
 
         self._init_scene(env_cfg, robot_cfg, show_viewer)
-        self.scene.build(n_envs=env_cfg["num_envs"])
+        self.scene.build(
+            n_envs=env_cfg["num_envs"],
+            # env_spacing=(1.0, 1.0),
+        )
 
         self.robot.set_pd_gains()
         self._attach_cameras()
@@ -78,7 +91,7 @@ class GraspEnv(VecEnv):
     # Required by rsl_rl
     @property
     def step_dt(self) -> float:
-        return self.ctrl_dt
+        return self.policy_dt
 
     # Required by rsl_rl
     @property
@@ -89,10 +102,13 @@ class GraspEnv(VecEnv):
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
-                dt=self.ctrl_dt, substeps=self.sim_substeps
+                # dt=self.ctrl_dt, substeps=self.sim_substeps
+                dt=self.policy_dt,
+                substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.ctrl_dt,
+                # dt=self.ctrl_dt,
+                dt=self.policy_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -101,7 +117,8 @@ class GraspEnv(VecEnv):
                 rendered_envs_idx=list(range(min(env_cfg["num_envs"], 10)))
             ),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.ctrl_dt),
+                # max_FPS=int(0.5 / self.ctrl_dt),
+                max_FPS=int(60),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -237,7 +254,8 @@ class GraspEnv(VecEnv):
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
-            self.reward_scales[name] *= self.ctrl_dt
+            self.reward_scales[name] *= self.ctrl_dt * self.sim_steps_per_action
+            # self.reward_scales[name] *= 0.1
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=gs.device, dtype=gs.tc_float
@@ -317,30 +335,35 @@ class GraspEnv(VecEnv):
 
         # apply action based on task
         actions = actions * self.action_scales
-        action_max_cart = th.max(th.abs(actions[:3]))
-        action_max_euler = th.max(th.abs(actions[3:]))
-        self.action_max_cart = (
-            action_max_cart
-            if action_max_cart > self.action_max_cart
-            else self.action_max_cart
-        )
-        self.action_max_euler = (
-            action_max_euler
-            if action_max_euler > self.action_max_euler
-            else self.action_max_euler
+        actions = th.clamp(
+            actions, min=-self.max_action_movemnt, max=self.max_action_movemnt
         )
 
-        if (
-            action_max_cart == self.action_max_cart
-            or action_max_euler == self.action_max_euler
-        ):
-            print(
-                f"> MAX (so far) cart [m]: {self.action_max_cart} | euler [rad]: {self.action_max_euler}"
-            )
+        # TODO create tracking for actions value histogram an history through the training - no foggiest idea how to tackle it
+        # action_max_cart = th.max(th.abs(actions[:3]))
+        # action_max_euler = th.max(th.abs(actions[3:]))
+        # self.action_max_cart = (
+        #     action_max_cart
+        #     if action_max_cart > self.action_max_cart
+        #     else self.action_max_cart
+        # )
+        # self.action_max_euler = (
+        #     action_max_euler
+        #     if action_max_euler > self.action_max_euler
+        #     else self.action_max_euler
+        # )
+
+        # if (
+        #     action_max_cart == self.action_max_cart
+        #     or action_max_euler == self.action_max_euler
+        # ):
+        #     print(
+        #         f"> MAX (so far) cart [m]: {self.action_max_cart} | euler [rad]: {self.action_max_euler}"
+        #     )
 
         self.robot.apply_action(actions, open_gripper=True)
+        # for _ in range(self.sim_steps_per_action):
         self.scene.step()
-        self._log_state_to_plot_juggler()
 
         # check termination
         env_reset_idx = self.is_episode_complete()

@@ -73,6 +73,11 @@ class ManipulatorROS:
         self._state: Optional[TensorDict] = None
         self.read_state()
 
+        # Rotation matrix for transforming actions
+        self.rotate_z = th.tensor(
+            [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]], device=self.device
+        )
+
         # shutdown() will be called at interpreter exit
         atexit.register(self.shutdown)
         self._initialized = True
@@ -132,7 +137,8 @@ class ManipulatorROS:
         return future.result()  # blocks until complete
 
     def read_state(self) -> None:
-        state = self._run_coro(self._robot_client.get_all())
+        # TODO enable state and vision
+        state = self._run_coro(self._robot_client.get_all())["state"]
         self._state = TensorDict(
             {k: th.from_numpy(v).to(self.device) for k, v in state.items()},
             device=self.device,
@@ -170,12 +176,14 @@ class ManipulatorROS:
             return
         self._run_coro(self._robot_client.servo_enable())
         self._servo_enabled = True
+        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
 
     def _servo_disable(self) -> None:
         if not self._servo_enabled:
             return
         self._run_coro(self._robot_client.servo_disable())
         self._servo_enabled = False
+        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
 
     def reset(self, envs_idx: th.IntTensor) -> None:
         if len(envs_idx) == 0:
@@ -199,12 +207,16 @@ class ManipulatorROS:
         self, action: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
         self._servo_enable()
+
+        action = self._transform_to_rotated_base(action)
         # Control only one real robot
+        action = th.clamp(action, min=-1.0, max=1.0)
         action = action.squeeze(dim=0)
+        print(f"[GraspEnvROS][ManipulatorROS] Action looks like: {action}")
 
         # Change position commands into velocities for the MoveIt2 Servo
-        delta_velocity = action[:3] / self.ctrl_dt
-        delta_angular = action[3:6] / self.ctrl_dt
+        delta_velocity = action[:3]  # / self.ctrl_dt
+        delta_angular = action[3:6]  # / self.ctrl_dt
 
         self._run_coro(
             self._robot_client.servo_tcp(
@@ -221,6 +233,19 @@ class ManipulatorROS:
         if not open_gripper and self._gripper_last_action:
             self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = open_gripper
+
+    def _transform_to_rotated_base(self, pose: th.tensor) -> th.tensor:
+        print(f"Input pose: {pose}")
+        # Transform position: only x,y affected
+        pos = pose[..., :3]
+        pos_base = th.einsum("ij,...j->...i", self.rotate_z, pos)
+
+        # For rotations (ZYX Euler): compose by negating rz
+        rot_base = pose[..., 3:].clone()
+        rot_base[..., 2] *= -1  # rz flip for frame change
+        result = th.cat([pos_base, rot_base], dim=-1)
+        print(f"Result pose: {result}")
+        return result
 
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None

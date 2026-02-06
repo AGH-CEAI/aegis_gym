@@ -1,5 +1,6 @@
+import time
 import math
-from typing import Literal
+from typing import Literal, Optional
 
 import torch as th
 from rsl_rl.env import VecEnv
@@ -93,14 +94,27 @@ class GraspEnvROS(VecEnv):
 
         # Probably not the wisest choice, it should be dynamically obtained from config
         # self.ctrl_dt = self._cfg["ctrl_dt"]
-        self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
+        # self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
 
+        self.ctrl_dt = self._cfg["ctrl_dt"]
+        self.policy_dt = self._cfg["policy_dt"]
+        self.sim_substeps = self._cfg["sim_substeps"]
         self.max_episode_length = math.ceil(
             self._cfg["episode_length_s"] / self.ctrl_dt
         )
 
+        self.sim_steps_per_action = math.ceil(
+            self._cfg["policy_dt"] / self._cfg["ctrl_dt"]
+        )
+        self.max_action_movemnt = 0.0098  # m, hardcoded
+        print(
+            f"[GraspEnvROS] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt}Hz | Action: {self.sim_steps_per_action} steps | Action max dist: {self.max_action_movemnt} m"
+        )
+
         self.reward_scales = self._cfg["reward_scales"]
         self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
+
+        self.last_step: Optional[float] = None
 
     # Required by rsl_rl
     @property
@@ -110,7 +124,7 @@ class GraspEnvROS(VecEnv):
     # Required by rsl_rl
     @property
     def step_dt(self) -> float:
-        return self.ctrl_dt
+        return self.policy_dt
 
     # Required by rsl_rl
     @property
@@ -165,10 +179,20 @@ class GraspEnvROS(VecEnv):
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
         # update time
         self.episode_length_buf += 1
+        if not self.last_step:
+            self.last_step = time.perf_counter()
 
         # apply action based on task
-        actions = actions * self.action_scales
+        actions = actions * self.action_scales * 0.01  # scaling down for safety
 
+        # We assume a linear change, which allows us to map the position to velocity request
+        # Since the number of messages and policy frequency is fixed, the time is fixed for both position and speed scenarios
+        # actions = th.clamp(actions, min=-self.max_action_movemnt, max=self.max_action_movemnt) / self.max_action_movemnt
+        actions /= self.max_action_movemnt
+
+        while time.perf_counter() - self.last_step < self.policy_dt:
+            time.sleep(0.001)
+        self.last_step = time.perf_counter()
         self.robot.apply_action(actions)
         self.robot.read_state()
 
