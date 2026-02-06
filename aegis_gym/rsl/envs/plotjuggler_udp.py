@@ -11,7 +11,8 @@ class PlotJugglerUDP:
 
     def send(self, data: dict):
         """Send data dict to PlotJuggler. Keys become series names."""
-        data["ts"] = time.time()  # REQUIRED: timestamp
+        if data.get("ts", None) is None:
+            data["ts"] = time.time()  # REQUIRED: timestamp
         try:
             self.sock.sendto(json.dumps(data).encode(), (self.host, self.port))
         except Exception as e:
