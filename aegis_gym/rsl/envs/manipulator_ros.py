@@ -252,8 +252,8 @@ class ManipulatorROS:
     ) -> None:
         self._servo_disable()
 
-        target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
-        target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
+        target_pos_np = goal_pose[:, :3].squeeze().detach().cpu().numpy()
+        target_ori_np = goal_pose[:, 3:7].squeeze().detach().cpu().numpy()
 
         self._run_coro(
             self._robot_client.goto_pose(
@@ -277,5 +277,4 @@ class ManipulatorROS:
 
     @property
     def ee_pose(self) -> th.Tensor:
-        # TODO validate if its the actual gripper's EE
         return self.get_tcp_pose().unsqueeze(dim=0)
