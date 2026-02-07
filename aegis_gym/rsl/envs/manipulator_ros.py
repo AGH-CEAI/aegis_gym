@@ -157,13 +157,15 @@ class ManipulatorROS:
         return self._state["joints_eff"].to(device=self.device, dtype=th.float32)
 
     def get_tcp_position(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)[:3]
+        return self.get_tcp_pose()[:3]
 
     def get_tcp_orientation(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)[3:]
+        return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)
+        # Since the UR base is rotated by 180 w.r.t. genesis;s world, we need to flip it
+        ros_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
+        return self._transform_from_rotated_base(ros_pose)
 
     def get_wrench(self) -> th.Tensor:
         return self._state["wrench"].to(device=self.device, dtype=th.float32)
@@ -208,11 +210,10 @@ class ManipulatorROS:
     ) -> None:
         self._servo_enable()
 
-        action = self._transform_to_rotated_base(action)
+        action = self._transform_to_rotated_base(action).squeeze(dim=0)
         # Control only one real robot
         action = th.clamp(action, min=-1.0, max=1.0)
-        action = action.squeeze(dim=0)
-        print(f"[GraspEnvROS][ManipulatorROS] Action looks like: {action}")
+        # print(f"[GraspEnvROS][ManipulatorROS] Action looks like: {action}")
 
         # Change position commands into velocities for the MoveIt2 Servo
         delta_velocity = action[:3]  # / self.ctrl_dt
@@ -234,26 +235,14 @@ class ManipulatorROS:
             self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = open_gripper
 
-    def _transform_to_rotated_base(self, pose: th.tensor) -> th.tensor:
-        print(f"Input pose: {pose}")
-        # Transform position: only x,y affected
-        pos = pose[..., :3]
-        pos_base = th.einsum("ij,...j->...i", self.rotate_z, pos)
-
-        # For rotations (ZYX Euler): compose by negating rz
-        rot_base = pose[..., 3:].clone()
-        rot_base[..., 2] *= -1  # rz flip for frame change
-        result = th.cat([pos_base, rot_base], dim=-1)
-        print(f"Result pose: {result}")
-        return result
-
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
         self._servo_disable()
 
-        target_pos_np = goal_pose[:, :3].squeeze().detach().cpu().numpy()
-        target_ori_np = goal_pose[:, 3:7].squeeze().detach().cpu().numpy()
+        goal_pose = self._transform_to_rotated_base(goal_pose).squeeze(dim=0)
+        target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
+        target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
 
         self._run_coro(
             self._robot_client.goto_pose(
@@ -270,6 +259,27 @@ class ManipulatorROS:
         if not open_gripper and self._gripper_last_action:
             self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = open_gripper
+
+    def _transform_to_rotated_base(self, pose: th.tensor) -> th.tensor:
+        # Transform position: only x,y affected
+        pos = pose[..., :3]
+        pos_base = th.einsum("ij,...j->...i", self.rotate_z, pos)
+
+        # For rotations (ZYX Euler): compose by negating rz
+        rot_base = pose[..., 3:].clone()
+        rot_base[..., 2] *= -1  # rz flip for frame change
+        return th.cat([pos_base, rot_base], dim=-1)
+
+    def _transform_from_rotated_base(self, pose_rotated: th.Tensor) -> th.Tensor:
+        # Un-Transform position: apply inverse Z-rotation (transpose for orthogonal matrix)
+        pos = pose_rotated[..., :3]
+        pos_original = th.einsum("ij,...j->...i", self.rotate_z.T, pos)
+
+        # Un-compose rotations: negate rz again to reverse frame change
+        rot_original = pose_rotated[..., 3:].clone()
+        rot_original[..., 2] *= -1  # rz flip back
+
+        return th.cat([pos_original, rot_original], dim=-1)
 
     @property
     def base_pos(self) -> th.Tensor:

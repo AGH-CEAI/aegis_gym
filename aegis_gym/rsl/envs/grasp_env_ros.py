@@ -65,6 +65,10 @@ class GraspEnvROS(VecEnv):
             device=self.device,
         )
 
+        # Conversion from UR base to Geenesis' world base
+        gs_box_pose = self.robot._transform_from_rotated_base(self.world_box_pose)
+        self.box_position = gs_box_pose[:3]
+        self.box_orientation = gs_box_pose[3:]
         self.object = Object(
             size=self.box_size,
             pos=th.tensor(self.box_position, device=self.device),
@@ -86,15 +90,16 @@ class GraspEnvROS(VecEnv):
         self.image_height = self._cfg["image_resolution"][1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
-        self.box_size = self._cfg["box_size"]
-        self.box_orientation = (0.0, 1.0, 0.0, 0.0)
-        self.box_position = (-0.626, -0.028, -0.028)
         self.table_size = self._cfg["table_size"]
         self.workbench_size = self._cfg["workbench_size"]
 
         # Probably not the wisest choice, it should be dynamically obtained from config
         # self.ctrl_dt = self._cfg["ctrl_dt"]
         # self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
+
+        self.box_size = self._cfg["box_size"]
+        # This pose is already in UR base, and must be converted to Genesis's world base
+        self.world_box_pose = (-0.626, -0.028, -0.028, 0.0, 1.0, 0.0, 0.0)
 
         self.ctrl_dt = self._cfg["ctrl_dt"]
         self.policy_dt = self._cfg["policy_dt"]
