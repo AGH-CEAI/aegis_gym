@@ -338,7 +338,9 @@ class GraspEnv(VecEnv):
         self.episode_length_buf += 1
 
         # apply action based on task
+        # TODO parametrize clamping
         actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
+        actions = th.clamp(actions, min=-1.0, max=1.0)
 
         self.robot.apply_action(actions)
         self.scene.step()

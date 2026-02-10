@@ -79,8 +79,8 @@ class GraspEnvROS(VecEnv):
         self.box_grasp_orientation = world_box_pose[3:]
         self.object = Object(
             size=self.box_size,
-            pos=th.tensor(self.box_position, device=self.device),
-            quat=th.tensor(self.box_grasp_orientation, device=self.device),
+            pos=self.box_position,
+            quat=self.box_grasp_orientation,
             num_envs=self.num_envs,
             device=self.device,
         )
@@ -187,7 +187,9 @@ class GraspEnvROS(VecEnv):
             self.last_step_ts = time.perf_counter()
 
         # apply action based on task
+        # TODO parametrize clamping
         actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
+        actions = th.clamp(actions, min=-1.0, max=1.0)
 
         # We assume a linear change, which allows us to map the position to velocity request
         # Since the number of messages and policy frequency is fixed, the time is fixed for both position and speed scenarios

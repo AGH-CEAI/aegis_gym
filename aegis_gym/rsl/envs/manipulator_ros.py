@@ -95,6 +95,7 @@ class ManipulatorROS:
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
+        self.pt = PoseTransformUtils(device=device)
         self._num_envs = num_envs
         self._args = args
         self.device = device
@@ -127,8 +128,6 @@ class ManipulatorROS:
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
         self.read_state()
-
-        self.pt = PoseTransformUtils(device=device)
 
         # TODO read it from the config
         self.max_lin_speed = 0.0098  # m/s
@@ -277,12 +276,12 @@ class ManipulatorROS:
         # Since the action is in the EE frame, the rotation should not be needed
         # action = self._transform_to_rotated_base(action).squeeze(dim=0)
 
-        print(f"[GraspEnvROS][ManipulatorROS] Action before scaling: {action}")
+        # print(f"[GraspEnvROS][ManipulatorROS] Action before scaling: {action}")
 
         # Scaling the action to the unitless servo input
-        action[:3] /= self.max_lin_speed
-        action[3:6] /= self.max_ang_speed
-        action = th.clamp(action, min=-1.0, max=1.0)
+        # action[:3] /= self.max_lin_speed
+        # action[3:6] /= self.max_ang_speed
+        # action = th.clamp(action, min=-1.0, max=1.0)
 
         print(f"[GraspEnvROS][ManipulatorROS] Action after scaling: {action}")
 
