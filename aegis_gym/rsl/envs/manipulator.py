@@ -168,7 +168,7 @@ class Manipulator:
         if self._ik_method == "gs_ik":
             # Using pseudoinverse method
             q_vel = self._pseudoinverse_velocity_ik(action)
-        elif self._ik_method == "dls":
+        elif self._ik_method == "dls_ik":
             # Using damped least squares method
             q_vel = self._dls_velocity_ik(action)
         else:
@@ -187,6 +187,7 @@ class Manipulator:
             )
 
         # Apply joint velocities to arm
+        # print(f">>> DEBUG: velocity args: {q_vel[:5]}")
         self._robot_entity.control_dofs_velocity(velocity=q_vel)
 
     def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
@@ -215,7 +216,11 @@ class Manipulator:
         # Compute joint velocities: q_dot = J+ * ee_velocity
         q_vel = (jacobian_pinv @ ee_velocity.unsqueeze(-1)).squeeze(-1)
 
-        return q_vel
+        # Append zeros for finger joints [num_envs, 2]
+        finger_zeros = th.zeros(
+            q_vel.shape[0], 2, device=q_vel.device, dtype=q_vel.dtype
+        )
+        return th.cat([q_vel, finger_zeros], dim=-1)
 
     def _dls_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -249,7 +254,11 @@ class Manipulator:
             @ ee_velocity.unsqueeze(-1)
         ).squeeze(-1)
 
-        return q_vel
+        # Append zeros for finger joints [num_envs, 2]
+        finger_zeros = th.zeros(
+            q_vel.shape[0], 2, device=q_vel.device, dtype=q_vel.dtype
+        )
+        return th.cat([q_vel, finger_zeros], dim=-1)
 
     def _gs_ik(self, action: th.Tensor) -> th.Tensor:
         """
