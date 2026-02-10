@@ -118,7 +118,7 @@ def get_task_cfgs():
         "num_obs": 14,
         "num_actions": 6,
         # "action_scales": [0.0098, 0.0098, 0.0098, 0.302, 0.302, 0.302],
-        "action_scales": [0.001, 0.001, 0.001, 0.01, 0.01, 0.01],
+        "action_scales": [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
         "max_linear_speed": 0.0098,  # m/s
         "max_angular_speed": 0.302,  # rad/s
         "episode_length_s": 5.0,
