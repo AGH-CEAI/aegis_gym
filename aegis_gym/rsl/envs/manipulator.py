@@ -160,12 +160,14 @@ class Manipulator:
         """
         q_pos = self._robot_entity.get_qpos()
 
-        if self._ik_method == "gs_ik":
-            q_pos = self._gs_ik(action)
-        elif self._ik_method == "dls_ik":
-            q_pos = self._dls_ik(action)
-        else:
-            raise ValueError(f"Invalid control mode: {self._ik_method}")
+        # TODO apply Inverse velocity kinematics (Jacobian)
+        # if self._ik_method == "gs_ik":
+        #     q_pos = self._gs_ik(action)
+        # elif self._ik_method == "dls_ik":
+        #     q_pos = self._dls_ik(action)
+        # else:
+        #     raise ValueError(f"Invalid control mode: {self._ik_method}")
+
         # set gripper to open
         if open_gripper is None:
             return
