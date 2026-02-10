@@ -17,6 +17,64 @@ except ImportError:
     raise
 
 
+class PoseTransformUtils:
+    def __init__(self, device: th.device):
+        self.device = device
+
+        # Rotation matrix for transforming actions
+        self.rotate_z180_mat = th.tensor(
+            [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]], device=self.device
+        )
+        # Z-180° quat: [w=0, x=0, y=-1, z=0] for WXYZ
+        self.rotate_z180_quat = th.tensor([0.0, 0.0, -1.0, 0.0], device=self.device)
+
+    def transform_to_robot_frame(self, pose: th.tensor) -> th.tensor:
+        # Transform position: only x,y affected
+        pos = pose[..., :3]
+        pos_robot = th.einsum("ij,...j->...i", self.rotate_z180_mat, pos)
+
+        # Rotate quaternion by Z-180°
+        quat_robot = self.rotate_z_180(pose[..., 3:])
+
+        return th.cat([pos_robot, quat_robot], dim=-1)
+
+    def transform_to_world_frame(self, pose: th.Tensor) -> th.Tensor:
+        # Un-Transform position: apply inverse Z-rotation (transpose for orthogonal matrix)
+        pos = pose[..., :3]
+        pos_world = th.einsum("ij,...j->...i", self.rotate_z180_mat.T, pos)
+
+        # Undo: multiply by inverse (Z+180° = Z-180° since 180°=-180°)
+        quat_world = self.rotate_z_180(pose[..., 3:])
+
+        return th.cat([pos_world, quat_world], dim=-1)
+
+    def quat_xyzw_to_wxyz(self, quat: th.Tensor) -> th.Tensor:
+        return th.roll(quat, -1, dims=-1)
+
+    def quat_wxyz_to_xyzw(self, quat: th.Tensor) -> th.Tensor:
+        return th.roll(quat, 1, dims=-1)
+
+    def rotate_z_180(self, quat: th.Tensor) -> th.Tensor:
+        # Broadcast to batch dims
+        rot_z180 = self.rotate_z180_quat.to(quat.device).expand_as(quat)
+
+        # Quaternion multiply: quat @ rot_z180 (WXYZ matrix order)
+        w1, x1, y1, z1 = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+        w2, x2, y2, z2 = (
+            rot_z180[..., 0],
+            rot_z180[..., 1],
+            rot_z180[..., 2],
+            rot_z180[..., 3],
+        )
+
+        w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
+        x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
+        y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
+        z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+
+        return th.stack([w, x, y, z], dim=-1)
+
+
 class ManipulatorROS:
     _instance: Optional["ManipulatorROS"] = None
 
@@ -29,6 +87,7 @@ class ManipulatorROS:
         self,
         num_envs: int,
         args: dict,
+        policy_dt: float,
         device: th.device = th.device("cpu"),
     ):
         if hasattr(self, "_initialized") and self._initialized:
@@ -42,7 +101,7 @@ class ManipulatorROS:
         self.device = device
 
         # TODO get from cfg / dynamically from rsl_rl
-        self.ctrl_dt = 1 / 10.0  # 1 / poliicy_f
+        self.ctrl_dt = policy_dt  # 1 / poliicy_f
 
         self.dof_home_dict = {
             "shoulder_pan_joint": 0.0,
@@ -73,10 +132,11 @@ class ManipulatorROS:
         self._state: Optional[TensorDict] = None
         self.read_state()
 
-        # Rotation matrix for transforming actions
-        self.rotate_z = th.tensor(
-            [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]], device=self.device
-        )
+        self.pt = PoseTransformUtils(device=device)
+
+        # TODO read it from the config
+        self.max_lin_speed = 0.0098  # m/s
+        self.max_ang_speed = 0.302  # rad/s
 
         # shutdown() will be called at interpreter exit
         atexit.register(self.shutdown)
@@ -138,11 +198,14 @@ class ManipulatorROS:
 
     def read_state(self) -> None:
         # TODO enable state and vision
-        state = self._run_coro(self._robot_client.get_all())["state"]
+        # state = self._run_coro(self._robot_client.get_all())["state"]
+        state = self._run_coro(self._robot_client.get_robot_state())
         self._state = TensorDict(
             {k: th.from_numpy(v).to(self.device) for k, v in state.items()},
             device=self.device,
         )
+        # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
+        self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
 
     def get_state_tensordict(self) -> TensorDict:
         return self._state
@@ -163,9 +226,8 @@ class ManipulatorROS:
         return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
-        # Since the UR base is rotated by 180 w.r.t. genesis;s world, we need to flip it
-        ros_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
-        return self._transform_from_rotated_base(ros_pose)
+        robot_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
+        return self.pt.transform_to_world_frame(robot_pose)
 
     def get_wrench(self) -> th.Tensor:
         return self._state["wrench"].to(device=self.device, dtype=th.float32)
@@ -208,21 +270,30 @@ class ManipulatorROS:
     def apply_action(
         self, action: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
+        """
+        The action is assumed to be a EE velocity [m/s] and euler angular speed [rad/s]
+        i.e. v_x, v_y, v_z, w_x, w_y, w_z
+        """
         self._servo_enable()
-
-        action = self._transform_to_rotated_base(action).squeeze(dim=0)
         # Control only one real robot
-        action = th.clamp(action, min=-1.0, max=1.0)
-        # print(f"[GraspEnvROS][ManipulatorROS] Action looks like: {action}")
+        action = action.squeeze(dim=0)
 
-        # Change position commands into velocities for the MoveIt2 Servo
-        delta_velocity = action[:3]  # / self.ctrl_dt
-        delta_angular = action[3:6]  # / self.ctrl_dt
+        # Since the action is in the EE frame, the rotation should not be needed
+        # action = self._transform_to_rotated_base(action).squeeze(dim=0)
+
+        print(f"[GraspEnvROS][ManipulatorROS] Action before scaling: {action}")
+
+        # Scaling the action to the unitless servo input
+        action[:3] /= self.max_lin_speed
+        action[3:6] /= self.max_ang_speed
+        action = th.clamp(action, min=-1.0, max=1.0)
+
+        print(f"[GraspEnvROS][ManipulatorROS] Action after scaling: {action}")
 
         self._run_coro(
             self._robot_client.servo_tcp(
-                linear=delta_velocity,
-                angular=delta_angular,
+                linear=action[:3],
+                angular=action[3:6],
             )
         )
 
@@ -238,11 +309,23 @@ class ManipulatorROS:
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
+        """
+        The goal is assumed to be a pose with position and WXYZ quaterion in the world frame of reference.
+        """
         self._servo_disable()
 
-        goal_pose = self._transform_to_rotated_base(goal_pose).squeeze(dim=0)
-        target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
-        target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
+        # Prepare data for ROS control, i.e. in robot frame: position + quat_xyzw
+        print(f">> DEBUG, goal_pose before transform {goal_pose}")
+
+        goal_pose = goal_pose.squeeze(dim=0)
+        goal_pose = self.pt.transform_to_robot_frame(goal_pose)
+        goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
+
+        target_pos_np = goal_pose[:3].detach().cpu().numpy()
+        target_ori_np = goal_pose[3:7].detach().cpu().numpy()
+
+        print(f">> DEBUG, target_pos_np {target_pos_np}")
+        print(f">> DEBUG, target_ori_np {target_ori_np}")
 
         self._run_coro(
             self._robot_client.goto_pose(
@@ -259,27 +342,6 @@ class ManipulatorROS:
         if not open_gripper and self._gripper_last_action:
             self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = open_gripper
-
-    def _transform_to_rotated_base(self, pose: th.tensor) -> th.tensor:
-        # Transform position: only x,y affected
-        pos = pose[..., :3]
-        pos_base = th.einsum("ij,...j->...i", self.rotate_z, pos)
-
-        # For rotations (ZYX Euler): compose by negating rz
-        rot_base = pose[..., 3:].clone()
-        rot_base[..., 2] *= -1  # rz flip for frame change
-        return th.cat([pos_base, rot_base], dim=-1)
-
-    def _transform_from_rotated_base(self, pose_rotated: th.Tensor) -> th.Tensor:
-        # Un-Transform position: apply inverse Z-rotation (transpose for orthogonal matrix)
-        pos = pose_rotated[..., :3]
-        pos_original = th.einsum("ij,...j->...i", self.rotate_z.T, pos)
-
-        # Un-compose rotations: negate rz again to reverse frame change
-        rot_original = pose_rotated[..., 3:].clone()
-        rot_original[..., 2] *= -1  # rz flip back
-
-        return th.cat([pos_original, rot_original], dim=-1)
 
     @property
     def base_pos(self) -> th.Tensor:
