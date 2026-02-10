@@ -1,7 +1,7 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import torch as th
 import genesis as gs
@@ -152,11 +152,14 @@ class Manipulator:
             position=default_joint_angles, envs_idx=envs_idx
         )
 
-    def apply_action(self, action: th.Tensor, open_gripper: bool) -> None:
+    def apply_action(
+        self, action: th.Tensor, open_gripper: Optional[bool] = None
+    ) -> None:
         """
         Apply the action to the robot.
         """
         q_pos = self._robot_entity.get_qpos()
+
         if self._ik_method == "gs_ik":
             q_pos = self._gs_ik(action)
         elif self._ik_method == "dls_ik":
@@ -164,6 +167,9 @@ class Manipulator:
         else:
             raise ValueError(f"Invalid control mode: {self._ik_method}")
         # set gripper to open
+        if open_gripper is None:
+            return
+        q_pos = self._robot_entity.get_qpos()
         if open_gripper:
             q_pos[:, self._fingers_dof] = self._gripper_open_dof
         else:
@@ -211,13 +217,15 @@ class Manipulator:
         ).squeeze(-1)
         return self._robot_entity.get_qpos() + delta_joint_pos
 
-    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: bool = True):
+    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None):
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
             pos=goal_pose[:, :3],
             quat=goal_pose[:, 3:7],
             dofs_idx_local=self._arm_dof_idx,
         )
+        if open_gripper is None:
+            return
         if open_gripper:
             q_pos[:, self._fingers_dof] = self._gripper_open_dof
         else:

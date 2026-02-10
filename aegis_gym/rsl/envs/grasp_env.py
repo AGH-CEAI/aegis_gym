@@ -361,7 +361,7 @@ class GraspEnv(VecEnv):
         #         f"> MAX (so far) cart [m]: {self.action_max_cart} | euler [rad]: {self.action_max_euler}"
         #     )
 
-        self.robot.apply_action(actions, open_gripper=True)
+        self.robot.apply_action(actions)
         # for _ in range(self.sim_steps_per_action):
         self.scene.step()
 
