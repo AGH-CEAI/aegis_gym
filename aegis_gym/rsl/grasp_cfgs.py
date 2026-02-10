@@ -117,12 +117,15 @@ def get_task_cfgs():
         "num_envs": 10,
         "num_obs": 14,
         "num_actions": 6,
-        "action_scales": [0.0098, 0.0098, 0.0098, 0.302, 0.302, 0.302],
+        # "action_scales": [0.0098, 0.0098, 0.0098, 0.302, 0.302, 0.302],
+        "action_scales": [0.001, 0.001, 0.001, 0.01, 0.01, 0.01],
+        "max_linear_speed": 0.0098,  # m/s
+        "max_angular_speed": 0.302,  # rad/s
         "episode_length_s": 5.0,
         # "ctrl_dt": 0.01,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
         "policy_dt": 0.04,  # 1 / 10 Hz, used to calculate number of steps
-        "sim_substeps": 1,  # disabled for calibration, original: 2 or 32
+        # "sim_substeps": 1,  # disabled for calibration, original: 2 or 32
         "box_size": [0.0283, 0.0283, 0.1005],
         "table_size": [0.55, 0.84, 0.82],
         "workbench_size": [0.64, 1.0, 0.806],

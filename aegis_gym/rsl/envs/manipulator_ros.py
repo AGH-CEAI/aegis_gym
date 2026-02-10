@@ -87,7 +87,6 @@ class ManipulatorROS:
         self,
         num_envs: int,
         args: dict,
-        policy_dt: float,
         device: th.device = th.device("cpu"),
     ):
         if hasattr(self, "_initialized") and self._initialized:
@@ -99,9 +98,6 @@ class ManipulatorROS:
         self._num_envs = num_envs
         self._args = args
         self.device = device
-
-        # TODO get from cfg / dynamically from rsl_rl
-        self.ctrl_dt = policy_dt  # 1 / poliicy_f
 
         self.dof_home_dict = {
             "shoulder_pan_joint": 0.0,

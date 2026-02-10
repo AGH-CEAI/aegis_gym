@@ -94,8 +94,8 @@ def main():
         policy.eval()
 
     obs, _ = env.reset()
-    # max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
-    max_sim_step = int(env_cfg["episode_length_s"] / env_cfg["policy_dt"])
+    # max_steps = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+    max_steps = int(env_cfg["episode_length_s"] / env_cfg["policy_dt"])
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with th.no_grad():
@@ -118,7 +118,7 @@ def main():
         else:
             print(f"Skipping camera setup for control type: {args.control}")
 
-        for step in range(max_sim_step):
+        for step in range(max_steps):
             if args.stage == "rl":
                 actions = policy(obs)
             else:

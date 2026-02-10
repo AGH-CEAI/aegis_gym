@@ -57,24 +57,30 @@ class GraspEnvROS(VecEnv):
         self._cfg["reward_scales"] = reward_cfg
         self.device = device
 
-        self._exctract_config()
+        self._extract_config()
+        print(
+            f"[GraspEnvROS] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
+        )
 
         self.robot = ManipulatorROS(
             num_envs=self.num_envs,
             args=robot_cfg,
             device=self.device,
-            policy_dt=env_cfg["policy_dt"],
         )
 
-        # Conversion from UR base to Geenesis' world base
-        # gs_box_pose = self.robot._transform_from_rotated_base(self.world_box_pose)
-        gs_box_pose = self.world_box_pose
-        self.box_position = gs_box_pose[:3]
-        self.box_orientation = gs_box_pose[3:]
+        # This pose is already in the Genesi's world base
+        world_box_pose = th.tensor(
+            [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            device=self.device,
+        )
+        world_box_pose[2] += 0.08  # m
+
+        self.box_position = world_box_pose[:3]
+        self.box_grasp_orientation = world_box_pose[3:]
         self.object = Object(
             size=self.box_size,
             pos=th.tensor(self.box_position, device=self.device),
-            quat=th.tensor(self.box_orientation, device=self.device),
+            quat=th.tensor(self.box_grasp_orientation, device=self.device),
             num_envs=self.num_envs,
             device=self.device,
         )
@@ -83,7 +89,7 @@ class GraspEnvROS(VecEnv):
         self._init_buffers()
         self.reset()
 
-    def _exctract_config(self) -> None:
+    def _extract_config(self) -> None:
         self.num_envs = self._cfg["num_envs"]
         self.num_obs = self._cfg["num_obs"]
         self.num_privileged_obs = None
@@ -94,37 +100,24 @@ class GraspEnvROS(VecEnv):
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
         self.table_size = self._cfg["table_size"]
         self.workbench_size = self._cfg["workbench_size"]
-
-        # Probably not the wisest choice, it should be dynamically obtained from config
-        # self.ctrl_dt = self._cfg["ctrl_dt"]
-        # self.ctrl_dt = 1.0 / 10.0  # 1/policy_f [s]
-
         self.box_size = self._cfg["box_size"]
-        # This pose is already in UR base, and must be converted to Genesis's world base
-        self.world_box_pose = th.tensor(
-            [0.626, -0.016, 0.031, 0.0, 1.0, 0.0, 0.0], device=self.device
-        )  # grasp quat 0.7071067, -0.7071067, 0, -0.0003949
-        self.world_box_pose[2] += 0.3  # m
 
         self.ctrl_dt = self._cfg["ctrl_dt"]
         self.policy_dt = self._cfg["policy_dt"]
-        self.sim_substeps = self._cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(
-            self._cfg["episode_length_s"] / self.ctrl_dt
+        self.sim_substeps = int(
+            math.ceil(self._cfg["policy_dt"] / self._cfg["ctrl_dt"])
+        )
+        self.max_episode_length = int(
+            math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.sim_steps_per_action = math.ceil(
-            self._cfg["policy_dt"] / self._cfg["ctrl_dt"]
-        )
-        self.max_action_movemnt = 0.0098  # m, hardcoded
-        print(
-            f"[GraspEnvROS] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt}Hz | Action: {self.sim_steps_per_action} steps | Action max dist: {self.max_action_movemnt} m"
-        )
+        self.max_linear_speed = self._cfg["max_linear_speed"]
+        self.max_angular_speed = self._cfg["max_angular_speed"]
 
         self.reward_scales = self._cfg["reward_scales"]
         self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
 
-        self.last_step: Optional[float] = None
+        self.last_step_ts: Optional[float] = None
 
     # Required by rsl_rl
     @property
@@ -190,20 +183,21 @@ class GraspEnvROS(VecEnv):
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
         # update time
         self.episode_length_buf += 1
-        if not self.last_step:
-            self.last_step = time.perf_counter()
+        if not self.last_step_ts:
+            self.last_step_ts = time.perf_counter()
 
         # apply action based on task
-        actions = actions * self.action_scales  # * 0.01  # scaling down for safety
+        actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
 
         # We assume a linear change, which allows us to map the position to velocity request
         # Since the number of messages and policy frequency is fixed, the time is fixed for both position and speed scenarios
         # actions = th.clamp(actions, min=-self.max_action_movemnt, max=self.max_action_movemnt) / self.max_action_movemnt
         # actions /= self.max_action_movemnt
 
-        while time.perf_counter() - self.last_step < self.policy_dt:
+        while time.perf_counter() - self.last_step_ts < self.policy_dt:
             time.sleep(0.0001)
-        self.last_step = time.perf_counter()
+        self.last_step_ts = time.perf_counter()
+
         self.robot.apply_action(actions)
         self.robot.read_state()
 
@@ -227,9 +221,8 @@ class GraspEnvROS(VecEnv):
     def calib_run(self, joints_diff: th.Tensor, steps: int) -> None:
         raise NotImplementedError
 
-    # currently not in use
     def get_privileged_observations(self) -> None:
-        return None
+        raise NotImplementedError
 
     def is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
@@ -246,13 +239,12 @@ class GraspEnvROS(VecEnv):
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
     def get_observations(self) -> TensorDict:
+        ee_pose = self.robot.ee_pose
         ee_pos, ee_quat = (
-            self.robot.ee_pose[:, :3],
-            self.robot.ee_pose[:, 3:7],
+            ee_pose[:, :3],
+            ee_pose[:, 3:7],
         )
-        ee_quat = ee_quat[:, [3, 0, 1, 2]]
         obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
-        # obj_quat = obj_quat[:, [3,0,1,2]]
 
         obs_components = [
             ee_pos - obj_pos,  # 3D position difference
@@ -300,7 +292,6 @@ class GraspEnvROS(VecEnv):
         quaternion: th.Tensor,  # [N, 4]
         keypoints_offset: th.Tensor,  # [N, 7, 3]
     ) -> th.Tensor:
-        # TODO: rotate
         world = th.zeros_like(keypoints_offset)
         for k in range(keypoints_offset.shape[1]):
             world[:, k] = position + transform_by_quat(
@@ -345,15 +336,11 @@ class GraspEnvROS(VecEnv):
         lift_height = 0.3
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
-        # final pose (above the table)
-        final_pose = goal_pose.clone()
-        final_pose[:, 0] = 0.3
-        final_pose[:, 1] = 0.0
-        final_pose[:, 2] = 0.4
-        # reset pose (home pose)
-        reset_pose = th.tensor(
-            [0.2, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0], device=self.device
-        ).repeat(self.num_envs, 1)
+        # # final pose (above the table)
+        # final_pose = goal_pose.clone()
+        # final_pose[:, 0] = 0.3
+        # final_pose[:, 1] = 0.0
+        # final_pose[:, 2] = 0.4
         print("SKIPPING THE GRASP AND LIFT DEMO: THE GO_TO_GOAL DOESN'T WORK")
         return
         for i in range(total_steps):
@@ -363,8 +350,8 @@ class GraspEnvROS(VecEnv):
             elif i < total_steps * 2 / 5:  # grasping
                 self.robot.go_to_goal(goal_pose, open_gripper=False)
             elif i < total_steps * 3 / 5:  # lifting
-                self.robot.go_to_goal(lift_pose, open_gripper=False)
-            elif i < total_steps * 4 / 5:  # final
-                self.robot.go_to_goal(final_pose, open_gripper=False)
+                self.robot.go_to_goal(lift_pose)
+            # elif i < total_steps * 4 / 5:  # final
+            #     self.robot.go_to_goal(final_pose)
             else:  # reset
-                self.robot.go_to_goal(reset_pose, open_gripper=True)
+                self.robot._move_to_home()

@@ -61,7 +61,7 @@ class Manipulator:
 
         self._ik_method: Literal["rel_pose", "dls"] = args["ik_method"]
 
-        self._init()
+        self._setup_config()
 
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
@@ -98,6 +98,25 @@ class Manipulator:
             )
         return default_path
 
+    def _setup_config(self):
+        self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
+        self._gripper_dim = 2  # number of gripper joints
+
+        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
+        self._fingers_dof = th.arange(
+            self._arm_dof_dim,
+            self._arm_dof_dim + self._gripper_dim,
+            device=self._device,
+        )
+        self._left_finger_dof = self._fingers_dof[0]
+        self._right_finger_dof = self._fingers_dof[1]
+        self._ee_link = self._robot_entity.get_link(self._args["ee_link_name"])
+        # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
+        # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
+        self._default_joint_angles = self._args["default_arm_dof"]
+        if self._args["default_gripper_dof"] is not None:
+            self._default_joint_angles += self._args["default_gripper_dof"]
+
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
@@ -116,25 +135,6 @@ class Manipulator:
         # self._robot_entity.set_dofs_stiffness(
         #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
         # )
-
-    def _init(self):
-        self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
-        self._gripper_dim = 2  # number of gripper joints
-
-        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
-        self._fingers_dof = th.arange(
-            self._arm_dof_dim,
-            self._arm_dof_dim + self._gripper_dim,
-            device=self._device,
-        )
-        self._left_finger_dof = self._fingers_dof[0]
-        self._right_finger_dof = self._fingers_dof[1]
-        self._ee_link = self._robot_entity.get_link(self._args["ee_link_name"])
-        # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
-        # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
-        self._default_joint_angles = self._args["default_arm_dof"]
-        if self._args["default_gripper_dof"] is not None:
-            self._default_joint_angles += self._args["default_gripper_dof"]
 
     def reset(self, envs_idx: th.IntTensor):
         if len(envs_idx) == 0:
@@ -156,9 +156,10 @@ class Manipulator:
         self, action: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
         """
-        Apply the action to the robot.
+        Apply the action (velocity servoing) to the robot.
         """
         q_pos = self._robot_entity.get_qpos()
+        # q_vel = # ...
 
         # TODO apply Inverse velocity kinematics (Jacobian)
         # if self._ik_method == "gs_ik":
@@ -176,7 +177,9 @@ class Manipulator:
             q_pos[:, self._fingers_dof] = self._gripper_open_dof
         else:
             q_pos[:, self._fingers_dof] = self._gripper_close_dof
-        self._robot_entity.control_dofs_position(position=q_pos)
+
+        # TODO
+        # self._robot_entity.control_dofs_velocities(q_vel)
 
     def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
