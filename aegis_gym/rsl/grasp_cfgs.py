@@ -121,7 +121,7 @@ def get_task_cfgs():
         "episode_length_s": 5.0,
         # "ctrl_dt": 0.01,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
-        "policy_dt": 0.1,  # 1 / 10 Hz, used to calculate number of steps
+        "policy_dt": 0.04,  # 1 / 10 Hz, used to calculate number of steps
         "sim_substeps": 1,  # disabled for calibration, original: 2 or 32
         "box_size": [0.0283, 0.0283, 0.1005],
         "table_size": [0.55, 0.84, 0.82],
