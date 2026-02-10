@@ -57,9 +57,9 @@ class GraspEnv(VecEnv):
             env_cfg["episode_length_s"] / self.policy_dt
         )
 
-        self.max_action_movemnt = 0.0098  # m, hardcoded
+        self.max_action_movement = 0.0098  # m, hardcoded
         print(
-            f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt}Hz | Action: {self.sim_steps_per_action} steps | Action max dist: {self.max_action_movemnt} m"
+            f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt}Hz | Action: {self.sim_steps_per_action} steps | Action max dist: {self.max_action_movement} m"
         )
 
         self.env_cfg = env_cfg
@@ -335,9 +335,9 @@ class GraspEnv(VecEnv):
 
         # apply action based on task
         actions = actions * self.action_scales
-        actions = th.clamp(
-            actions, min=-self.max_action_movemnt, max=self.max_action_movemnt
-        )
+        # actions = th.clamp(
+        #     actions, min=-self.max_action_movement, max=self.max_action_movement
+        # )
 
         # TODO create tracking for actions value histogram an history through the training - no foggiest idea how to tackle it
         # action_max_cart = th.max(th.abs(actions[:3]))
@@ -567,8 +567,8 @@ class GraspEnv(VecEnv):
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
     def grasp_and_lift_demo(self) -> None:
-        total_steps = 500
-        grab_height = 0.08
+        total_steps = self.max_episode_length  # 500
+        grab_height = 0.04
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
