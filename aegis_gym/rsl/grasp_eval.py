@@ -94,7 +94,8 @@ def main():
         policy.eval()
 
     obs, _ = env.reset()
-    max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+    # max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+    max_sim_step = int(env_cfg["episode_length_s"] / env_cfg["policy_dt"])
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with th.no_grad():
