@@ -22,16 +22,16 @@ class PoseTransformUtils:
         self.device = device
 
         # Rotation matrix for transforming actions
-        self.rotate_z180_mat = th.tensor(
+        self._rotate_z180_mat = th.tensor(
             [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]], device=self.device
         )
         # Z-180° quat: [w=0, x=0, y=-1, z=0] for WXYZ
-        self.rotate_z180_quat = th.tensor([0.0, 0.0, -1.0, 0.0], device=self.device)
+        self._rotate_z180_quat = th.tensor([0.0, 0.0, -1.0, 0.0], device=self.device)
 
     def transform_to_robot_frame(self, pose: th.tensor) -> th.tensor:
         # Transform position: only x,y affected
         pos = pose[..., :3]
-        pos_robot = th.einsum("ij,...j->...i", self.rotate_z180_mat, pos)
+        pos_robot = th.einsum("ij,...j->...i", self._rotate_z180_mat, pos)
 
         # Rotate quaternion by Z-180°
         quat_robot = self.rotate_z_180(pose[..., 3:])
@@ -41,7 +41,7 @@ class PoseTransformUtils:
     def transform_to_world_frame(self, pose: th.Tensor) -> th.Tensor:
         # Un-Transform position: apply inverse Z-rotation (transpose for orthogonal matrix)
         pos = pose[..., :3]
-        pos_world = th.einsum("ij,...j->...i", self.rotate_z180_mat.T, pos)
+        pos_world = th.einsum("ij,...j->...i", self._rotate_z180_mat.T, pos)
 
         # Undo: multiply by inverse (Z+180° = Z-180° since 180°=-180°)
         quat_world = self.rotate_z_180(pose[..., 3:])
@@ -49,14 +49,14 @@ class PoseTransformUtils:
         return th.cat([pos_world, quat_world], dim=-1)
 
     def quat_xyzw_to_wxyz(self, quat: th.Tensor) -> th.Tensor:
-        return th.roll(quat, -1, dims=-1)
+        return th.roll(quat, 1, dims=-1)
 
     def quat_wxyz_to_xyzw(self, quat: th.Tensor) -> th.Tensor:
-        return th.roll(quat, 1, dims=-1)
+        return th.roll(quat, -1, dims=-1)
 
     def rotate_z_180(self, quat: th.Tensor) -> th.Tensor:
         # Broadcast to batch dims
-        rot_z180 = self.rotate_z180_quat.to(quat.device).expand_as(quat)
+        rot_z180 = self._rotate_z180_quat.to(quat.device).expand_as(quat)
 
         # Quaternion multiply: quat @ rot_z180 (WXYZ matrix order)
         w1, x1, y1, z1 = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
@@ -200,7 +200,10 @@ class ManipulatorROS:
             device=self.device,
         )
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
+        print(f"QUAT BEFORE ROTATE: {self._state['pose'][3:]}")
         self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
+        # self._state["pose"][3:] = self.pt.rotate_z_180(self._state["pose"][3:])
+        print(f"QUAT AFTER ROTATE: {self._state['pose'][3:]}")
 
     def get_state_tensordict(self) -> TensorDict:
         return self._state
@@ -221,8 +224,11 @@ class ManipulatorROS:
         return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
+        # robot_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
+        # return self.pt.transform_to_world_frame(robot_pose)
         robot_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
-        return self.pt.transform_to_world_frame(robot_pose)
+        print(f"THE ROBOT POSE IS: {robot_pose}")
+        return robot_pose
 
     def get_wrench(self) -> th.Tensor:
         return self._state["wrench"].to(device=self.device, dtype=th.float32)
@@ -283,7 +289,7 @@ class ManipulatorROS:
         # action[3:6] /= self.max_ang_speed
         # action = th.clamp(action, min=-1.0, max=1.0)
 
-        print(f"[GraspEnvROS][ManipulatorROS] Action after scaling: {action}")
+        # print(f"[GraspEnvROS][ManipulatorROS] Action after scaling: {action}")
 
         self._run_coro(
             self._robot_client.servo_tcp(
@@ -313,7 +319,7 @@ class ManipulatorROS:
         print(f">> DEBUG, goal_pose before transform {goal_pose}")
 
         goal_pose = goal_pose.squeeze(dim=0)
-        goal_pose = self.pt.transform_to_robot_frame(goal_pose)
+        # goal_pose = self.pt.transform_to_robot_frame(goal_pose)
         goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
 
         target_pos_np = goal_pose[:3].detach().cpu().numpy()

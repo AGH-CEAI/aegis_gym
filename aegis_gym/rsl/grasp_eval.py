@@ -11,6 +11,7 @@ def main():
     check_rsl_rl_version()
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
+    parser.add_argument("-B", "--num_envs", type=int, default=100)
     parser.add_argument(
         "--stage",
         type=str,
@@ -55,7 +56,7 @@ def main():
     env = None
     if args.control == "sim":
         env_cfg["max_visualize_FPS"] = 60
-        env_cfg["num_envs"] = 100
+        env_cfg["num_envs"] = args.num_envs
         env_cfg["box_collision"] = True
         env_cfg["box_fixed"] = False
         env_cfg["visualize_camera"] = args.record
@@ -120,7 +121,9 @@ def main():
 
         for step in range(max_steps):
             if args.stage == "rl":
+                print(f"> S{step} OBS: {obs['policy']}")
                 actions = policy(obs)
+                print(f"> S{step} ACTIONS: {actions}")
             else:
                 rgb_obs = env.get_observations_vis(normalize=True).float()
                 ee_pose = env.robot.ee_pose.float()
