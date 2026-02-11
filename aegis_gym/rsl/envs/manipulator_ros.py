@@ -200,10 +200,7 @@ class ManipulatorROS:
             device=self.device,
         )
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
-        print(f"QUAT BEFORE ROTATE: {self._state['pose'][3:]}")
         self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
-        # self._state["pose"][3:] = self.pt.rotate_z_180(self._state["pose"][3:])
-        print(f"QUAT AFTER ROTATE: {self._state['pose'][3:]}")
 
     def get_state_tensordict(self) -> TensorDict:
         return self._state
@@ -224,11 +221,7 @@ class ManipulatorROS:
         return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
-        # robot_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
-        # return self.pt.transform_to_world_frame(robot_pose)
-        robot_pose = self._state["pose"].to(device=self.device, dtype=th.float32)
-        print(f"THE ROBOT POSE IS: {robot_pose}")
-        return robot_pose
+        return self._state["pose"].to(device=self.device, dtype=th.float32)
 
     def get_wrench(self) -> th.Tensor:
         return self._state["wrench"].to(device=self.device, dtype=th.float32)

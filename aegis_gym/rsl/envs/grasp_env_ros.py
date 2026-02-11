@@ -73,7 +73,7 @@ class GraspEnvROS(VecEnv):
             [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             device=self.device,
         )
-        world_box_pose[2] += 0.08  # m
+        world_box_pose[2] += 0.00  # m
 
         self.box_position = world_box_pose[:3]
         self.box_grasp_orientation = world_box_pose[3:]
