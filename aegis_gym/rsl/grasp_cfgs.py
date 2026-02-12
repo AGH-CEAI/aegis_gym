@@ -118,9 +118,10 @@ def get_task_cfgs():
         "num_obs": 14,
         "num_actions": 6,
         # "action_scales": [0.0098, 0.0098, 0.0098, 0.302, 0.302, 0.302],
-        "action_scales": [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
-        "max_linear_speed": 0.0098,  # m/s
-        "max_angular_speed": 0.302,  # rad/s
+        # "action_scales": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+        "max_linear_speed": 0.098,  # 0.098,  # m/s
+        "max_angular_speed": 0.1,  # 0.3002, #0.3002,  # rad/s
+        "emperical_speed_coeff": 10.303,  # servo target speed / servo measured speed
         "episode_length_s": 5.0,
         # "ctrl_dt": 0.01,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01

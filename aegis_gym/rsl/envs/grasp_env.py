@@ -4,6 +4,7 @@ from typing import Optional, Literal
 import genesis as gs
 import numpy as np
 import torch as th
+from clearml import Task
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import (
@@ -54,6 +55,9 @@ class GraspEnv(VecEnv):
         self._init_reward_functions()
         self._init_buffers()
 
+        self.task: Optional[Task] = None
+        self.total_n_steps = 0
+
         self.reset()
 
     def _extract_config(self) -> None:
@@ -79,11 +83,17 @@ class GraspEnv(VecEnv):
             math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.max_linear_speed = self._cfg["max_linear_speed"]
-        self.max_angular_speed = self._cfg["max_angular_speed"]
+        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
+        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
+        self.max_linear_speed = self._cfg[
+            "max_linear_speed"
+        ]  # * self.emperical_speed_coeff
+        self.max_angular_speed = self._cfg[
+            "max_angular_speed"
+        ]  # * self.emperical_speed_coeff
 
         self.reward_scales = self._cfg["reward_scales"]
-        self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
+        # self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
 
     def _setup_genesis_scene(
         self, env_cfg: dict, robot_cfg: dict, show_viewer: bool
@@ -288,7 +298,7 @@ class GraspEnv(VecEnv):
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
+        random_x = th.rand(num_reset, device=self.device) * 0.3 + 0.35  # 0.35 – 0.65
         random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
@@ -334,16 +344,91 @@ class GraspEnv(VecEnv):
         return self.get_observations(), self.extras
 
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
+        if self.task is None:
+            self.task = Task.current_task()
         # update time
         self.episode_length_buf += 1
+        self.total_n_steps += 1
 
         # apply action based on task
         # TODO parametrize clamping
-        actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
-        actions = th.clamp(actions, min=-1.0, max=1.0)
+
+        # Log actions staticits
+        logger = self.task.get_logger()
+        actions_cpu = actions.detach().cpu()
+        it = self.total_n_steps
+        linear = actions_cpu[:, :3]
+        logger.report_scalar(
+            "Actions", "Linear_Min", value=linear.min().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Linear_Max", value=linear.max().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Linear_Avg", value=linear.mean().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Linear_Std", value=linear.std().item(), iteration=it
+        )
+
+        angular = actions_cpu[:, 3:]
+        logger.report_scalar(
+            "Actions", "Angular_Min", value=angular.min().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Angular_Max", value=angular.max().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Angular_Avg", value=angular.mean().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions", "Angular_Std", value=angular.std().item(), iteration=it
+        )
+
+        # Agent related scaling
+        actions = actions * self.emperical_speed_coeff_inv
+        # actions = actions * (1 / self.emperical_speed_coeff)  # scaling down to mm/s and 0.01 rad/s
+        # actions = th.clamp(actions, min=-self.max_angular_speed, max=self.max_angular_speed)
+
+        actions_cpu = actions.detach().cpu()
+        it = self.total_n_steps
+        linear = actions_cpu[:, :3]
+        logger.report_scalar(
+            "Actions_scaled", "Linear_Min", value=linear.min().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Linear_Max", value=linear.max().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Linear_Avg", value=linear.mean().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Linear_Std", value=linear.std().item(), iteration=it
+        )
+
+        angular = actions_cpu[:, 3:]
+        logger.report_scalar(
+            "Actions_scaled", "Angular_Min", value=angular.min().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Angular_Max", value=angular.max().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Angular_Avg", value=angular.mean().item(), iteration=it
+        )
+        logger.report_scalar(
+            "Actions_scaled", "Angular_Std", value=angular.std().item(), iteration=it
+        )
+
+        # Env related scaling
+        # actions[:, 3] *= self.max_linear_speed
+        # actions[:, 3] = th.clamp(actions[:, 3], min=-self.max_linear_speed, max=self.max_linear_speed)
+        # actions[:, 3:] *= self.max_angular_speed
+        # actions[:, 3:] = th.clamp(actions[:, 3:], min=-self.max_angular_speed, max=self.max_angular_speed)
 
         self.robot.apply_action(actions)
         self.scene.step()
+        self._log_state_to_plot_juggler()
 
         # check termination
         env_reset_idx = self.is_episode_complete()
@@ -552,7 +637,7 @@ class GraspEnv(VecEnv):
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
-        lift_height = 0.3
+        lift_height = 0.4
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
         # final pose (above the table)

@@ -52,6 +52,11 @@ def main():
             open(log_dir / "cfgs.pkl", "rb")
         )
 
+    project_suffix = f"_eval-{args.stage}-{args.control}"
+    rl_train_cfg["neptune_project"] += project_suffix
+    rl_train_cfg["wandb_project"] += project_suffix
+    rl_train_cfg["clearml_project"] += project_suffix
+
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     env = None
     if args.control == "sim":
@@ -123,7 +128,7 @@ def main():
             if args.stage == "rl":
                 print(f"> S{step} OBS: {obs['policy']}")
                 actions = policy(obs)
-                print(f"> S{step} ACTIONS: {actions}")
+                # print(f"> S{step} ACTIONS: {actions}")
             else:
                 rgb_obs = env.get_observations_vis(normalize=True).float()
                 ee_pose = env.robot.ee_pose.float()

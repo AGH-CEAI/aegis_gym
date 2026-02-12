@@ -3,6 +3,7 @@ import math
 from typing import Literal, Optional
 
 import torch as th
+from clearml import Task
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import transform_by_quat
@@ -87,6 +88,10 @@ class GraspEnvROS(VecEnv):
 
         self._init_reward_functions()
         self._init_buffers()
+
+        self.task: Optional[Task] = None
+        self.total_n_steps = 0
+
         self.reset()
 
     def _extract_config(self) -> None:
@@ -111,11 +116,17 @@ class GraspEnvROS(VecEnv):
             math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.max_linear_speed = self._cfg["max_linear_speed"]
-        self.max_angular_speed = self._cfg["max_angular_speed"]
+        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
+        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
+        self.max_linear_speed = self._cfg[
+            "max_linear_speed"
+        ]  # * self.emperical_speed_coeff
+        self.max_angular_speed = self._cfg[
+            "max_angular_speed"
+        ]  # * self.emperical_speed_coeff
 
         self.reward_scales = self._cfg["reward_scales"]
-        self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
+        # self.action_scales = th.tensor(self._cfg["action_scales"], device=self.device)
 
         self.last_step_ts: Optional[float] = None
 
@@ -182,14 +193,48 @@ class GraspEnvROS(VecEnv):
 
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
         # update time
+        if self.task is None:
+            self.task = Task.current_task()
         self.episode_length_buf += 1
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 
+        self.total_n_steps += 1
         # apply action based on task
         # TODO parametrize clamping
-        actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
+        # actions = actions * self.action_scales  # scaling down to mm/s and 0.01 rad/s
+
+        # logger = self.task.get_logger()
+        # actions_cpu = actions.detach().cpu()
+        # it = self.total_n_steps
+        # linear = actions_cpu[:, :3]
+        # logger.report_scalar("Actions", "Linear_Min", value=linear.min().item(), iteration=it)
+        # logger.report_scalar("Actions", "Linear_Max", value=linear.max().item(), iteration=it)
+        # logger.report_scalar("Actions", "Linear_Avg", value=linear.mean().item(), iteration=it)
+        # logger.report_scalar("Actions", "Linear_Std", value=linear.std().item(), iteration=it)
+
+        # angular = actions_cpu[:, 3:]
+        # logger.report_scalar("Actions", "Angular_Min", value=angular.min().item(), iteration=it)
+        # logger.report_scalar("Actions", "Angular_Max", value=angular.max().item(), iteration=it)
+        # logger.report_scalar("Actions", "Angular_Avg", value=angular.mean().item(), iteration=it)
+        # logger.report_scalar("Actions", "Angular_Std", value=angular.std().item(), iteration=it)
+
+        actions *= self.emperical_speed_coeff_inv
         actions = th.clamp(actions, min=-1.0, max=1.0)
+
+        # actions_cpu = actions.detach().cpu()
+        # it = self.total_n_steps
+        # linear = actions_cpu[:, :3]
+        # logger.report_scalar("Actions_scaled", "Linear_Min", value=linear.min().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Linear_Max", value=linear.max().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Linear_Avg", value=linear.mean().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Linear_Std", value=linear.std().item(), iteration=it)
+
+        # angular = actions_cpu[:, 3:]
+        # logger.report_scalar("Actions_scaled", "Angular_Min", value=angular.min().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Angular_Max", value=angular.max().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Angular_Avg", value=angular.mean().item(), iteration=it)
+        # logger.report_scalar("Actions_scaled", "Angular_Std", value=angular.std().item(), iteration=it)
 
         # We assume a linear change, which allows us to map the position to velocity request
         # Since the number of messages and policy frequency is fixed, the time is fixed for both position and speed scenarios
@@ -335,7 +380,7 @@ class GraspEnvROS(VecEnv):
         goal_pose[:, 2] -= grab_height
         print(f"DEBUG. GraspAndLift goal_pose: {goal_pose}")
         # lift pose (above the object)
-        lift_height = 0.3
+        lift_height = 0.4
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
         # # final pose (above the table)
@@ -343,7 +388,8 @@ class GraspEnvROS(VecEnv):
         # final_pose[:, 0] = 0.3
         # final_pose[:, 1] = 0.0
         # final_pose[:, 2] = 0.4
-        print("SKIPPING THE GRASP AND LIFT DEMO: THE GO_TO_GOAL DOESN'T WORK")
+        # print("SKIPPING THE GRASP AND LIFT DEMO: THE GO_TO_GOAL DOESN'T WORK")
+        # print("EXECUTING THE GRASP AND LIFT DEMO")
         return
         for i in range(total_steps):
             self.robot.read_state()
