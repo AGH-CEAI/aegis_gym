@@ -116,8 +116,8 @@ class ManipulatorROS:
         self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
         self._run_coro(self._robot_client.connect())
 
-        self._run_coro(self._robot_client.gripper_open())
-        self._gripper_last_action = True
+        self._gripper_last_action = False  # Forcing first opening
+        self.gripper_open()
 
         try:
             self._run_coro(self._robot_client.servo_disable())
@@ -250,6 +250,7 @@ class ManipulatorROS:
 
     def reset_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
         print("[GraspEnvROS][ManipulatorROS] Moving to home")
+        self.gripper_open()
         self._move_to_home()
 
     def _move_to_home(self) -> None:
@@ -293,12 +294,10 @@ class ManipulatorROS:
 
         if open_gripper is None:
             return
-
-        if open_gripper and not self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_open())
-        if not open_gripper and self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_close())
-        self._gripper_last_action = open_gripper
+        elif open_gripper:
+            self.gripper_open()
+        else:
+            self.gripper_close()
 
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
@@ -309,7 +308,7 @@ class ManipulatorROS:
         self._servo_disable()
 
         # Prepare data for ROS control, i.e. in robot frame: position + quat_xyzw
-        print(f">> DEBUG, goal_pose before transform {goal_pose}")
+        # print(f">> DEBUG, goal_pose before transform {goal_pose}")
 
         goal_pose = goal_pose.squeeze(dim=0)
         # goal_pose = self.pt.transform_to_robot_frame(goal_pose)
@@ -318,8 +317,8 @@ class ManipulatorROS:
         target_pos_np = goal_pose[:3].detach().cpu().numpy()
         target_ori_np = goal_pose[3:7].detach().cpu().numpy()
 
-        print(f">> DEBUG, target_pos_np {target_pos_np}")
-        print(f">> DEBUG, target_ori_np {target_ori_np}")
+        # print(f">> DEBUG, target_pos_np {target_pos_np}")
+        # print(f">> DEBUG, target_ori_np {target_ori_np}")
 
         self._run_coro(
             self._robot_client.goto_pose(
@@ -330,12 +329,22 @@ class ManipulatorROS:
 
         if open_gripper is None:
             return
+        elif open_gripper:
+            self.gripper_open()
+        else:
+            self.gripper_close()
 
-        if open_gripper and not self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_open())
-        if not open_gripper and self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_close())
-        self._gripper_last_action = open_gripper
+    def gripper_open(self) -> None:
+        if self._gripper_last_action:
+            return
+        self._run_coro(self._robot_client.gripper_open())
+        self._gripper_last_action = True
+
+    def gripper_close(self) -> None:
+        if not self._gripper_last_action:
+            return
+        self._run_coro(self._robot_client.gripper_close())
+        self._gripper_last_action = False
 
     @property
     def base_pos(self) -> th.Tensor:

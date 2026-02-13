@@ -71,7 +71,9 @@ class GraspEnvROS(VecEnv):
 
         # This pose is already in the Genesi's world base
         world_box_pose = th.tensor(
-            [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             device=self.device,
         )
         world_box_pose[2] += 0.00  # m
@@ -374,32 +376,63 @@ class GraspEnvROS(VecEnv):
     def grasp_and_lift_demo(self) -> None:
         self.robot.read_state()
         total_steps = 500
-        grab_height = 0.0  # 0.08
+        print(f"DEBUG. GraspAndLift ee_pose: {self.robot.ee_pose}")
+
+        # Goal pose (the object grasp)
         goal_pose = self.robot.ee_pose.clone()
-        print(f"DEBUG. GraspAndLift ee_pose: {goal_pose}")
+        # goal_pose[:, 3:] = th.tensor([0.0, 1.0, 0.0, 0.0], device=self.device)
+        grab_height = 0.1  # 0.08
         goal_pose[:, 2] -= grab_height
         print(f"DEBUG. GraspAndLift goal_pose: {goal_pose}")
+
         # lift pose (above the object)
-        lift_height = 0.4
         lift_pose = goal_pose.clone()
+        lift_height = 0.2
         lift_pose[:, 2] += lift_height
+        print(f"DEBUG. GraspAndLift lift_pose: {goal_pose}")
+
         # # final pose (above the table)
         # final_pose = goal_pose.clone()
         # final_pose[:, 0] = 0.3
         # final_pose[:, 1] = 0.0
         # final_pose[:, 2] = 0.4
         # print("SKIPPING THE GRASP AND LIFT DEMO: THE GO_TO_GOAL DOESN'T WORK")
-        # print("EXECUTING THE GRASP AND LIFT DEMO")
-        return
+        print("EXECUTING THE GRASP AND LIFT DEMO")
+        # return
+        step_1 = False
+        step_2 = False
+        step_3 = False
+        step_4 = False
+
+        # TODO test if multiple clss to the same pose can be ignored by the grpc server
         for i in range(total_steps):
             self.robot.read_state()
             if i < total_steps / 5:  # go down
-                self.robot.go_to_goal(goal_pose, open_gripper=True)
+                if step_1:
+                    continue
+                print("GOING DOWN TO THE GRASP POSE")
+                self.robot.go_to_goal(goal_pose)
+                step_1 = True
             elif i < total_steps * 2 / 5:  # grasping
-                self.robot.go_to_goal(goal_pose, open_gripper=False)
+                if step_2:
+                    continue
+                print("GRASPING")
+                self.robot.gripper_close()
+                # Nie dziala pozycja do tej samej pozycji
+                step_2 = True
             elif i < total_steps * 3 / 5:  # lifting
+                if step_3:
+                    continue
+                print("GOING UP TO LIFT POSE")
                 self.robot.go_to_goal(lift_pose)
+                step_3 = True
             # elif i < total_steps * 4 / 5:  # final
             #     self.robot.go_to_goal(final_pose)
             else:  # reset
+                if step_4:
+                    continue
+                print("GOING HOME")
                 self.robot._move_to_home()
+                self.robot.gripper_open()
+                step_4 = True
+        self.robot.read_state()
