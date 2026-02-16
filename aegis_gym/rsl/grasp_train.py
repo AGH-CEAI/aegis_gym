@@ -77,7 +77,9 @@ def main():
         try:
             from envs.grasp_env_ros import GraspEnvROS
         except ImportError as e:
-            print(f">>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting")
+            print(
+                f"[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
+            )
             return
         env = GraspEnvROS(
             env_cfg=env_cfg,
@@ -87,7 +89,7 @@ def main():
         )
 
     if env is None:
-        print("> Env is not configured. Exiting...")
+        print("[GraspTrain] > Env is not configured. Exiting...")
         return
 
     # === calibration movement ===
@@ -99,7 +101,9 @@ def main():
         if args.calibration_move:
             n_j = len(args.calibration_move)
             joints_diff[:n_j] = args.calibration_move
-            print(f">>> Starting relative joints movement of {joints_diff}")
+            print(
+                f"[GraspTrain] >>> Starting relative joints movement of {joints_diff}"
+            )
             joints_diff = th.tensor(joints_diff, device=device)
             joints_diff[:6] *= th.pi / 180.0
             joints_diff.unsqueeze(dim=0)
@@ -108,12 +112,14 @@ def main():
         if args.calibration_move_cart:
             n_j = len(args.calibration_move_cart)
             cart_diff[:n_j] = args.calibration_move_cart
-            print(f">>> Starting relative cartesian movement of {cart_diff}")
+            print(
+                f"[GraspTrain] >>> Starting relative cartesian movement of {cart_diff}"
+            )
             cart_diff = th.tensor([cart_diff], device=device)
             cart_diff.unsqueeze(dim=0)
             env.calib_run(cart_diff=cart_diff, steps=steps)
 
-        print(">>> Finished relative joints movement.")
+        print("[GraspTrain] >>> Finished relative joints movement.")
         exit()
 
     # === runner ===

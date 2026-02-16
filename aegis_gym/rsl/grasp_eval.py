@@ -69,7 +69,7 @@ def main():
         import genesis as gs
         from envs.grasp_env import GraspEnv
 
-        gs.init()
+        gs.init(logging_level="warning", precision="32")
         env = GraspEnv(
             env_cfg=env_cfg,
             reward_cfg=reward_cfg,
@@ -83,7 +83,9 @@ def main():
         try:
             from envs.grasp_env_ros import GraspEnvROS
         except ImportError as e:
-            print(f">>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting")
+            print(
+                f"[GraspEval] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
+            )
             return
         env = GraspEnvROS(
             env_cfg=env_cfg,
@@ -106,7 +108,7 @@ def main():
     with th.no_grad():
         if args.control == "sim":
             if args.record:
-                print("Recording video...")
+                print("[GraspEval] Recording video...")
                 if env_cfg["camera_setup"] == "default":
                     env.record_cam.start_recording()
                     env.scene_cam.start_recording()
@@ -121,7 +123,7 @@ def main():
                         f"Unknown camera_setup: {env_cfg['camera_setup']}"
                     )
         else:
-            print(f"Skipping camera setup for control type: {args.control}")
+            print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
 
         for _ in range(max_steps):
             if args.stage == "rl":
@@ -140,7 +142,7 @@ def main():
         env.grasp_and_lift_demo()
         if args.control == "sim":
             if args.record:
-                print("Stopping video recording...")
+                print("[GraspEval] Stopping video recording...")
                 if env_cfg["camera_setup"] == "default":
                     env.record_cam.stop_recording(
                         save_to_filename=args.video_path,

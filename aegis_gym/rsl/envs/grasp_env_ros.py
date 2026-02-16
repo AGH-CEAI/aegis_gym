@@ -333,19 +333,16 @@ class GraspEnvROS(VecEnv):
 
     def grasp_and_lift_demo(self) -> None:
         self.robot.read_state()
-        print(f"[GraspEnvROS] DEBUG: GraspAndLift ee_pose: {self.robot.ee_pose}")
 
         total_steps = 500
         grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
-        print(f"[GraspEnvROS] DEBUG: GraspAndLift goal_pose: {goal_pose}")
 
         # lift pose (above the object)
         lift_height = 0.2
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
-        print(f"[GraspEnvROS] DEBUG: GraspAndLift lift_pose: {lift_pose}")
 
         print("[GraspEnvROS] Proceeding with the GraspAndLift demo")
         step_1 = False
@@ -358,25 +355,25 @@ class GraspEnvROS(VecEnv):
             if i < total_steps / 5:  # go down
                 if step_1:
                     continue
-                print("[GraspEnvROS] GOING DOWN TO THE GRASP POSE")
+                print("[GraspEnvROS][Demo] Going down to the grasp pose")
                 self.robot.go_to_goal(goal_pose)
                 step_1 = True
             elif i < total_steps * 2 / 5:  # grasping
                 if step_2:
                     continue
-                print("[GraspEnvROS] GRASPING")
+                print("[GraspEnvROS][Demo] Grasping")
                 self.robot.gripper_close()
                 step_2 = True
             elif i < total_steps * 3 / 5:  # lifting
                 if step_3:
                     continue
-                print("GOING UP TO LIFT POSE")
+                print("[GraspEnvROS][Demo] Going up to the lift pose")
                 self.robot.go_to_goal(lift_pose)
                 step_3 = True
             else:  # reset
                 if step_4:
                     continue
-                print("GOING HOME")
+                print("[GraspEnvROS][Demo] Going home")
                 self.robot._move_to_home()
                 self.robot.gripper_open()
                 step_4 = True
