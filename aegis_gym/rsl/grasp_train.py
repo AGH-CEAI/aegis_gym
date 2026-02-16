@@ -17,10 +17,14 @@ def main():
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
+    parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     args = parser.parse_args()
+
+    # Set PyTorch default dtype to float32 for better performance
+    th.set_default_dtype(th.float32)
 
     # === task cfgs and training algos cfgs ===
     env_cfg, reward_scales, robot_cfg = get_task_cfgs()
@@ -44,7 +48,7 @@ def main():
 
     # === env ===
     # BC only needs a small number of envs
-    env_cfg["num_envs"] = args.num_envs if args.stage == "rl" else 10
+    env_cfg["num_envs"] = args.num_envs if args.stage != "bc" else 10
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     env = None
@@ -57,6 +61,7 @@ def main():
             reward_cfg=reward_scales,
             robot_cfg=robot_cfg,
             show_viewer=args.vis,
+            enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
         try:
