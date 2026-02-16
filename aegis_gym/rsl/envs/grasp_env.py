@@ -552,11 +552,11 @@ class GraspEnv(VecEnv):
 
     def grasp_and_lift_demo(self) -> None:
         total_steps = self.max_episode_length
-        grab_height = 0.04
+        grab_height = 0.06
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
-        lift_height = 0.4
+        lift_height = 0.16
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
         # final pose (above the table)
