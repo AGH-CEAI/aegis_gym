@@ -220,6 +220,14 @@ class GraspEnvROS(VecEnv):
         dones = self.reset_buf
         return obs, reward, dones, self.extras
 
+    def calib_run(
+        self,
+        joints_diff: Optional[th.Tensor] = None,
+        cart_diff: Optional[th.tensor] = None,
+        steps: int = 100,
+    ) -> None:
+        raise NotImplementedError
+
     def get_privileged_observations(self) -> None:
         raise NotImplementedError
 
