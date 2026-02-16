@@ -1,4 +1,5 @@
 import math
+from typing import Literal
 
 import genesis as gs
 import numpy as np
@@ -41,30 +42,20 @@ class GraspEnv(VecEnv):
             print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
         self._enable_pj_logging = enable_plot_juggler
 
+        self._cfg = env_cfg
+        self._cfg["reward_scales"] = reward_cfg
         self.device = gs.device
-        self.num_envs = env_cfg["num_envs"]
-        self.num_obs = env_cfg["num_obs"]
-        self.num_privileged_obs = None
-        self.num_actions = env_cfg["num_actions"]
-        self.image_width = env_cfg["image_resolution"][0]
-        self.image_height = env_cfg["image_resolution"][1]
-        self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = env_cfg["visualize_cell"]
-        self.camera_setup = env_cfg["camera_setup"]
-        self.box_size = env_cfg["box_size"]
-        self.table_size = env_cfg["table_size"]
-        self.workbench_size = env_cfg["workbench_size"]
 
-        self.ctrl_dt = env_cfg["ctrl_dt"]
-        self.sim_substeps = env_cfg["sim_substeps"]
-        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
+        self._extract_config()
+        print(
+            f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
+        )
 
-        self.env_cfg = env_cfg
-        self.reward_scales = reward_cfg
-        self.action_scales = th.tensor(env_cfg["action_scales"], device=self.device)
-
-        self._init_scene(env_cfg, robot_cfg, show_viewer)
-        self.scene.build(n_envs=env_cfg["num_envs"])
+        self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
+        self.scene.build(
+            n_envs=env_cfg["num_envs"],
+            # env_spacing=(1.0, 1.0),
+        )
 
         self.robot.set_pd_gains()
         self._attach_cameras()
@@ -73,38 +64,57 @@ class GraspEnv(VecEnv):
         self._init_buffers()
         self.reset()
 
-    # Required by rsl_rl
-    @property
-    def unwrapped(self) -> "GraspEnv":
-        return self
+    def _extract_config(self) -> None:
+        self.num_envs = self._cfg["num_envs"]
+        self.num_obs = self._cfg["num_obs"]
+        self.num_privileged_obs = None
+        self.num_actions = self._cfg["num_actions"]
+        self.image_width = self._cfg["image_resolution"][0]
+        self.image_height = self._cfg["image_resolution"][1]
+        self.rgb_image_shape = (3, self.image_height, self.image_width)
+        self.show_cell = self._cfg["visualize_cell"]
+        self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
+        self.table_size = self._cfg["table_size"]
+        self.workbench_size = self._cfg["workbench_size"]
+        self.box_size = self._cfg["box_size"]
 
-    # Required by rsl_rl
-    @property
-    def step_dt(self) -> float:
-        return self.ctrl_dt
+        self.ctrl_dt = self._cfg["ctrl_dt"]
+        self.policy_dt = self._cfg["policy_dt"]
+        self.sim_substeps = int(
+            math.ceil(self._cfg["policy_dt"] / self._cfg["ctrl_dt"])
+        )
+        self.max_episode_length = int(
+            math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
+        )
 
-    # Required by rsl_rl
-    @property
-    def cfg(self) -> dict:
-        return self.env_cfg
+        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
+        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
+        self.max_linear_speed = self._cfg["max_linear_speed"]
+        self.max_angular_speed = self._cfg["max_angular_speed"]
 
-    def _init_scene(self, env_cfg: dict, robot_cfg: dict, show_viewer: bool) -> None:
+        self.reward_scales = self._cfg["reward_scales"]
+
+    def _setup_genesis_scene(
+        self, env_cfg: dict, robot_cfg: dict, show_viewer: bool
+    ) -> None:
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
-                dt=self.ctrl_dt, substeps=self.sim_substeps
+                dt=self.policy_dt,
+                substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.ctrl_dt,
+                dt=self.policy_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
             ),
             vis_options=gs.options.VisOptions(
-                rendered_envs_idx=list(range(min(env_cfg["num_envs"], 10)))
+                rendered_envs_idx=list(range(min(self.num_envs, 10)))
             ),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=int(0.5 / self.ctrl_dt),
+                # max_FPS=int(0.5 / self.ctrl_dt),
+                max_FPS=int(60),
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -170,13 +180,13 @@ class GraspEnv(VecEnv):
                 self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
                 self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
 
-        if self.env_cfg["visualize_camera"]:
+        if self._cfg["visualize_camera"]:
             self.record_cam = self.scene.add_camera(
                 res=(1280, 720),
                 pos=(1.5, 0.0, 0.2),
                 lookat=(0.0, 0.0, 0.2),
                 fov=60,
-                GUI=self.env_cfg["visualize_camera"],
+                GUI=self._cfg["visualize_camera"],
                 debug=True,
             )
 
@@ -199,7 +209,7 @@ class GraspEnv(VecEnv):
                 pos=pos,
                 lookat=lookat,
                 fov=fov,
-                GUI=self.env_cfg["visualize_camera"],
+                GUI=self._cfg["visualize_camera"],
             ),
         )
 
@@ -237,10 +247,25 @@ class GraspEnv(VecEnv):
             cam.attach(self.robot._robot_entity.get_link(link_name), offset)
             cam.move_to_attach()
 
+    # Required by rsl_rl
+    @property
+    def unwrapped(self) -> "GraspEnv":
+        return self
+
+    # Required by rsl_rl
+    @property
+    def step_dt(self) -> float:
+        return self.policy_dt
+
+    # Required by rsl_rl
+    @property
+    def cfg(self) -> dict:
+        return self._cfg
+
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
-            self.reward_scales[name] *= self.ctrl_dt
+            self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=gs.device, dtype=gs.tc_float
@@ -269,7 +294,7 @@ class GraspEnv(VecEnv):
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
+        random_x = th.rand(num_reset, device=self.device) * 0.3 + 0.35  # 0.35 – 0.65
         random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
@@ -304,7 +329,7 @@ class GraspEnv(VecEnv):
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self.env_cfg["episode_length_s"]
+                / self._cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
@@ -315,11 +340,11 @@ class GraspEnv(VecEnv):
         return self.get_observations(), self.extras
 
     def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
-        # update time
+        # Update time
         self.episode_length_buf += 1
 
-        # apply action based on task
-        actions = actions * self.action_scales
+        # Agent related scaling
+        actions = actions * self.emperical_speed_coeff_inv
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
@@ -480,12 +505,12 @@ class GraspEnv(VecEnv):
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
     def grasp_and_lift_demo(self) -> None:
-        total_steps = 500
-        grab_height = 0.08
+        total_steps = self.max_episode_length
+        grab_height = 0.04
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
-        lift_height = 0.3
+        lift_height = 0.4
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
         # final pose (above the table)

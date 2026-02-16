@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-58](https://github.com/AGH-CEAI/aegis_gym/pull/58) - Major development towards sim2real calibration.
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - The `AegisGrasp`'s rsl_rl robot config accepts ID to download URDF dataset from ClearML (see [aegis_ros PR-95](https://github.com/AGH-CEAI/aegis_ros/pull/95)).
 - [PR-42](https://github.com/AGH-CEAI/aegis_gym/pull/42) - Extracted Grasp environment configs to a new file.
 - [PR-42](https://github.com/AGH-CEAI/aegis_gym/pull/42) - Ported Grasp environment to use `rsl-rl-lib==3.3.0`.

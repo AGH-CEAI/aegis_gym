@@ -8,11 +8,10 @@ from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
-from utils import check_rsl_rl_version, load_teacher_policy
+from utils import load_teacher_policy
 
 
 def main():
-    check_rsl_rl_version()
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
@@ -81,18 +80,19 @@ def main():
         return
 
     # === runner ===
-    if args.stage == "bc":
-        teacher_policy = load_teacher_policy(env, rl_train_cfg, args.exp_name)
-        bc_train_cfg["teacher_policy"] = teacher_policy
-        runner = BehaviorCloning(
-            env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
-        )
-        runner.learn(num_learning_iterations=args.max_iterations)
-    else:
-        runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
-        runner.learn(
-            num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
-        )
+    match args.stage:
+        case "bc":
+            teacher_policy = load_teacher_policy(
+                env, rl_train_cfg, args.exp_name, device
+            )
+            bc_train_cfg["teacher_policy"] = teacher_policy
+            runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
+            runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
+        case "rl":
+            runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
+            runner.learn(
+                num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
+            )
 
 
 if __name__ == "__main__":
