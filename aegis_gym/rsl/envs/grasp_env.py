@@ -478,18 +478,17 @@ class GraspEnv(VecEnv):
             case _:
                 raise ValueError(f"Unknown camera setup {self.camera_setup}")
 
-        rgb_list = []
-        for cam in cams:
+        rgb_list = [None] * len(cams)
+        for cam_id, cam in enumerate(cams):
             rgb, _, _, _ = cam.render(
                 rgb=True, depth=False, segmentation=False, normal=False
             )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:
                 rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
-            rgb_list.append(rgb)
+            rgb_list[cam_id] = rgb
 
-        rgb_multi = th.cat(rgb_list, dim=1)
-        return rgb_multi
+        return th.cat(rgb_list, dim=1)
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]
