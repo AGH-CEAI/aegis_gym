@@ -268,8 +268,23 @@ class GraspEnvROS(VecEnv):
         raise NotImplementedError
 
     def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
-        # TODO implement gRPC image transportation
-        raise NotImplementedError
+        match self.camera_setup:
+            case "default":
+                cams = ["scene", "left", "right"]
+            case "scene_dual":
+                cams = ["left", "right"]
+            case _:
+                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+
+        rgb_list = [None] * len(cams)
+        for cam_id, cam_name in enumerate(cams):
+            rgb = self.robot.get_camera_frame(cam_name)
+            # rgb = rgb.permute(0, 3, 1, 2)[:, :3]
+            if normalize:
+                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+            rgb_list[cam_id] = rgb
+
+        return th.cat(rgb_list, dim=1)
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]
