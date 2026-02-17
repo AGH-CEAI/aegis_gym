@@ -70,9 +70,9 @@ class GraspEnvROS(VecEnv):
 
         # This pose is already in the Genesi's world base
         world_box_pose = th.tensor(
-            # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            # [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             device=self.device,
         )
         world_box_pose[2] += 0.00  # m
@@ -335,7 +335,7 @@ class GraspEnvROS(VecEnv):
         self.robot.read_state()
 
         total_steps = 500
-        grab_height = 0.08
+        grab_height = 0.12
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
 

@@ -129,8 +129,10 @@ def main():
                 env, rl_train_cfg, args.exp_name, device
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
-            runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
-            runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
+            runner = BehaviorCloning(
+                env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
+            )
+            runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
             runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
             runner.learn(
