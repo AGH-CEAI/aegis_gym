@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-56](https://github.com/AGH-CEAI/aegis_gym/pull/56) - Added Grasp Env logging to PlotJuggler (via UDP server).
 - [PR-54](https://github.com/AGH-CEAI/aegis_gym/pull/53) - Added ClearML logging to behavioral cloning.
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - Utility script for uploading the URDF assets to the ClearML server as a dataset.
 - [PR-48](https://github.com/AGH-CEAI/aegis_gym/pull/48) - Added real robot control via gRPC in RSL-RL Grasp env.
