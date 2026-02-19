@@ -22,7 +22,6 @@ class GraspEnv(VecEnv):
     def __init__(
         self,
         env_cfg: dict,
-        reward_cfg: dict,
         robot_cfg: dict,
         show_viewer: bool = False,
         enable_plot_juggler: bool = False,
@@ -43,7 +42,6 @@ class GraspEnv(VecEnv):
         self._enable_pj_logging = enable_plot_juggler
 
         self._cfg = env_cfg
-        self._cfg["reward_scales"] = reward_cfg
         self.device = gs.device
 
         self._extract_config()

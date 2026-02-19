@@ -49,12 +49,10 @@ class GraspEnvROS(VecEnv):
     def __init__(
         self,
         env_cfg: dict,
-        reward_cfg: dict,
         robot_cfg: dict,
         device: th.device = th.device("cpu"),
     ) -> None:
         self._cfg = env_cfg
-        self._cfg["reward_scales"] = reward_cfg
         self.device = device
 
         self._extract_config()

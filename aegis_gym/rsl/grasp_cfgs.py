@@ -139,9 +139,9 @@ def get_task_cfgs():
         "visualize_camera": False,
         "visualize_cell": False,
         "camera_setup": "default",  # options: default, scene_dual
-    }
-    reward_scales = {
-        "keypoints": 1.0,
+        "reward_scales": {
+            "keypoints": 1.0,
+        },
     }
     # robot specific
     robot_cfg = {
@@ -158,4 +158,4 @@ def get_task_cfgs():
             "no_cell": "3b30eed8cea6423a99d9bad3343740ed",
         },
     }
-    return env_cfg, reward_scales, robot_cfg
+    return env_cfg, robot_cfg
