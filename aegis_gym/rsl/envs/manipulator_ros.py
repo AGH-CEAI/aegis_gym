@@ -17,6 +17,17 @@ except ImportError:
     raise
 
 
+class PoseTransformUtils:
+    def __init__(self, device: th.device):
+        self.device = device
+
+    def quat_xyzw_to_wxyz(self, quat: th.Tensor) -> th.Tensor:
+        return th.roll(quat, 1, dims=-1)
+
+    def quat_wxyz_to_xyzw(self, quat: th.Tensor) -> th.Tensor:
+        return th.roll(quat, -1, dims=-1)
+
+
 class ManipulatorROS:
     _instance: Optional["ManipulatorROS"] = None
 
@@ -37,6 +48,7 @@ class ManipulatorROS:
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
+        self.pt = PoseTransformUtils(device=device)
         self._num_envs = num_envs
         self._args = args
         self.device = device
@@ -60,8 +72,8 @@ class ManipulatorROS:
         self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
         self._run_coro(self._robot_client.connect())
 
-        self._run_coro(self._robot_client.gripper_open())
-        self._gripper_last_action = True
+        self._gripper_last_action = False  # Forcing first opening
+        self.gripper_open()
 
         try:
             self._run_coro(self._robot_client.servo_disable())
@@ -132,11 +144,15 @@ class ManipulatorROS:
         return future.result()  # blocks until complete
 
     def read_state(self) -> None:
-        state = self._run_coro(self._robot_client.get_all())
+        # TODO enable state and vision
+        # state = self._run_coro(self._robot_client.get_all())["state"]
+        state = self._run_coro(self._robot_client.get_robot_state())
         self._state = TensorDict(
             {k: th.from_numpy(v).to(self.device) for k, v in state.items()},
             device=self.device,
         )
+        # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
+        self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
 
     def get_state_tensordict(self) -> TensorDict:
         return self._state
@@ -151,10 +167,10 @@ class ManipulatorROS:
         return self._state["joints_eff"].to(device=self.device, dtype=th.float32)
 
     def get_tcp_position(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)[:3]
+        return self.get_tcp_pose()[:3]
 
     def get_tcp_orientation(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)[3:]
+        return self.get_tcp_pose()[3:]
 
     def get_tcp_pose(self) -> th.Tensor:
         return self._state["pose"].to(device=self.device, dtype=th.float32)
@@ -170,12 +186,14 @@ class ManipulatorROS:
             return
         self._run_coro(self._robot_client.servo_enable())
         self._servo_enabled = True
+        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
 
     def _servo_disable(self) -> None:
         if not self._servo_enabled:
             return
         self._run_coro(self._robot_client.servo_disable())
         self._servo_enabled = False
+        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
 
     def reset(self, envs_idx: th.IntTensor) -> None:
         if len(envs_idx) == 0:
@@ -184,6 +202,7 @@ class ManipulatorROS:
 
     def reset_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
         print("[GraspEnvROS][ManipulatorROS] Moving to home")
+        self.gripper_open()
         self._move_to_home()
 
     def _move_to_home(self) -> None:
@@ -202,33 +221,30 @@ class ManipulatorROS:
         # Control only one real robot
         action = action.squeeze(dim=0)
 
-        # Change position commands into velocities for the MoveIt2 Servo
-        delta_velocity = action[:3] / self.ctrl_dt
-        delta_angular = action[3:6] / self.ctrl_dt
-
         self._run_coro(
             self._robot_client.servo_tcp(
-                linear=delta_velocity,
-                angular=delta_angular,
+                linear=action[:3],
+                angular=action[3:6],
             )
         )
 
         if open_gripper is None:
             return
-
-        if open_gripper and not self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_open())
-        if not open_gripper and self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_close())
-        self._gripper_last_action = open_gripper
+        elif open_gripper:
+            self.gripper_open()
+        else:
+            self.gripper_close()
 
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:
         self._servo_disable()
 
-        target_pos_np = goal_pose[:, :3].detach().cpu().numpy()
-        target_ori_np = goal_pose[:, 3:7].detach().cpu().numpy()
+        goal_pose = goal_pose.squeeze(dim=0)
+        goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
+
+        target_pos_np = goal_pose[:3].detach().cpu().numpy()
+        target_ori_np = goal_pose[3:7].detach().cpu().numpy()
 
         self._run_coro(
             self._robot_client.goto_pose(
@@ -239,12 +255,22 @@ class ManipulatorROS:
 
         if open_gripper is None:
             return
+        elif open_gripper:
+            self.gripper_open()
+        else:
+            self.gripper_close()
 
-        if open_gripper and not self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_open())
-        if not open_gripper and self._gripper_last_action:
-            self._run_coro(self._robot_client.gripper_close())
-        self._gripper_last_action = open_gripper
+    def gripper_open(self) -> None:
+        if self._gripper_last_action:
+            return
+        self._run_coro(self._robot_client.gripper_open())
+        self._gripper_last_action = True
+
+    def gripper_close(self) -> None:
+        if not self._gripper_last_action:
+            return
+        self._run_coro(self._robot_client.gripper_close())
+        self._gripper_last_action = False
 
     @property
     def base_pos(self) -> th.Tensor:
@@ -252,5 +278,4 @@ class ManipulatorROS:
 
     @property
     def ee_pose(self) -> th.Tensor:
-        # TODO validate if its the actual gripper's EE
         return self.get_tcp_pose().unsqueeze(dim=0)

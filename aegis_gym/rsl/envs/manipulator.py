@@ -1,7 +1,7 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import torch as th
 import genesis as gs
@@ -40,8 +40,8 @@ class Manipulator:
         print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
-        material: gs.materials.Rigid = gs.materials.Rigid()
-        morph: gs.morphs.URDF = gs.morphs.URDF(
+        material = gs.materials.Rigid(gravity_compensation=1.0)
+        morph = gs.morphs.URDF(
             file=self._urdf_path,
             fixed=True,
             pos=(0.0, 0.0, 0.0),
@@ -61,7 +61,7 @@ class Manipulator:
 
         self._ik_method: Literal["rel_pose", "dls"] = args["ik_method"]
 
-        self._init()
+        self._setup_config()
 
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
@@ -98,20 +98,7 @@ class Manipulator:
             )
         return default_path
 
-    def set_pd_gains(self):
-        # set control gains
-        self._robot_entity.set_dofs_kp(
-            th.tensor([4500, 4500, 3500, 3500, 2000, 2000, 100, 100]),
-        )
-        self._robot_entity.set_dofs_kv(
-            th.tensor([450, 450, 350, 350, 200, 200, 10, 10]),
-        )
-        self._robot_entity.set_dofs_force_range(
-            th.tensor([-87, -87, -87, -87, -12, -12, -100, -100]),
-            th.tensor([87, 87, 87, 87, 12, 12, 100, 100]),
-        )
-
-    def _init(self):
+    def _setup_config(self):
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
         self._gripper_dim = 2  # number of gripper joints
 
@@ -130,18 +117,41 @@ class Manipulator:
         if self._args["default_gripper_dof"] is not None:
             self._default_joint_angles += self._args["default_gripper_dof"]
 
+    def set_pd_gains(self):
+        # set control gains
+        self._robot_entity.set_dofs_kp(
+            th.tensor([4500, 4500, 3500, 3500, 3500, 3500, 100, 100]) * 10.0,
+        )
+        self._robot_entity.set_dofs_kv(
+            th.tensor([350, 350, 250, 250, 250, 250, 10, 10]) * 1.4,
+        )
+        self._robot_entity.set_dofs_force_range(
+            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100]) * 10.0,
+            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]) * 10.0,
+        )
+        # TODO(issue#57) configure armature, damping and stiffness
+        # self._robot_entity.set_dofs_armature(
+        #     th.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        # )
+        # self._robot_entity.set_dofs_stiffness(
+        #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
+        # )
+
     def reset(self, envs_idx: th.IntTensor):
         if len(envs_idx) == 0:
             return
         self.reset_home(envs_idx)
 
-    def reset_home(self, envs_idx: th.IntTensor | None = None):
+    def reset_home(self, envs_idx: Optional[th.IntTensor] = None):
         if envs_idx is None:
             envs_idx = th.arange(self._num_envs, device=self._device)
         default_joint_angles = th.tensor(
             self._default_joint_angles, dtype=th.float32, device=self._device
         ).repeat(len(envs_idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=envs_idx)
+        self._robot_entity.control_dofs_position(
+            position=default_joint_angles, envs_idx=envs_idx
+        )
 
     def apply_action(self, action: th.Tensor, open_gripper: bool) -> None:
         """
@@ -198,17 +208,19 @@ class Manipulator:
         ).squeeze(-1)
         return self._robot_entity.get_qpos() + delta_joint_pos
 
-    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: bool = True):
+    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None):
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
             pos=goal_pose[:, :3],
             quat=goal_pose[:, 3:7],
             dofs_idx_local=self._arm_dof_idx,
         )
-        if open_gripper:
-            q_pos[:, self._fingers_dof] = self._gripper_open_dof
-        else:
-            q_pos[:, self._fingers_dof] = self._gripper_close_dof
+        if open_gripper is not None:
+            if open_gripper:
+                q_pos[:, self._fingers_dof] = self._gripper_open_dof
+            else:
+                q_pos[:, self._fingers_dof] = self._gripper_close_dof
+
         self._robot_entity.control_dofs_position(position=q_pos)
 
     @property
