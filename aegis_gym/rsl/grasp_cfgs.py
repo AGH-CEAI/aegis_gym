@@ -123,9 +123,10 @@ def get_task_cfgs():
         "num_envs": 10,
         "num_obs": 14,
         "num_actions": 6,
-        "max_linear_speed": 0.098,  # m/s
-        "max_angular_speed": 0.1,  # rad/s
-        "emperical_speed_coeff": 10.303,  # servo target speed / servo measured speed
+        "action_scaling": {
+            "max_linear_speed": 0.098,  # m/s
+            "max_angular_speed": 0.1,  # rad/s
+        },
         "episode_length_s": 5.0,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
         "policy_dt": 0.04,  # 1 / 10 Hz, used to calculate number of steps

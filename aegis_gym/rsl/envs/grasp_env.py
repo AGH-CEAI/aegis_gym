@@ -85,10 +85,8 @@ class GraspEnv(VecEnv):
             math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
-        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
-        self.max_linear_speed = self._cfg["max_linear_speed"]
-        self.max_angular_speed = self._cfg["max_angular_speed"]
+        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
+        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
 
         self.reward_scales = self._cfg["reward_scales"]
 
@@ -341,8 +339,12 @@ class GraspEnv(VecEnv):
         # Update time
         self.episode_length_buf += 1
 
-        # Agent related scaling
-        actions = actions * self.emperical_speed_coeff_inv
+        # Environment limitations
+        actions = th.clamp(actions, min=-1.0, max=1.0)
+
+        # Applying real-world scaling
+        actions[:, :3] *= self.max_linear_speed
+        actions[:, 3:] *= self.max_angular_speed
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
