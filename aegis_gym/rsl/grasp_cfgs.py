@@ -156,7 +156,7 @@ def get_task_cfgs():
         ],
         "default_arm_dof": [0.0, -2.09, 2.09, -1.57, -1.57, 0.0],
         "default_gripper_dof": [0.025, 0.025],
-        "ik_method": "dls_ik",
+        "ik_method": "dls_ikv",
         "urdf_model_id": {
             "cell": "4ae9243a9e294db998d3d6e0b5a0539b",
             "no_cell": "3b30eed8cea6423a99d9bad3343740ed",
