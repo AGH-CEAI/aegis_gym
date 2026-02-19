@@ -22,7 +22,6 @@ class GraspEnv(VecEnv):
     def __init__(
         self,
         env_cfg: dict,
-        reward_cfg: dict,
         robot_cfg: dict,
         show_viewer: bool = False,
         enable_plot_juggler: bool = False,
@@ -43,7 +42,6 @@ class GraspEnv(VecEnv):
         self._enable_pj_logging = enable_plot_juggler
 
         self._cfg = env_cfg
-        self._cfg["reward_scales"] = reward_cfg
         self.device = gs.device
 
         self._extract_config()
@@ -76,7 +74,7 @@ class GraspEnv(VecEnv):
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
         self.table_size = self._cfg["table_size"]
         self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_size"]
+        self.box_size = self._cfg["box_sizes"]["default"]
 
         self.ctrl_dt = self._cfg["ctrl_dt"]
         self.policy_dt = self._cfg["policy_dt"]
@@ -87,10 +85,8 @@ class GraspEnv(VecEnv):
             math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
-        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
-        self.max_linear_speed = self._cfg["max_linear_speed"]
-        self.max_angular_speed = self._cfg["max_angular_speed"]
+        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
+        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
 
         self.reward_scales = self._cfg["reward_scales"]
 
@@ -294,7 +290,7 @@ class GraspEnv(VecEnv):
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = th.rand(num_reset, device=self.device) * 0.3 + 0.35  # 0.35 – 0.65
+        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
         random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
@@ -343,8 +339,12 @@ class GraspEnv(VecEnv):
         # Update time
         self.episode_length_buf += 1
 
-        # Agent related scaling
-        actions = actions * self.emperical_speed_coeff_inv
+        # Environment limitations
+        actions = th.clamp(actions, min=-1.0, max=1.0)
+
+        # Applying real-world scaling
+        actions[:, :3] *= self.max_linear_speed
+        actions[:, 3:] *= self.max_angular_speed
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
@@ -506,7 +506,7 @@ class GraspEnv(VecEnv):
 
     def grasp_and_lift_demo(self) -> None:
         total_steps = self.max_episode_length
-        grab_height = 0.04
+        grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)

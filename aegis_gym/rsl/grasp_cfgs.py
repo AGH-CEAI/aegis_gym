@@ -123,13 +123,17 @@ def get_task_cfgs():
         "num_envs": 10,
         "num_obs": 14,
         "num_actions": 6,
-        "max_linear_speed": 0.098,  # m/s
-        "max_angular_speed": 0.1,  # rad/s
-        "emperical_speed_coeff": 10.303,  # servo target speed / servo measured speed
+        "action_scaling": {
+            "max_linear_speed": 0.098,  # m/s
+            "max_angular_speed": 0.1,  # rad/s
+        },
         "episode_length_s": 5.0,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
-        "policy_dt": 0.04,  # 1 / 10 Hz, used to calculate number of steps
-        "box_size": [0.0283, 0.0283, 0.1005],
+        "policy_dt": 0.04,  # 1 / 25 Hz, used to calculate number of steps
+        "box_sizes": {
+            "default": [0.03, 0.08, 0.06],
+            "symmetrical": [0.0283, 0.0283, 0.1005],
+        },
         "table_size": [0.55, 0.84, 0.82],
         "workbench_size": [0.64, 1.0, 0.806],
         "box_collision": False,
@@ -139,9 +143,9 @@ def get_task_cfgs():
         "visualize_camera": False,
         "visualize_cell": False,
         "camera_setup": "default",  # options: default, scene_dual
-    }
-    reward_scales = {
-        "keypoints": 1.0,
+        "reward_scales": {
+            "keypoints": 1.0,
+        },
     }
     # robot specific
     robot_cfg = {
@@ -158,4 +162,4 @@ def get_task_cfgs():
             "no_cell": "3b30eed8cea6423a99d9bad3343740ed",
         },
     }
-    return env_cfg, reward_scales, robot_cfg
+    return env_cfg, robot_cfg
