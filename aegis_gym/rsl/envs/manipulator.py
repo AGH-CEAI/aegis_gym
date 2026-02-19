@@ -142,7 +142,7 @@ class Manipulator:
             return
         self.reset_home(envs_idx)
 
-    def reset_home(self, envs_idx: th.IntTensor | None = None):
+    def reset_home(self, envs_idx: Optional[th.IntTensor] = None):
         if envs_idx is None:
             envs_idx = th.arange(self._num_envs, device=self._device)
         default_joint_angles = th.tensor(
