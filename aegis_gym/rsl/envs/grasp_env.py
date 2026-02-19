@@ -290,7 +290,7 @@ class GraspEnv(VecEnv):
 
         # reset object
         num_reset = len(envs_idx)
-        random_x = th.rand(num_reset, device=self.device) * 0.3 + 0.35  # 0.35 – 0.65
+        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
         random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
@@ -506,7 +506,7 @@ class GraspEnv(VecEnv):
 
     def grasp_and_lift_demo(self) -> None:
         total_steps = self.max_episode_length
-        grab_height = 0.04
+        grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
