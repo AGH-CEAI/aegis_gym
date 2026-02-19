@@ -129,8 +129,11 @@ def get_task_cfgs():
         },
         "episode_length_s": 5.0,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
-        "policy_dt": 0.04,  # 1 / 10 Hz, used to calculate number of steps
-        "box_size": [0.0283, 0.0283, 0.1005],
+        "policy_dt": 0.04,  # 1 / 25 Hz, used to calculate number of steps
+        "box_sizes": {
+            "default": [0.03, 0.08, 0.06],
+            "symmetrical": [0.0283, 0.0283, 0.1005],
+        },
         "table_size": [0.55, 0.84, 0.82],
         "workbench_size": [0.64, 1.0, 0.806],
         "box_collision": False,

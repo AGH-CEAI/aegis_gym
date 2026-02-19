@@ -74,7 +74,7 @@ class GraspEnv(VecEnv):
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
         self.table_size = self._cfg["table_size"]
         self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_size"]
+        self.box_size = self._cfg["box_sizes"]["default"]
 
         self.ctrl_dt = self._cfg["ctrl_dt"]
         self.policy_dt = self._cfg["policy_dt"]
