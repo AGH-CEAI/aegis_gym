@@ -40,8 +40,8 @@ class Manipulator:
         print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
-        material: gs.materials.Rigid = gs.materials.Rigid()
-        morph: gs.morphs.URDF = gs.morphs.URDF(
+        material = gs.materials.Rigid(gravity_compensation=1.0)
+        morph = gs.morphs.URDF(
             file=self._urdf_path,
             fixed=True,
             pos=(0.0, 0.0, 0.0),
