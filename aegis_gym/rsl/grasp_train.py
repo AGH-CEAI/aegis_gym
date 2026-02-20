@@ -37,7 +37,7 @@ def main():
     th.set_default_dtype(th.float32)
 
     # === task cfgs and training algos cfgs ===
-    env_cfg, reward_scales, robot_cfg = get_task_cfgs()
+    env_cfg, robot_cfg = get_task_cfgs()
     rl_train_cfg = get_rl_cfg(args.exp_name, args.max_iterations)
     bc_train_cfg = get_bc_cfg()
     logger_cfg = get_logger_cfg()
@@ -54,7 +54,7 @@ def main():
     log_dir.mkdir(parents=True, exist_ok=True)
 
     with open(log_dir / "cfgs.pkl", "wb") as f:
-        pickle.dump((env_cfg, reward_scales, robot_cfg, rl_train_cfg, bc_train_cfg), f)
+        pickle.dump((env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg), f)
 
     # === env ===
     # BC only needs a small number of envs
@@ -68,7 +68,6 @@ def main():
         gs.init(logging_level="warning", precision="32")
         env = GraspEnv(
             env_cfg=env_cfg,
-            reward_cfg=reward_scales,
             robot_cfg=robot_cfg,
             show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
@@ -83,7 +82,6 @@ def main():
             return
         env = GraspEnvROS(
             env_cfg=env_cfg,
-            reward_cfg=reward_scales,
             robot_cfg=robot_cfg,
             device=device,
         )

@@ -1,8 +1,9 @@
 import os
 import time
-from pathlib import Path
 from collections import deque
 from collections.abc import Iterator
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch as th
@@ -318,7 +319,7 @@ class ExperienceBuffer:
         state_dim: int,
         action_dim: int,
         device: str = "cpu",
-        dtype: th.dtype | None = None,
+        dtype: Optional[th.dtype] = None,
     ):
         self._num_envs = num_envs
         self._max_size = max_size

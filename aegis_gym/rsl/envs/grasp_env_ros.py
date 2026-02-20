@@ -49,12 +49,10 @@ class GraspEnvROS(VecEnv):
     def __init__(
         self,
         env_cfg: dict,
-        reward_cfg: dict,
         robot_cfg: dict,
         device: th.device = th.device("cpu"),
     ) -> None:
         self._cfg = env_cfg
-        self._cfg["reward_scales"] = reward_cfg
         self.device = device
 
         self._extract_config()
@@ -102,7 +100,7 @@ class GraspEnvROS(VecEnv):
         self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
         self.table_size = self._cfg["table_size"]
         self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_size"]
+        self.box_size = self._cfg["box_sizes"]["default"]
 
         self.ctrl_dt = self._cfg["ctrl_dt"]
         self.policy_dt = self._cfg["policy_dt"]
@@ -113,10 +111,8 @@ class GraspEnvROS(VecEnv):
             math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
         )
 
-        self.emperical_speed_coeff = self._cfg["emperical_speed_coeff"]
-        self.emperical_speed_coeff_inv = 1 / self.emperical_speed_coeff
-        self.max_linear_speed = self._cfg["max_linear_speed"]
-        self.max_angular_speed = self._cfg["max_angular_speed"]
+        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
+        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
 
         self.reward_scales = self._cfg["reward_scales"]
 
@@ -189,9 +185,6 @@ class GraspEnvROS(VecEnv):
 
         # update time
         self.episode_length_buf += 1
-
-        # Agent related scaling
-        actions *= self.emperical_speed_coeff_inv
 
         # Environment limitations
         actions = th.clamp(actions, min=-1.0, max=1.0)
