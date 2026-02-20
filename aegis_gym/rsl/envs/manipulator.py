@@ -40,8 +40,8 @@ class Manipulator:
         print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
-        material: gs.materials.Rigid = gs.materials.Rigid()
-        morph: gs.morphs.URDF = gs.morphs.URDF(
+        material = gs.materials.Rigid(gravity_compensation=1.0)
+        morph = gs.morphs.URDF(
             file=self._urdf_path,
             fixed=True,
             pos=(0.0, 0.0, 0.0),
@@ -59,7 +59,9 @@ class Manipulator:
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
 
-        self._ik_method: Literal["rel_pose", "dls"] = args["ik_method"]
+        self._ik_method: Literal["gs_ik", "dls_ik", "gs_ikv", "dls_ikv"] = args[
+            "ik_method"
+        ]
 
         self._setup_config()
 
@@ -142,7 +144,7 @@ class Manipulator:
             return
         self.reset_home(envs_idx)
 
-    def reset_home(self, envs_idx: th.IntTensor | None = None):
+    def reset_home(self, envs_idx: Optional[th.IntTensor] = None):
         if envs_idx is None:
             envs_idx = th.arange(self._num_envs, device=self._device)
         default_joint_angles = th.tensor(
@@ -165,29 +167,41 @@ class Manipulator:
             open_gripper: Optional bool to control gripper state
         """
 
+        q_pos = None
+        q_vel = None
+
         # Compute joint velocities using inverse velocity kinematics
-        if self._ik_method == "gs_ik":
-            # Using pseudoinverse method
-            q_vel = self._pseudoinverse_velocity_ik(action)
-        elif self._ik_method == "dls_ik":
-            # Using damped least squares method
-            q_vel = self._dls_velocity_ik(action)
-        else:
-            raise ValueError(f"Invalid IK method: {self._ik_method}")
+        match self._ik_method:
+            case "gs_ikv":
+                q_vel = self._pseudoinverse_velocity_ik(action)
+            case "dls_ikv":
+                q_vel = self._dls_velocity_ik(action)
+            case "gs_ik":
+                q_pos = self._gs_ik(action)
+            case "dls_ik":
+                q_pos = self._dls_ik(action)
+            case _:
+                raise ValueError(f"Invalid IK method: {self._ik_method}")
 
         # Set gripper position if specified
         if open_gripper is not None:
-            q_pos = self._robot_entity.get_qpos()
+            if q_pos is None:
+                q_pos = self._robot_entity.get_qpos()
             if open_gripper:
                 q_pos[:, self._fingers_dof] = self._gripper_open_dof
             else:
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
             # Control gripper with position control
-            self._robot_entity.control_dofs_position(
-                position=q_pos[:, self._fingers_dof], dofs_idx_local=self._fingers_dof
-            )
+            if q_vel is not None:
+                self._robot_entity.control_dofs_position(
+                    position=q_pos[:, self._fingers_dof],
+                    dofs_idx_local=self._fingers_dof,
+                )
 
-        self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        if q_vel:
+            self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        elif q_pos:
+            self._robot_entity.control_dofs_position(position=q_pos)
 
     def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff

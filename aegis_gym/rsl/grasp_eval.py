@@ -42,12 +42,12 @@ def main():
     # Load configurations
     if args.stage == "rl":
         # For RL, load the standard configs
-        env_cfg, reward_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
+        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
             open(log_dir / "cfgs.pkl", "rb")
         )
     else:
         # For BC, we need to load the configs and create BC config
-        env_cfg, reward_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
+        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
             open(log_dir / "cfgs.pkl", "rb")
         )
 
@@ -72,7 +72,6 @@ def main():
         gs.init(logging_level="warning", precision="32")
         env = GraspEnv(
             env_cfg=env_cfg,
-            reward_cfg=reward_cfg,
             robot_cfg=robot_cfg,
             show_viewer=not args.no_vis,
         )
@@ -89,7 +88,6 @@ def main():
             return
         env = GraspEnvROS(
             env_cfg=env_cfg,
-            reward_cfg=reward_cfg,
             robot_cfg=robot_cfg,
             device=device,
         )
