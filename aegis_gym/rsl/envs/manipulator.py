@@ -198,9 +198,9 @@ class Manipulator:
                     dofs_idx_local=self._fingers_dof,
                 )
 
-        if q_vel:
+        if q_vel is not None:
             self._robot_entity.control_dofs_velocity(velocity=q_vel)
-        elif q_pos:
+        elif q_pos is not None:
             self._robot_entity.control_dofs_position(position=q_pos)
 
     def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
