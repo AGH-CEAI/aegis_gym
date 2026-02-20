@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-61](https://github.com/AGH-CEAI/aegis_gym/pull/61) - Added reading visual observations from the gRPC server.
 - [PR-60](https://github.com/AGH-CEAI/aegis_gym/pull/60) - Added option for calibration movement.
 - [PR-56](https://github.com/AGH-CEAI/aegis_gym/pull/56) - Added Grasp Env logging to PlotJuggler (via UDP server).
 - [PR-54](https://github.com/AGH-CEAI/aegis_gym/pull/53) - Added ClearML logging to behavioral cloning.

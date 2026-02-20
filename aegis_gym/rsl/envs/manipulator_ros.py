@@ -83,6 +83,7 @@ class ManipulatorROS:
 
         # Prepare initial observation
         self._state: Optional[TensorDict] = None
+        self._vision: Optional[TensorDict] = None
         self.read_state()
 
         # shutdown() will be called at interpreter exit
@@ -144,11 +145,18 @@ class ManipulatorROS:
         return future.result()  # blocks until complete
 
     def read_state(self) -> None:
-        # TODO enable state and vision
-        # state = self._run_coro(self._robot_client.get_all())["state"]
-        state = self._run_coro(self._robot_client.get_robot_state())
+        # TOD(issue#62) add option to disable image processing
+        states = self._run_coro(self._robot_client.get_all())
         self._state = TensorDict(
-            {k: th.from_numpy(v).to(self.device) for k, v in state.items()},
+            {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
+            device=self.device,
+        )
+        # We assume RGB channels instead of default BGR
+        self._vision = TensorDict(
+            {
+                k: th.from_numpy(v).to(self.device).roll(1, dims=-1)
+                for k, v in states["vision"].items()
+            },
             device=self.device,
         )
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
@@ -156,6 +164,9 @@ class ManipulatorROS:
 
     def get_state_tensordict(self) -> TensorDict:
         return self._state
+
+    def get_vision_tensordict(self) -> TensorDict:
+        return self._vision
 
     def get_joints_positions(self) -> th.Tensor:
         return self._state["joints_pos"].to(device=self.device, dtype=th.float32)
@@ -180,6 +191,18 @@ class ManipulatorROS:
 
     def get_base_position(self) -> th.Tensor:
         return th.zeros(3, dtype=th.float32, device=self.device)
+
+    def get_camera_frame(self, camera_name: str) -> th.Tensor:
+        return self._vision[camera_name].unsqueeze(dim=0)
+
+    def get_camera_scene_frame(self) -> th.Tensor:
+        return self._vision["scene"].unsqueeze(dim=0)
+
+    def get_camera_tool_right_frame(self) -> th.Tensor:
+        return self._vision["right"].unsqueeze(dim=0)
+
+    def get_camera_tool_left_frame(self) -> th.Tensor:
+        return self._vision["left"].unsqueeze(dim=0)
 
     def _servo_enable(self) -> None:
         if self._servo_enabled:
@@ -282,3 +305,15 @@ class ManipulatorROS:
     @property
     def ee_pose(self) -> th.Tensor:
         return self.get_tcp_pose().unsqueeze(dim=0)
+
+    @property
+    def camera_scene(self) -> th.Tensor:
+        return self.get_camera_scene_frame()
+
+    @property
+    def camera_tool_right(self) -> th.Tensor:
+        return self.get_camera_tool_right_frame()
+
+    @property
+    def camera_tool_left(self) -> th.Tensor:
+        return self.get_camera_tool_left_frame()
