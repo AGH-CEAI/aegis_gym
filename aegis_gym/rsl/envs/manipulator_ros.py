@@ -145,7 +145,7 @@ class ManipulatorROS:
         return future.result()  # blocks until complete
 
     def read_state(self) -> None:
-        # TODO add option to disable image processing
+        # TOD(issue#62) add option to disable image processing
         states = self._run_coro(self._robot_client.get_all())
         self._state = TensorDict(
             {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
