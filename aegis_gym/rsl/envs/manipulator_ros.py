@@ -235,6 +235,9 @@ class ManipulatorROS:
         else:
             self.gripper_close()
 
+    def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
+        raise NotImplementedError
+
     def go_to_goal(
         self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
     ) -> None:

@@ -1,5 +1,5 @@
 import math
-from typing import Literal
+from typing import Literal, Optional
 
 import genesis as gs
 import numpy as np
@@ -367,9 +367,55 @@ class GraspEnv(VecEnv):
         dones = self.reset_buf
         return obs, reward, dones, self.extras
 
-    # currently not in use
+    def calib_run(
+        self,
+        joints_diff: Optional[th.Tensor] = None,
+        cart_diff: Optional[th.tensor] = None,
+        steps: int = 100,
+    ) -> None:
+        idle_steps = 300  # int(0.4 * steps)
+        print(f">>> Idling for {idle_steps} steps.")
+        for _ in range(idle_steps):
+            self.scene.step()
+            self._log_state_to_plot_juggler()
+
+        move_steps = int(steps)
+        steps_per_action = int(
+            250 / 10
+        )  # Control Frequency divided by Policy Frequency
+        # move_per_action = 0.106 / 1000 * steps_per_action # about 2.65 mm
+        move_per_action = 0.196 / 500 * steps_per_action  # about 9,8mm
+        steady_error_compensation_coeff = 1.03  # 1.087 #1.044 # 1.0472
+
+        print(f">>> Moving to relative goal for {move_steps} steps.")
+        if joints_diff is not None:
+            self.robot.apply_dof_rel_action(joints_diff)
+        elif cart_diff is not None:
+            from math import ceil
+
+            print(f">>> Steps per action: {steps_per_action}.")
+            print(f">>> Movement per action: {move_per_action} m.")
+            actions_num = int(ceil(move_steps / steps_per_action))
+            print(
+                f">>> Assuming, that the goal will be reachable in: {actions_num} actions."
+            )
+
+            scaled_cart_diff = cart_diff / actions_num * steady_error_compensation_coeff
+            print(f">>> Scaled down target: {scaled_cart_diff}")
+            for action_id in range(actions_num):
+                print(f">>> Applying action #{action_id + 1}")
+                self.robot.apply_action(scaled_cart_diff, open_gripper=True)
+                for _ in range(steps_per_action):
+                    self.scene.step()
+                    self._log_state_to_plot_juggler()
+
+        print(f">>> Idling for {idle_steps} steps.")
+        for _ in range(idle_steps):
+            self.scene.step()
+            self._log_state_to_plot_juggler()
+
     def get_privileged_observations(self) -> None:
-        return None
+        raise NotImplementedError
 
     def is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
@@ -510,7 +556,7 @@ class GraspEnv(VecEnv):
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
-        lift_height = 0.4
+        lift_height = 0.16
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
         # final pose (above the table)

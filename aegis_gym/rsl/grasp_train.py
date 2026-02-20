@@ -1,6 +1,8 @@
+import ast
 import argparse
 import pickle
 from pathlib import Path
+from typing import Optional
 
 import genesis as gs
 import torch as th
@@ -9,6 +11,12 @@ from rsl_rl.runners import OnPolicyRunner
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_teacher_policy
+
+
+def str_to_list(arg: Optional[str]) -> list[float]:
+    if arg is None:
+        return None
+    return ast.literal_eval(arg)
 
 
 def main():
@@ -20,6 +28,9 @@ def main():
     parser.add_argument("--max_iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
+    parser.add_argument("--calibration-move", type=str_to_list, default=None)
+    parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
+    parser.add_argument("--calibration-steps", type=int, default=500)
     args = parser.parse_args()
 
     # Set PyTorch default dtype to float32 for better performance
@@ -65,7 +76,9 @@ def main():
         try:
             from envs.grasp_env_ros import GraspEnvROS
         except ImportError as e:
-            print(f">>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting")
+            print(
+                f"[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
+            )
             return
         env = GraspEnvROS(
             env_cfg=env_cfg,
@@ -74,8 +87,38 @@ def main():
         )
 
     if env is None:
-        print("> Env is not configured. Exiting...")
+        print("[GraspTrain] > Env is not configured. Exiting...")
         return
+
+    # === calibration movement ===
+    if args.calibration_move or args.calibration_move_cart:
+        cart_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        joints_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        steps = args.calibration_steps
+
+        if args.calibration_move:
+            n_j = len(args.calibration_move)
+            joints_diff[:n_j] = args.calibration_move
+            print(
+                f"[GraspTrain] >>> Starting relative joints movement of {joints_diff}"
+            )
+            joints_diff = th.tensor(joints_diff, device=device)
+            joints_diff[:6] *= th.pi / 180.0
+            joints_diff.unsqueeze(dim=0)
+            env.calib_run(joints_diff=joints_diff, steps=steps)
+
+        if args.calibration_move_cart:
+            n_j = len(args.calibration_move_cart)
+            cart_diff[:n_j] = args.calibration_move_cart
+            print(
+                f"[GraspTrain] >>> Starting relative cartesian movement of {cart_diff}"
+            )
+            cart_diff = th.tensor([cart_diff], device=device)
+            cart_diff.unsqueeze(dim=0)
+            env.calib_run(cart_diff=cart_diff, steps=steps)
+
+        print("[GraspTrain] >>> Finished relative joints movement.")
+        exit()
 
     # === runner ===
     match args.stage:
@@ -84,8 +127,10 @@ def main():
                 env, rl_train_cfg, args.exp_name, device
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
-            runner = BehaviorCloning(env, bc_train_cfg, teacher_policy, device=device)
-            runner.learn(num_learning_iterations=args.max_iterations, log_dir=log_dir)
+            runner = BehaviorCloning(
+                env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
+            )
+            runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
             runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
             runner.learn(

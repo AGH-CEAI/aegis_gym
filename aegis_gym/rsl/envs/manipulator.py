@@ -203,6 +203,10 @@ class Manipulator:
         elif q_pos:
             self._robot_entity.control_dofs_position(position=q_pos)
 
+    def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
+        q_pos = self._robot_entity.get_qpos() + joints_diff
+        self._robot_entity.control_dofs_position(position=q_pos)
+
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
         Pseudoinverse method for inverse velocity kinematics.
