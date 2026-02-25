@@ -38,7 +38,9 @@ def main():
 
     # === task cfgs and training algos cfgs ===
     env_cfg, robot_cfg = get_task_cfgs()
-    rl_train_cfg = get_rl_cfg(args.exp_name, args.max_iterations)
+    rl_train_cfg = get_rl_cfg()
+    rl_train_cfg["experiment_name"] = args.exp_name
+    rl_train_cfg["max_iterations"] = args.max_iterations
     bc_train_cfg = get_bc_cfg()
     logger_cfg = get_logger_cfg()
 

@@ -14,8 +14,8 @@ def log_metrics(task, metrics):
     info_str = (
         f"Success rate: {metrics['success_rate']:.2f}\n"
         f"Mean reward: {metrics['mean_reward']:.6f}\n"
-        f"Mean episode length:{metrics['mean_episode_length']:.2f}\n"
-        f"Mean inference time:{metrics['mean_inference_time_s']:.6f}\n"
+        f"Mean episode length: {metrics['mean_episode_length']}\n"
+        f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
         f"FPS: {metrics['policy_fps']:.2f}"
     )
     print(info_str)

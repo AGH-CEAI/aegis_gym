@@ -8,17 +8,13 @@ def get_logger_cfg() -> dict:
     }
 
 
-def get_rl_cfg(exp_name: str, max_iterations) -> dict:
+def get_rl_cfg() -> dict:
     # stage 1: privileged reinforcement learning
-    if exp_name is None:
-        exp_name = "grasp"
-    if max_iterations is None:
-        max_iterations = 300
     return {
         "class_name": "OnPolicyRunner",
         # General
         "num_steps_per_env": 24,  # Number of steps per environment per iteration
-        "max_iterations": max_iterations,  # Number of policy updates
+        "max_iterations": None,  # Number of policy updates
         "seed": 1,
         # Observations
         "obs_groups": {
@@ -27,7 +23,7 @@ def get_rl_cfg(exp_name: str, max_iterations) -> dict:
         },  # Maps observation groups to sets. See `vec_env.py` for more information
         # Logging parameters
         "save_interval": 100,  # Check for potential saves every `save_interval` iterations
-        "experiment_name": exp_name,
+        "experiment_name": None,
         "run_name": "",
         "algorithm": {
             "class_name": "PPO",
