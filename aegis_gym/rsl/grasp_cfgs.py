@@ -8,8 +8,12 @@ def get_logger_cfg() -> dict:
     }
 
 
-def get_rl_cfg(exp_name: str = "grasp", max_iterations: int = 300) -> dict:
+def get_rl_cfg(exp_name: str, max_iterations) -> dict:
     # stage 1: privileged reinforcement learning
+    if exp_name is None:
+        exp_name = "grasp"
+    if max_iterations is None:
+        max_iterations = 300
     return {
         "class_name": "OnPolicyRunner",
         # General
