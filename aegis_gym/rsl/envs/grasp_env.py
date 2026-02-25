@@ -595,10 +595,7 @@ class GraspEnv(VecEnv):
         success = hold_counter >= hold_steps_required
         success_rate = success.float().mean().item()
 
-        return {
-            "success_rate": success_rate,
-            "success_per_env": success,
-        }
+        return success_rate
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:

@@ -10,6 +10,28 @@ from utils import load_rl_policy, load_bc_policy
 from clearml import Task
 
 
+def log_metrics(task, metrics):
+    info_str = (
+        f"Success rate: {metrics['success_rate']:.2f}\n"
+        f"Mean reward: {metrics['mean_reward']:.6f}\n"
+        f"Mean episode length:{metrics['mean_episode_length']:.2f}\n"
+        f"Mean inference time:{metrics['mean_inference_time_s']:.6f}\n"
+        f"FPS: {metrics['policy_fps']:.2f}"
+    )
+    print(info_str)
+
+    logger = task.get_logger()
+    logger.report_scalar("Evaluation", "success_rate", metrics["success_rate"], 0)
+    logger.report_scalar("Evaluation", "mean_reward", metrics["mean_reward"], 0)
+    logger.report_scalar(
+        "Evaluation", "mean_episode_length", metrics["mean_episode_length"], 0
+    )
+    logger.report_scalar(
+        "Performance", "mean_inference_time_s", metrics["mean_inference_time_s"], 0
+    )
+    logger.report_scalar("Performance", "policy_fps", metrics["policy_fps"], 0)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
@@ -35,6 +57,12 @@ def main():
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
     parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
+    parser.add_argument(
+        "-lp",
+        "--load-from-pickle",
+        action="store_true",
+        help="Load configs from saved pickle instead of generating them from code",
+    )
     args = parser.parse_args()
 
     task = Task.init(
@@ -50,23 +78,20 @@ def main():
     log_dir = Path("logs") / f"{args.exp_name + '_' + args.stage}"
 
     # Load configurations
-    if args.stage == "rl":
-        # For RL, load the standard configs
-        # env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
-        #     open(log_dir / "cfgs.pkl", "rb")
-        # )
+    if args.load_from_pickle:
+        import pickle
 
-        env_cfg, robot_cfg = get_task_cfgs()
-        rl_train_cfg = get_rl_cfg()
-
+        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
+            open(log_dir / "cfgs.pkl", "rb")
+        )
+        print("[GraspEval] Loaded configs from pickle")
     else:
-        # For BC, we need to load the configs and create BC config
-        # env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
-        #     open(log_dir / "cfgs.pkl", "rb")
-        # )
-
         env_cfg, robot_cfg = get_task_cfgs()
-        bc_train_cfg = get_bc_cfg()
+        if args.stage == "rl":
+            rl_train_cfg = get_rl_cfg()
+        else:
+            bc_train_cfg = get_bc_cfg()
+        print("[GraspEval] Using configs generated from code")
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     env = None
@@ -167,25 +192,17 @@ def main():
         mean_inference_time = total_inference_time / max_steps
         fps = 1.0 / mean_inference_time
 
-        metrics = env.grasp_and_lift_demo()
+        success_rate = env.grasp_and_lift_demo()
 
-        print("Success rate:", metrics["success_rate"])
-        print("Mean reward:", mean_reward)
-        print("Mean episode length:", mean_episode_length)
-        print("Mean inference time:", mean_inference_time)
-        print("FPS:", fps)
+        metrics = {
+            "success_rate": success_rate,
+            "mean_reward": mean_reward,
+            "mean_episode_length": mean_episode_length,
+            "mean_inference_time_s": mean_inference_time,
+            "policy_fps": fps,
+        }
 
-        logger = task.get_logger()
-
-        logger.report_scalar("Evaluation", "success_rate", metrics["success_rate"], 0)
-        logger.report_scalar("Evaluation", "mean_reward", mean_reward, 0)
-        logger.report_scalar(
-            "Evaluation", "mean_episode_length", mean_episode_length, 0
-        )
-        logger.report_scalar(
-            "Performance", "mean_inference_time_s", mean_inference_time, 0
-        )
-        logger.report_scalar("Performance", "policy_fps", fps, 0)
+        log_metrics(task, metrics)
 
         if args.control == "sim":
             if args.record:
