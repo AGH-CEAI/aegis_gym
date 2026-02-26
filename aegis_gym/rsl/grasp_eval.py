@@ -1,10 +1,35 @@
 import argparse
-import pickle
 from pathlib import Path
+import time
 
 import torch as th
 
+from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy
+
+from clearml import Task
+
+
+def log_metrics(task, metrics):
+    info_str = (
+        f"Success rate: {metrics['success_rate']:.2f}\n"
+        f"Mean reward: {metrics['mean_reward']:.6f}\n"
+        f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
+        f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
+        f"FPS: {metrics['policy_fps']:.2f}"
+    )
+    print(info_str)
+
+    logger = task.get_logger()
+    logger.report_scalar("Evaluation", "success_rate", metrics["success_rate"], 0)
+    logger.report_scalar("Evaluation", "mean_reward", metrics["mean_reward"], 0)
+    logger.report_scalar(
+        "Evaluation", "mean_episode_length", metrics["mean_episode_length"], 0
+    )
+    logger.report_scalar(
+        "Performance", "mean_inference_time_s", metrics["mean_inference_time_s"], 0
+    )
+    logger.report_scalar("Performance", "policy_fps", metrics["policy_fps"], 0)
 
 
 def main():
@@ -32,7 +57,21 @@ def main():
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
     parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
+    parser.add_argument(
+        "--load-from-pickle",
+        action="store_true",
+        help="Load configs from saved pickle instead of generating them from code",
+    )
     args = parser.parse_args()
+
+    logger_cfg = get_logger_cfg()
+
+    task = Task.init(
+        project_name=f"{logger_cfg['clearml_project']}_eval-{args.stage}-{args.control}",
+        task_name=f"{args.exp_name}_{args.stage}_eval",
+    )
+
+    task.connect(vars(args))
 
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
@@ -40,21 +79,20 @@ def main():
     log_dir = Path("logs") / f"{args.exp_name + '_' + args.stage}"
 
     # Load configurations
-    if args.stage == "rl":
-        # For RL, load the standard configs
-        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
-            open(log_dir / "cfgs.pkl", "rb")
-        )
-    else:
-        # For BC, we need to load the configs and create BC config
-        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
-            open(log_dir / "cfgs.pkl", "rb")
-        )
+    if args.load_from_pickle:
+        import pickle
 
-    project_suffix = f"_eval-{args.stage}-{args.control}"
-    rl_train_cfg["neptune_project"] += project_suffix
-    rl_train_cfg["wandb_project"] += project_suffix
-    rl_train_cfg["clearml_project"] += project_suffix
+        env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg = pickle.load(
+            open(log_dir / "cfgs.pkl", "rb")
+        )
+        print("[GraspEval] Loaded configs from pickle")
+    else:
+        env_cfg, robot_cfg = get_task_cfgs()
+        if args.stage == "rl":
+            rl_train_cfg = get_rl_cfg()
+        else:
+            bc_train_cfg = get_bc_cfg()
+        print("[GraspEval] Using configs generated from code")
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     env = None
@@ -123,6 +161,12 @@ def main():
         else:
             print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
 
+        total_rewards = th.zeros(env_cfg["num_envs"], device=device)
+        episode_lengths = th.zeros(env_cfg["num_envs"], device=device)
+
+        start_time = time.perf_counter()
+        total_inference_time = 0.0
+
         for _ in range(max_steps):
             if args.stage == "rl":
                 actions = policy(obs)
@@ -137,7 +181,30 @@ def main():
                     env.record_cam.render()  # render the visualization camera
 
             obs, rews, dones, infos = env.step(actions)
-        env.grasp_and_lift_demo()
+
+            total_rewards += rews
+            episode_lengths += 1
+
+        end_time = time.perf_counter()
+        total_inference_time += end_time - start_time
+
+        mean_reward = total_rewards.mean().item()
+        mean_episode_length = episode_lengths.mean().item()
+        mean_inference_time = total_inference_time / max_steps
+        fps = 1.0 / mean_inference_time
+
+        success_rate = env.grasp_and_lift_demo()
+
+        metrics = {
+            "success_rate": success_rate,
+            "mean_reward": mean_reward,
+            "mean_episode_length": mean_episode_length,
+            "mean_inference_time_s": mean_inference_time,
+            "policy_fps": fps,
+        }
+
+        log_metrics(task, metrics)
+
         if args.control == "sim":
             if args.record:
                 print("[GraspEval] Stopping video recording...")
