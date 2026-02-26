@@ -75,6 +75,7 @@ def get_bc_cfg() -> dict:
         "max_grad_norm": 1.0,
         # network architecture
         "policy": {
+            "type": "shared_cnn",
             "vision_encoder": {
                 "conv_layers": [
                     {
@@ -100,6 +101,7 @@ def get_bc_cfg() -> dict:
                     },
                 ],
                 "pooling": "adaptive_avg",
+                "pool_size": 4,
             },
             "action_head": {
                 "state_obs_dim": 7,  # end-effector pose as additional state observation

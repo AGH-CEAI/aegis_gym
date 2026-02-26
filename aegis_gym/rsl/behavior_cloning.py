@@ -402,43 +402,74 @@ class ExperienceBuffer:
 
 
 class Policy(nn.Module):
-    """Multi-task behavior cloning policy with shared stereo encoder/decoder."""
-
     def __init__(self, config: dict, action_dim: int):
         super().__init__()
         self.num_cameras = config["num_cameras"]
 
-        self.shared_encoder = self._build_cnn(config["vision_encoder"])
+        # ===== vision encoder =====
+        encoder_type = config["type"]
+        vision_cfg = config["vision_encoder"]
 
-        vision_encoder_conv_out_channels = config["vision_encoder"]["conv_layers"][-1][
-            "out_channels"
-        ]
-        vision_encoder_output_dim = vision_encoder_conv_out_channels * 4 * 4
+        def cnn_builder():
+            return self._build_cnn(vision_cfg)
 
+        if encoder_type == "shared_cnn":
+            self.vision_encoder = SharedCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        elif encoder_type == "per_camera_cnn":
+            self.vision_encoder = PerCameraCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        else:
+            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+
+        vision_dim = self.vision_encoder.output_dim
+
+        # ===== fusion =====
         self.feature_fusion = nn.Sequential(
-            nn.Linear(
-                vision_encoder_output_dim * self.num_cameras, vision_encoder_output_dim
-            ),
+            nn.Linear(vision_dim * self.num_cameras, vision_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
 
-        # MLP for action prediction
-        mlp_cfg = config["action_head"]
-        self.state_obs_dim = config["action_head"]["state_obs_dim"]
+        # ===== action head =====
+        action_cfg = config["action_head"]
+        self.state_obs_dim = action_cfg.get("state_obs_dim")
+        mlp_input_dim = vision_dim
         if self.state_obs_dim is not None:
-            mlp_cfg["input_dim"] = vision_encoder_output_dim + self.state_obs_dim
-        else:
-            mlp_cfg["input_dim"] = vision_encoder_output_dim
-        mlp_cfg["output_dim"] = action_dim
-        self.mlp = self._build_mlp(mlp_cfg)
+            mlp_input_dim += self.state_obs_dim
 
-        # MLP for pose prediction
-        pose_mlp_cfg = config["pose_head"]
-        pose_mlp_cfg["input_dim"] = vision_encoder_output_dim
-        pose_mlp_cfg["output_dim"] = 7
-        self.pose_mlp = self._build_mlp(pose_mlp_cfg)
+        self.action_head = self._build_mlp(
+            input_dim=mlp_input_dim,
+            hidden_dims=action_cfg["hidden_dims"],
+            output_dim=action_dim,
+        )
 
+        # ===== pose head =====
+        self.pose_head = self._build_mlp(
+            input_dim=vision_dim,
+            hidden_dims=config["pose_head"]["hidden_dims"],
+            output_dim=7,
+        )
+
+    # ------------------------
+    def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None):
+        features = self.vision_encoder(rgb_obs)
+        fused = self.feature_fusion(th.cat(features, dim=-1))
+        if state_obs is not None and self.state_obs_dim is not None:
+            fused = th.cat([fused, state_obs], dim=-1)
+        return self.action_head(fused)
+
+    def predict_pose(self, rgb_obs: th.Tensor):
+        features = self.vision_encoder(rgb_obs)
+        return tuple(self.pose_head(f) for f in features)
+
+    # ------------------------
     @property
     def dtype(self):
         """Get the dtype of the policy's parameters."""
@@ -446,74 +477,92 @@ class Policy(nn.Module):
 
     @staticmethod
     def _build_cnn(config: dict) -> nn.Sequential:
-        """Build CNN encoder for grayscale images."""
         layers = []
+        for c in config["conv_layers"]:
+            layers += [
+                nn.Conv2d(
+                    c["in_channels"],
+                    c["out_channels"],
+                    kernel_size=c["kernel_size"],
+                    stride=c["stride"],
+                    padding=c["padding"],
+                ),
+                nn.BatchNorm2d(c["out_channels"]),
+                nn.ReLU(),
+            ]
+        # if config.get("pooling") == "adaptive_avg":
+        #     layers.append(nn.AdaptiveAvgPool2d((4, 4)))
 
-        # Build layers from configuration
-        for conv_config in config["conv_layers"]:
-            layers.extend(
-                [
-                    nn.Conv2d(
-                        conv_config["in_channels"],
-                        conv_config["out_channels"],
-                        kernel_size=conv_config["kernel_size"],
-                        stride=conv_config["stride"],
-                        padding=conv_config["padding"],
-                    ),
-                    nn.BatchNorm2d(conv_config["out_channels"]),
-                    nn.ReLU(),
-                ]
-            )
-
-        # Add adaptive pooling if specified
         if config.get("pooling") == "adaptive_avg":
-            layers.append(nn.AdaptiveAvgPool2d((4, 4)))
+            pool_size = config["pool_size"]
+            layers.append(nn.AdaptiveAvgPool2d((pool_size, pool_size)))
 
         return nn.Sequential(*layers)
 
     @staticmethod
-    def _build_mlp(config: dict) -> nn.Sequential:
-        mlp_input_dim = config["input_dim"]
+    def _build_mlp(input_dim, hidden_dims, output_dim):
         layers = []
-        for hidden_dim in config["hidden_dims"]:
-            layers.extend([nn.Linear(mlp_input_dim, hidden_dim), nn.ReLU()])
-            mlp_input_dim = hidden_dim
-        layers.append(nn.Linear(mlp_input_dim, config["output_dim"]))
+        for h in hidden_dims:
+            layers += [nn.Linear(input_dim, h), nn.ReLU()]
+            input_dim = h
+        layers.append(nn.Linear(input_dim, output_dim))
         return nn.Sequential(*layers)
 
-    def get_features(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
-        # Split rgb images
-        camera_features = []
+
+class VisionEncoder(nn.Module):
+    def __init__(self, num_cameras: int):
+        super().__init__()
+        self.num_cameras = num_cameras
+        self.output_dim = None
+
+    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+
+        raise NotImplementedError
+
+
+class SharedCNNEncoder(VisionEncoder):
+    def __init__(self, num_cameras, cnn_builder, vision_cfg):
+        super().__init__(num_cameras)
+        self.encoder = cnn_builder()
+
+        # with th.no_grad():
+        #     dummy = th.zeros(1, *input_shape)
+        #     out = self.encoder(dummy).flatten(start_dim=1)
+        #     self.output_dim = out.shape[1]
+
+        last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
+        pool_size = vision_cfg["pool_size"]
+
+        self.output_dim = last_channels * pool_size * pool_size
+
+    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+        features = []
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            cam_features = self.shared_encoder(cam_rgb).flatten(start_dim=1)
-            camera_features.append(cam_features)
+            feat = self.encoder(cam_rgb).flatten(start_dim=1)
+            features.append(feat)
+        return features
 
-        return camera_features
 
-    def forward(
-        self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
-    ) -> th.Tensor:
-        """Forward pass with shared stereo encoder for rgb images."""
-        # Get features
-        features_list = self.get_features(rgb_obs)
+class PerCameraCNNEncoder(VisionEncoder):
+    def __init__(self, num_cameras: int, cnn_builder, vision_cfg):
+        super().__init__(num_cameras)
+        self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
 
-        # Concatenate features (much more efficient than concatenating raw images)
-        combined_features = th.cat(features_list, dim=-1)
-        # Feature fusion
-        fused_features = self.feature_fusion(combined_features)
+        # with th.no_grad():
+        #     dummy = th.zeros(1, *input_shape)
+        #     out = self.encoders[0](dummy).flatten(start_dim=1)
+        #     self.output_dim = out.shape[1]
 
-        # Add state information if available
-        if state_obs is not None and self.state_obs_dim is not None:
-            final_features = th.cat([fused_features, state_obs], dim=-1)
-        else:
-            final_features = fused_features
+        last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
+        pool_size = vision_cfg["pool_size"]
 
-        # Predict actions
-        return self.mlp(final_features)
+        self.output_dim = last_channels * pool_size * pool_size
 
-    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor]:
-        """Predict pose from rgb images and state observations."""
-        features_list = self.get_features(rgb_obs)
-        poses = tuple(self.pose_mlp(features) for features in features_list)
-        return poses
+    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+        features = []
+        for i in range(self.num_cameras):
+            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
+            feat = self.encoders[i](cam_rgb).flatten(start_dim=1)
+            features.append(feat)
+        return features
