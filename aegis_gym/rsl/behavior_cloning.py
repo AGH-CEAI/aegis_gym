@@ -410,6 +410,24 @@ class Policy(nn.Module):
 
         vision_dim = self.vision_encoder.output_dim
 
+        if encoder_type == "shared_cnn":
+            self.vision_encoder = SharedCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        elif encoder_type == "per_camera_cnn":
+            self.vision_encoder = PerCameraCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        else:
+            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+
+        vision_dim = self.vision_encoder.output_dim
+
+        # ===== fusion =====
         self.feature_fusion = nn.Sequential(
             nn.Linear(vision_dim * self.num_cameras, vision_dim),
             nn.ReLU(),
@@ -447,6 +465,26 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
+        # ===== pose head =====
+        self.pose_head = self._build_mlp(
+            input_dim=vision_dim,
+            hidden_dims=config["pose_head"]["hidden_dims"],
+            output_dim=7,
+        )
+
+    # ------------------------
+    def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None):
+        features = self.vision_encoder(rgb_obs)
+        fused = self.feature_fusion(th.cat(features, dim=-1))
+        if state_obs is not None and self.state_obs_dim is not None:
+            fused = th.cat([fused, state_obs], dim=-1)
+        return self.action_head(fused)
+
+    def predict_pose(self, rgb_obs: th.Tensor):
+        features = self.vision_encoder(rgb_obs)
+        return tuple(self.pose_head(f) for f in features)
+
+    # ------------------------
     @property
     def dtype(self) -> th.dtype:
         """Get the dtype of the policy's parameters."""
