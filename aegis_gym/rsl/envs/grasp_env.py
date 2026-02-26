@@ -549,7 +549,7 @@ class GraspEnv(VecEnv):
         )
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
-    def grasp_and_lift_demo(self) -> dict:
+    def grasp_and_lift_demo(self) -> float:
         total_steps = self.max_episode_length
         grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()

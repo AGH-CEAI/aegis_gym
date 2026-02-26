@@ -339,11 +339,13 @@ class GraspEnvROS(VecEnv):
         )
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
-    def grasp_and_lift_demo(self) -> None:
+    def grasp_and_lift_demo(self) -> float:
         self.robot.read_state()
 
         total_steps = 500
         grab_height = 0.12
+        min_width = 0.005
+        max_width = 0.04
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
 
@@ -357,6 +359,7 @@ class GraspEnvROS(VecEnv):
         step_2 = False
         step_3 = False
         step_4 = False
+        success = False
 
         for i in range(total_steps):
             self.robot.read_state()
@@ -377,6 +380,9 @@ class GraspEnvROS(VecEnv):
                     continue
                 print("[GraspEnvROS][Demo] Going up to the lift pose")
                 self.robot.go_to_goal(lift_pose)
+                fingers = self.robot.get_joints_positions()[:, -2:]
+                fingers_width = fingers.sum(dim=1).item()
+                success = (fingers_width > min_width) and (fingers_width < max_width)
                 step_3 = True
             else:  # reset
                 if step_4:
@@ -385,3 +391,6 @@ class GraspEnvROS(VecEnv):
                 self.robot._move_to_home()
                 self.robot.gripper_open()
                 step_4 = True
+
+        print(f"[GraspEnvROS][Demo] Grasp success: {success}")
+        return float(success)
