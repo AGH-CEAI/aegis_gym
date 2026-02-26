@@ -14,7 +14,7 @@ def log_metrics(task, metrics):
     info_str = (
         f"Success rate: {metrics['success_rate']:.2f}\n"
         f"Mean reward: {metrics['mean_reward']:.6f}\n"
-        f"Mean episode length: {metrics['mean_episode_length']}\n"
+        f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
         f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
         f"FPS: {metrics['policy_fps']:.2f}"
     )
@@ -58,7 +58,6 @@ def main():
     parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
     parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
     parser.add_argument(
-        "-lp",
         "--load-from-pickle",
         action="store_true",
         help="Load configs from saved pickle instead of generating them from code",
