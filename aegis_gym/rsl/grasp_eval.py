@@ -4,7 +4,7 @@ import time
 
 import torch as th
 
-from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg
+from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy
 
 from clearml import Task
@@ -65,9 +65,11 @@ def main():
     )
     args = parser.parse_args()
 
+    logger_cfg = get_logger_cfg()
+
     task = Task.init(
-        project_name="Grasp",
-        task_name=f"grasp_eval_{args.exp_name}_{args.stage}",
+        project_name=f"{logger_cfg['clearml_project']}_eval-{args.stage}-{args.control}",
+        task_name=f"{args.exp_name}_{args.stage}_eval",
     )
 
     task.connect(vars(args))
