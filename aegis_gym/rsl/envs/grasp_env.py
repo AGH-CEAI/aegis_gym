@@ -549,7 +549,7 @@ class GraspEnv(VecEnv):
         )
         return keypoint_offsets.unsqueeze(0).repeat(batch_size, 1, 1)
 
-    def grasp_and_lift_demo(self) -> None:
+    def grasp_and_lift_demo(self) -> float:
         total_steps = self.max_episode_length
         grab_height = 0.08
         goal_pose = self.robot.ee_pose.clone()
@@ -567,6 +567,11 @@ class GraspEnv(VecEnv):
         reset_pose = th.tensor(
             [0.2, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0], device=self.device
         ).repeat(self.num_envs, 1)
+
+        pos_threshold = 0.08
+        hold_steps_required = self.max_episode_length / 10
+        hold_counter = th.zeros(self.num_envs, device=self.device)
+
         for i in range(total_steps):
             if i < total_steps / 5:  # go down
                 self.robot.go_to_goal(goal_pose, open_gripper=True)
@@ -576,10 +581,21 @@ class GraspEnv(VecEnv):
                 self.robot.go_to_goal(lift_pose, open_gripper=False)
             elif i < total_steps * 4 / 5:  # final
                 self.robot.go_to_goal(final_pose, open_gripper=False)
+                obj_pos = self.object.get_pos()
+                target_pos = final_pose[:, :3]
+
+                dist = th.norm(obj_pos - target_pos, dim=-1)
+                in_target = dist < pos_threshold
+
+                hold_counter[in_target] += 1
             else:  # reset
                 self.robot.go_to_goal(reset_pose, open_gripper=True)
             self.scene.step()
-            self._log_state_to_plot_juggler()
+
+        success = hold_counter >= hold_steps_required
+        success_rate = success.float().mean().item()
+
+        return success_rate
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:
