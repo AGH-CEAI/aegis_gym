@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-B", "--num_envs", type=int, default=100)
+    parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument(
         "--stage",
         type=str,
@@ -112,6 +113,7 @@ def main():
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
             show_viewer=not args.no_vis,
+            enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
         env_cfg["max_visualize_FPS"] = int(1 / env_cfg["policy_dt"])
