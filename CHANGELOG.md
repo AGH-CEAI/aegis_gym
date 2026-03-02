@@ -36,7 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Added success checking for Grasp environment.
 - [PR-59](https://github.com/AGH-CEAI/aegis_gym/pull/59) - Changed control type in simulated GraspEnv to match the real one (velocity control).
 - [PR-58](https://github.com/AGH-CEAI/aegis_gym/pull/58) - Major development towards sim2real calibration.
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - The `AegisGrasp`'s rsl_rl robot config accepts ID to download URDF dataset from ClearML (see [aegis_ros PR-95](https://github.com/AGH-CEAI/aegis_ros/pull/95)).
