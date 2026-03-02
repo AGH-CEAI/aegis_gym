@@ -140,7 +140,11 @@ def main():
         policy.eval()
 
     obs, _ = env.reset()
-    max_steps = int(env_cfg["episode_length_s"] / env_cfg["policy_dt"])
+    episode_len_s = env_cfg["episode_length_s"]
+    max_steps = int(episode_len_s / env_cfg["policy_dt"])
+    print(
+        f"[GraspEval] The episode length is defined as {episode_len_s} s, which corresponds to {max_steps} steps"
+    )
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with th.no_grad():
@@ -186,6 +190,9 @@ def main():
 
             total_rewards += rews
             episode_lengths += 1
+        print(
+            "[GraspEval] Finished model inference, proceeding to procedural grasp demo"
+        )
 
         end_time = time.perf_counter()
         total_inference_time += end_time - start_time
