@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-B", "--num_envs", type=int, default=100)
+    parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument(
         "--stage",
         type=str,
@@ -112,6 +113,7 @@ def main():
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
             show_viewer=not args.no_vis,
+            enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
         env_cfg["max_visualize_FPS"] = int(1 / env_cfg["policy_dt"])
@@ -138,7 +140,11 @@ def main():
         policy.eval()
 
     obs, _ = env.reset()
-    max_steps = int(env_cfg["episode_length_s"] / env_cfg["policy_dt"])
+    episode_len_s = env_cfg["episode_length_s"]
+    max_steps = int(episode_len_s / env_cfg["policy_dt"])
+    print(
+        f"[GraspEval] The episode length is defined as {episode_len_s} s, which corresponds to {max_steps} steps"
+    )
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with th.no_grad():
@@ -184,6 +190,9 @@ def main():
 
             total_rewards += rews
             episode_lengths += 1
+        print(
+            "[GraspEval] Finished model inference, proceeding to procedural grasp demo"
+        )
 
         end_time = time.perf_counter()
         total_inference_time += end_time - start_time

@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-64](https://github.com/AGH-CEAI/aegis_gym/pull/64) - GraspEnv: Added flag `--visualize-camera` to train, for preview of the simulated cameras.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: added support for new gRPC client joints enum.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `gripper_width` properties to the `manipulator` abstractions.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `--plotjuggler` flag to the eval script.
+- [PR-64](https://github.com/AGH-CEAI/aegis_gym/pull/64) - Grasp Env: Added flag `--visualize-camera` to train, for preview of the simulated cameras.
 - [PR-63](https://github.com/AGH-CEAI/aegis_gym/pull/63) - Added success checking for Grasp environment.
 - [PR-61](https://github.com/AGH-CEAI/aegis_gym/pull/61) - Added reading visual observations from the gRPC server.
 - [PR-60](https://github.com/AGH-CEAI/aegis_gym/pull/60) - Added option for calibration movement.
@@ -58,6 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Fixed real `grasp_and_lift_demo()`.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Fixed joints getters.
 - [PR-63](https://github.com/AGH-CEAI/aegis_gym/pull/63) - Fixed conditional checks for action commands.
 - [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Fixed model sorting and typos.
 - [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Fixed pose retrieval for Genesis entities.
