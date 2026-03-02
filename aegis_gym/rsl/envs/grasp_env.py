@@ -472,18 +472,9 @@ class GraspEnv(VecEnv):
         return stereo_rgb
 
     def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
-        match self.camera_setup:
-            case "default":
-                cams = tuple(self._cameras.values())
-            case "scene_dual":
-                cams = (
-                    self._cameras["scene_left_cam"],
-                    self._cameras["scene_right_cam"],
-                )
-            case _:
-                raise ValueError(f"Unknown camera setup {self.camera_setup}")
-
+        cams = tuple(self._cameras.values())
         rgb_list = [None] * len(cams)
+
         for cam_id, cam in enumerate(cams):
             rgb, _, _, _ = cam.render(
                 rgb=True, depth=False, segmentation=False, normal=False
