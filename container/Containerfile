@@ -45,8 +45,12 @@ RUN apt update  \
     && pip cache purge \
     && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
 
+# DEBUG: MERGE WITH PREVIOUS
+ARG AEGIS_ROS_TAG=feature/aegis_grpc/simplified_cmake_build
 RUN apt update  \
     && apt install -y \
+        cmake \
+        libgrpc++-dev \
         libprotobuf-dev \
         libprotoc-dev \
         protobuf-compiler \
@@ -54,25 +58,22 @@ RUN apt update  \
         python3-grpc-tools \
         python3-grpcio \
         python3-protobuf \
-    && apt autoremove -y \
-    && apt clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# DEBUG: MERGE WITH PREVIOUS
-RUN apt update \
-    && apt install -y \
-        cmake \
-    && apt autoremove -y \
-    && apt clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Build and install aegis_grpc python client
-RUN git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
+    && git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
     && cd ./aegis_ros/aegis_grpc/ \
     && bash ./install_client.sh \
-    && pip cache purge \
-    && rm -rf ~/.cache/pip \
-    && rm -rf /tmp/* /var/tmp/*
+    && uv cache clean \
+    && cd /ws \
+    && rm -rf ./aegis_ros \
+    && apt remove -y \
+        cmake \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        protobuf-compiler-grpc \
+    && apt autoremove -y \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
 
 # TODO: clone aegis_gym and install dependencies via uv
 # Remove aegis_gym and cache
