@@ -337,6 +337,11 @@ class Manipulator:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
         return th.cat([pos, quat], dim=-1)
 
+    @property
+    def gripper_width(self) -> th.Tensor:
+        fingers = self._robot_entity.get_qpos()[:, self._fingers_dof]
+        return fingers.sum(dim=1)
+
     # @property
     # def left_finger_pose(self) -> th.Tensor:
     #     pos, quat = self._left_finger_link.get_pos(), self._left_finger_link.get_quat()
