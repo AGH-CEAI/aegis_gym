@@ -27,14 +27,10 @@ repos:
     -   id: pretty-format-json
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
--   repo: local
+-   repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.10.7
     hooks:
-    -   id: uv-lock-check
-        name: uv lock check
-        entry: uv lock --check
-        language: system
-        files: pyproject.toml|uv.lock
-        pass_filenames: false
+    - id: uv-lock
 
 -   repo: https://github.com/codespell-project/codespell
     rev: v2.4.1
