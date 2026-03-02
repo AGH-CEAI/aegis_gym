@@ -122,14 +122,14 @@ class Manipulator:
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
-            th.tensor([4500, 4500, 3500, 3500, 3500, 3500, 100, 100]) * 10.0,
+            th.tensor([4500, 4500, 3500, 3500, 3500, 3500, 100, 100]),
         )
         self._robot_entity.set_dofs_kv(
-            th.tensor([350, 350, 250, 250, 250, 250, 10, 10]) * 1.4,
+            th.tensor([350, 350, 250, 250, 250, 250, 10, 10]),
         )
         self._robot_entity.set_dofs_force_range(
-            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100]) * 10.0,
-            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]) * 10.0,
+            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100]),
+            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]),
         )
         # TODO(issue#57) configure armature, damping and stiffness
         # self._robot_entity.set_dofs_armature(
