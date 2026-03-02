@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
+- [PR-66](https://github.com/AGH-CEAI/aegis_gym/pull/66) - Grasp Env: Policy position control from Genesis.
 - [PR-3](https://github.com/AGH-CEAI/aegis_gym/pull/3) - Automatic change to ROSInterfaceMock for PyTest environment.
 
 ### Removed
