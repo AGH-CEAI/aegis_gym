@@ -1,0 +1,80 @@
+ARG AEGIS_ROS_TAG=humble-devel
+
+ARG UBUNTU_VERSION=22.04
+ARG CUDA_VERSION=12.9.1
+ARG CUDA_SHORT_VERSION=cu129
+ARG TORCH_VERSION=2.8.0
+ARG TORCHVISION_VERSION=0.23.0
+ARG UV_VERSION=0.10.7
+
+FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION}
+ARG AEGIS_ROS_TAG
+ARG UBUNTU_VERSION
+ARG CUDA_VERSION
+ARG CUDA_SHORT_VERSION
+ARG TORCH_VERSION
+ARG TORCHVISION_VERSION
+ARG UV_VERSION
+
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL aegis.gym.cuda=${CUDA_VERSION}
+LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
+LABEL aegis.gym.torch=${TORCH_VERSION}
+LABEL aegis.gym.uv=${UV_VERSION}
+LABEL aegis.ros.version=${AEGIS_ROS_TAG}
+
+USER root
+WORKDIR /ws
+
+# Install tools and PyTorch
+RUN apt update  \
+    && apt install -y \
+        curl \
+        git \
+        wget \
+        python3-pip \
+    && pip install uv==${UV_VERSION} \
+    # && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && pip install \
+        torch==${TORCH_VERSION} \
+        torchvision==${TORCHVISION_VERSION} \
+        --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
+    && export SUDO_FORCE_REMOVE=yes \
+    && apt autoremove -y \
+    && apt clean \
+    && pip cache purge \
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
+
+RUN apt update  \
+    && apt install -y \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        protobuf-compiler-grpc \
+        python3-grpc-tools \
+        python3-grpcio \
+        python3-protobuf \
+    && apt autoremove -y \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# DEBUG: MERGE WITH PREVIOUS
+RUN apt update \
+    && apt install -y \
+        cmake \
+    && apt autoremove -y \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install aegis_grpc python client
+RUN git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
+    && cd ./aegis_ros/aegis_grpc/ \
+    && bash ./install_client.sh \
+    && pip cache purge \
+    && rm -rf ~/.cache/pip \
+    && rm -rf /tmp/* /var/tmp/*
+
+# TODO: clone aegis_gym and install dependencies via uv
+# Remove aegis_gym and cache
+
+CMD ["/bin/bash"]

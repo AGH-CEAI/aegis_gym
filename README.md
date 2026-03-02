@@ -12,7 +12,6 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
     <img src="./docs/aegis_reacher.png" alt="Static image of the AegisReacher environment in Genesis simulator." width="640"/>
 </p>
 
-
 ---
 
 ## Notes
@@ -20,6 +19,9 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 * For simplicity, the project uses Pytorch tensors instead of numpy ones.
 
 ---
+
+## Containerfile
+Check the corresponding [README.md](./container/README.md).
 
 ## Build & install
 ```bash
