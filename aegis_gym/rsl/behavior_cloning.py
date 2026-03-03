@@ -434,27 +434,29 @@ class Policy(nn.Module):
             output_dim=7,
         )
 
-    def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None):
+    def forward(
+        self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
+    ) -> th.Tensor:
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(th.cat(features, dim=-1))
         if state_obs is not None and self.state_obs_dim is not None:
             fused = th.cat([fused, state_obs], dim=-1)
         return self.action_head(fused)
 
-    def predict_pose(self, rgb_obs: th.Tensor):
+    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor]:
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
     @property
-    def dtype(self):
+    def dtype(self) -> th.dtype:
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
-    def _build_vision_encoder(self, config):
+    def _build_vision_encoder(self, config: dict) -> "VisionEncoder":
         encoder_type = config["type"]
         vision_cfg = config["vision_encoder"]
 
-        def cnn_builder():
+        def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)
 
         if encoder_type == "shared_cnn":
@@ -495,7 +497,9 @@ class Policy(nn.Module):
         return nn.Sequential(*layers)
 
     @staticmethod
-    def _build_mlp(input_dim, hidden_dims, output_dim):
+    def _build_mlp(
+        input_dim: int, hidden_dims: list[int], output_dim: int
+    ) -> nn.Sequential:
         layers = []
         for h in hidden_dims:
             layers.append(nn.Linear(input_dim, h))
@@ -512,12 +516,11 @@ class VisionEncoder(nn.Module):
         self.output_dim = None
 
     def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
-
         raise NotImplementedError
 
 
 class SharedCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras, cnn_builder, vision_cfg):
+    def __init__(self, num_cameras: int, cnn_builder, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoder = cnn_builder()
 
@@ -536,7 +539,7 @@ class SharedCNNEncoder(VisionEncoder):
 
 
 class PerCameraCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder, vision_cfg):
+    def __init__(self, num_cameras: int, cnn_builder, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
 
