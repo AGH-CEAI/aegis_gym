@@ -427,7 +427,6 @@ class Policy(nn.Module):
 
         vision_dim = self.vision_encoder.output_dim
 
-        # ===== fusion =====
         self.feature_fusion = nn.Sequential(
             nn.Linear(vision_dim * self.num_cameras, vision_dim),
             nn.ReLU(),
@@ -472,7 +471,6 @@ class Policy(nn.Module):
             output_dim=7,
         )
 
-    # ------------------------
     def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None):
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(th.cat(features, dim=-1))
@@ -484,7 +482,6 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
-    # ------------------------
     @property
     def dtype(self) -> th.dtype:
         """Get the dtype of the policy's parameters."""
