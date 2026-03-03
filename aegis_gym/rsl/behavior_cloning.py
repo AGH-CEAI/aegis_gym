@@ -406,38 +406,16 @@ class Policy(nn.Module):
         super().__init__()
         self.num_cameras = config["num_cameras"]
 
-        # ===== vision encoder =====
-        encoder_type = config["type"]
-        vision_cfg = config["vision_encoder"]
-
-        def cnn_builder():
-            return self._build_cnn(vision_cfg)
-
-        if encoder_type == "shared_cnn":
-            self.vision_encoder = SharedCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        elif encoder_type == "per_camera_cnn":
-            self.vision_encoder = PerCameraCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        else:
-            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+        self.vision_encoder = self._build_vision_encoder(config)
 
         vision_dim = self.vision_encoder.output_dim
 
-        # ===== fusion =====
         self.feature_fusion = nn.Sequential(
             nn.Linear(vision_dim * self.num_cameras, vision_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
 
-        # ===== action head =====
         action_cfg = config["action_head"]
         self.state_obs_dim = action_cfg.get("state_obs_dim")
         mlp_input_dim = vision_dim
@@ -450,14 +428,12 @@ class Policy(nn.Module):
             output_dim=action_dim,
         )
 
-        # ===== pose head =====
         self.pose_head = self._build_mlp(
             input_dim=vision_dim,
             hidden_dims=config["pose_head"]["hidden_dims"],
             output_dim=7,
         )
 
-    # ------------------------
     def forward(self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None):
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(th.cat(features, dim=-1))
@@ -469,29 +445,48 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
-    # ------------------------
     @property
     def dtype(self):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
+    def _build_vision_encoder(self, config):
+        encoder_type = config["type"]
+        vision_cfg = config["vision_encoder"]
+
+        def cnn_builder():
+            return self._build_cnn(vision_cfg)
+
+        if encoder_type == "shared_cnn":
+            return SharedCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        elif encoder_type == "per_camera_cnn":
+            return PerCameraCNNEncoder(
+                self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        else:
+            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+
     @staticmethod
     def _build_cnn(config: dict) -> nn.Sequential:
         layers = []
         for c in config["conv_layers"]:
-            layers += [
+            layers.append(
                 nn.Conv2d(
                     c["in_channels"],
                     c["out_channels"],
                     kernel_size=c["kernel_size"],
                     stride=c["stride"],
                     padding=c["padding"],
-                ),
-                nn.BatchNorm2d(c["out_channels"]),
-                nn.ReLU(),
-            ]
-        # if config.get("pooling") == "adaptive_avg":
-        #     layers.append(nn.AdaptiveAvgPool2d((4, 4)))
+                )
+            )
+            layers.append(nn.BatchNorm2d(c["out_channels"]))
+            layers.append(nn.ReLU())
 
         if config.get("pooling") == "adaptive_avg":
             pool_size = config["pool_size"]
@@ -503,7 +498,8 @@ class Policy(nn.Module):
     def _build_mlp(input_dim, hidden_dims, output_dim):
         layers = []
         for h in hidden_dims:
-            layers += [nn.Linear(input_dim, h), nn.ReLU()]
+            layers.append(nn.Linear(input_dim, h))
+            layers.append(nn.ReLU())
             input_dim = h
         layers.append(nn.Linear(input_dim, output_dim))
         return nn.Sequential(*layers)
@@ -525,11 +521,6 @@ class SharedCNNEncoder(VisionEncoder):
         super().__init__(num_cameras)
         self.encoder = cnn_builder()
 
-        # with th.no_grad():
-        #     dummy = th.zeros(1, *input_shape)
-        #     out = self.encoder(dummy).flatten(start_dim=1)
-        #     self.output_dim = out.shape[1]
-
         last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
         pool_size = vision_cfg["pool_size"]
 
@@ -548,11 +539,6 @@ class PerCameraCNNEncoder(VisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder, vision_cfg):
         super().__init__(num_cameras)
         self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
-
-        # with th.no_grad():
-        #     dummy = th.zeros(1, *input_shape)
-        #     out = self.encoders[0](dummy).flatten(start_dim=1)
-        #     self.output_dim = out.shape[1]
 
         last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
         pool_size = vision_cfg["pool_size"]
