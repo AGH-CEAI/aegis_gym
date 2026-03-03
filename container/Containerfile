@@ -16,7 +16,6 @@ ARG CUDA_VERSION
 ARG CUDA_SHORT_VERSION
 ARG TORCH_VERSION
 ARG TORCHVISION_VERSION
-ARG UV_VERSION
 
 LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
 LABEL aegis.gym.cuda=${CUDA_VERSION}
