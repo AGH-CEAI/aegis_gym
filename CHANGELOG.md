@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-65](https://github.com/AGH-CEAI/aegis_gym/pull/65) - Added support for both shared convolutional encoder and per-camera convolutional encoders.
+- [PR-65](https://github.com/AGH-CEAI/aegis_gym/pull/65) - Introduced modular vision encoder interface for behavior cloning policies.
 - [PR-63](https://github.com/AGH-CEAI/aegis_gym/pull/63) - Added success checking for Grasp environment.
 - [PR-61](https://github.com/AGH-CEAI/aegis_gym/pull/61) - Added reading visual observations from the gRPC server.
 - [PR-60](https://github.com/AGH-CEAI/aegis_gym/pull/60) - Added option for calibration movement.
