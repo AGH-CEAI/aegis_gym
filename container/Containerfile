@@ -49,7 +49,7 @@ FROM torch as simulation
 ARG AEIGS_GYM_TAG
 RUN git clone -b ${AEIGS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
     && cd ./aegis_gym \
-    && uv pip install --system -e . \
+    && uv pip install --system --extra sim-genesis -r pyproject.toml \
     && uv cache clean \
     && cd /ws \
     && rm -rf ./aegis_gym \
