@@ -46,7 +46,7 @@ RUN apt update  \
     && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
 
 FROM torch as simulation
-ARG AEIGS_GYM_TAG=
+ARG AEIGS_GYM_TAG
 RUN git clone -b ${AEIGS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
     && cd ./aegis_gym \
     && uv pip install --system -e . \
@@ -58,6 +58,7 @@ RUN git clone -b ${AEIGS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegi
 CMD ["/bin/bash"]
 
 FROM simulation as hardware_control
+ARG AEGIS_ROS_TAG
 RUN apt update  \
     && apt install -y \
         cmake \
