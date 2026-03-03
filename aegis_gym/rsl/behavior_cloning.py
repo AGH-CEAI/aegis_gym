@@ -478,7 +478,7 @@ class Policy(nn.Module):
             fused = th.cat([fused, state_obs], dim=-1)
         return self.action_head(fused)
 
-    def predict_pose(self, rgb_obs: th.Tensor):
+    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor]:
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
