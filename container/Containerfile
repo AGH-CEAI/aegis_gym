@@ -1,14 +1,15 @@
 ARG AEGIS_ROS_TAG=humble-devel
+ARG AEIGS_GYM_TAG=devel
 
 ARG UBUNTU_VERSION=22.04
 ARG CUDA_VERSION=12.9.1
 ARG CUDA_SHORT_VERSION=cu129
 ARG TORCH_VERSION=2.8.0
 ARG TORCHVISION_VERSION=0.23.0
-ARG UV_VERSION=0.10.7
 
-FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION}
+FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} as torch
 ARG AEGIS_ROS_TAG
+ARG AEIGS_GYM_TAG
 ARG UBUNTU_VERSION
 ARG CUDA_VERSION
 ARG CUDA_SHORT_VERSION
@@ -20,7 +21,7 @@ LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
 LABEL aegis.gym.cuda=${CUDA_VERSION}
 LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
 LABEL aegis.gym.torch=${TORCH_VERSION}
-LABEL aegis.gym.uv=${UV_VERSION}
+LABEL aegis.gym.version=${AEIGS_GYM_TAG}
 LABEL aegis.ros.version=${AEGIS_ROS_TAG}
 
 USER root
@@ -33,8 +34,7 @@ RUN apt update  \
         git \
         wget \
         python3-pip \
-    && pip install uv==${UV_VERSION} \
-    # && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && pip install uv \
     && pip install \
         torch==${TORCH_VERSION} \
         torchvision==${TORCHVISION_VERSION} \
@@ -45,7 +45,21 @@ RUN apt update  \
     && pip cache purge \
     && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
 
-# DEBUG: MERGE WITH PREVIOUS
+FROM torch as simulation
+# TODO remove before merge
+ARG AEIGS_GYM_TAG=feature/migrate_poetry_to_uv
+RUN git clone -b ${AEIGS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
+    && cd ./aegis_gym \
+    && uv pip install --system -e . \
+    && uv cache clean \
+    && cd /ws \
+    && rm -rf ./aegis_gym \
+    && rm -rf ~/.cache/pip
+
+CMD ["/bin/bash"]
+
+FROM simulation as hardware_control
+# TODO remove before merge
 ARG AEGIS_ROS_TAG=feature/aegis_grpc/simplified_cmake_build
 RUN apt update  \
     && apt install -y \
@@ -74,8 +88,5 @@ RUN apt update  \
     && apt autoremove -y \
     && apt clean \
     && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
-
-# TODO: clone aegis_gym and install dependencies via uv
-# Remove aegis_gym and cache
 
 CMD ["/bin/bash"]
