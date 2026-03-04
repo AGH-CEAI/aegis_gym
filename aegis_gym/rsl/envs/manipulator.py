@@ -6,10 +6,6 @@ from typing import Literal, Optional
 import torch as th
 import genesis as gs
 from clearml import Dataset
-from genesis.utils.geom import (
-    transform_quat_by_quat,
-    xyz_to_quat,
-)
 
 
 class Manipulator:
@@ -59,9 +55,7 @@ class Manipulator:
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
 
-        self._ik_method: Literal["gs_ik", "dls_ik", "gs_ikv", "dls_ikv"] = args[
-            "ik_method"
-        ]
+        self._ik_method: Literal["gs_ikv", "dls_ikv"] = args["ik_method"]
 
         self._setup_config()
 
@@ -122,14 +116,14 @@ class Manipulator:
     def set_pd_gains(self):
         # set control gains
         self._robot_entity.set_dofs_kp(
-            th.tensor([4500, 4500, 3500, 3500, 3500, 3500, 100, 100]) * 10.0,
+            th.tensor([4500, 4500, 3500, 3500, 3500, 3500, 100, 100]),
         )
         self._robot_entity.set_dofs_kv(
-            th.tensor([350, 350, 250, 250, 250, 250, 10, 10]) * 1.4,
+            th.tensor([350, 350, 250, 250, 250, 250, 10, 10]),
         )
         self._robot_entity.set_dofs_force_range(
-            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100]) * 10.0,
-            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]) * 10.0,
+            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100]),
+            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]),
         )
         # TODO(issue#57) configure armature, damping and stiffness
         # self._robot_entity.set_dofs_armature(
@@ -167,26 +161,18 @@ class Manipulator:
             open_gripper: Optional bool to control gripper state
         """
 
-        q_pos = None
-        q_vel = None
-
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
             case "gs_ikv":
                 q_vel = self._pseudoinverse_velocity_ik(action)
             case "dls_ikv":
                 q_vel = self._dls_velocity_ik(action)
-            case "gs_ik":
-                q_pos = self._gs_ik(action)
-            case "dls_ik":
-                q_pos = self._dls_ik(action)
             case _:
                 raise ValueError(f"Invalid IK method: {self._ik_method}")
 
         # Set gripper position if specified
         if open_gripper is not None:
-            if q_pos is None:
-                q_pos = self._robot_entity.get_qpos()
+            q_pos = self._robot_entity.get_qpos()
             if open_gripper:
                 q_pos[:, self._fingers_dof] = self._gripper_open_dof
             else:
@@ -197,11 +183,9 @@ class Manipulator:
                     position=q_pos[:, self._fingers_dof],
                     dofs_idx_local=self._fingers_dof,
                 )
-
-        if q_vel is not None:
-            self._robot_entity.control_dofs_velocity(velocity=q_vel)
-        elif q_pos is not None:
             self._robot_entity.control_dofs_position(position=q_pos)
+
+        self._robot_entity.control_dofs_velocity(velocity=q_vel)
 
     def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
@@ -273,43 +257,6 @@ class Manipulator:
         )
         return th.cat([q_vel, finger_zeros], dim=-1)
 
-    def _gs_ik(self, action: th.Tensor) -> th.Tensor:
-        """
-        Genesis inverse kinematics
-        """
-        delta_position = action[:, :3]
-        delta_orientation = action[:, 3:6]
-
-        # compute target pose
-        target_position = delta_position + self._ee_link.get_pos()
-        quat_rel = xyz_to_quat(delta_orientation, rpy=True, degrees=False)
-        target_orientation = transform_quat_by_quat(quat_rel, self._ee_link.get_quat())
-        q_pos = self._robot_entity.inverse_kinematics(
-            link=self._ee_link,
-            pos=target_position,
-            quat=target_orientation,
-            dofs_idx_local=self._arm_dof_idx,
-        )
-        return q_pos
-
-    def _dls_ik(self, action: th.Tensor) -> th.Tensor:
-        """
-        Damped least squares inverse kinematics
-        """
-        delta_pose = action[:, :6]
-        lambda_val = 0.01
-        jacobian = self._robot_entity.get_jacobian(link=self._ee_link)
-        jacobian_T = jacobian.transpose(1, 2)
-        lambda_matrix = (lambda_val**2) * th.eye(
-            n=jacobian.shape[1], device=self._device
-        )
-        delta_joint_pos = (
-            jacobian_T
-            @ th.inverse(jacobian @ jacobian_T + lambda_matrix)
-            @ delta_pose.unsqueeze(-1)
-        ).squeeze(-1)
-        return self._robot_entity.get_qpos() + delta_joint_pos
-
     def go_to_goal(self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None):
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
@@ -336,6 +283,11 @@ class Manipulator:
         """
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
         return th.cat([pos, quat], dim=-1)
+
+    @property
+    def gripper_width(self) -> th.Tensor:
+        fingers = self._robot_entity.get_qpos()[:, self._fingers_dof]
+        return fingers.sum(dim=1)
 
     # @property
     # def left_finger_pose(self) -> th.Tensor:
