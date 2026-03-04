@@ -27,12 +27,10 @@ repos:
     -   id: pretty-format-json
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
-    # TODO(issue#43) extract all ROS dependencies to upgrade numpy to 2.X.X
-    # -   repo: https://github.com/python-poetry/poetry
-    #     rev: "2.2.1"
-    #     hooks:
-    #     -   id: poetry-check
-    #     -   id: poetry-lock
+-   repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.10.7
+    hooks:
+    - id: uv-lock
 
 -   repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

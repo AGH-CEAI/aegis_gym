@@ -2,7 +2,7 @@
 
 The collection of [Gymnasium](https://gymnasium.farama.org/) environments for the Aegis UR5e station.
 
-[![Poetry](https://img.shields.io/endpoint?url=https://python-poetry.org/badge/v0.json)](https://python-poetry.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Licence](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
@@ -23,15 +23,15 @@ The collection of [Gymnasium](https://gymnasium.farama.org/) environments for th
 
 ## Build & install
 ```bash
-poetry build
+uv build
 pip3 install ./dist/aegis_gym-*.whl
 # Combined command:
-poetry build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-py3-none-any.whl[sim-genesis]"
+uv build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-py3-none-any.whl[sim-genesis]"
 ```
 
 ## Run tests
 ```bash
-poetry run pytest -v -s
+uv run pytest -v -s
 ```
 ## Run test training
 ```bash
