@@ -500,6 +500,7 @@ class Policy(nn.Module):
     def _build_mlp(
         input_dim: int, hidden_dims: list[int], output_dim: int
     ) -> nn.Sequential:
+        # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
         layers = []
         for h in hidden_dims:
             layers.append(nn.Linear(input_dim, h))
@@ -529,6 +530,7 @@ class SharedCNNEncoder(VisionEncoder):
 
         self.output_dim = last_channels * pool_size * pool_size
 
+    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = []
         for i in range(self.num_cameras):
@@ -548,6 +550,7 @@ class PerCameraCNNEncoder(VisionEncoder):
 
         self.output_dim = last_channels * pool_size * pool_size
 
+    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = []
         for i in range(self.num_cameras):
