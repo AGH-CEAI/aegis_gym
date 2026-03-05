@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - [PR-65](https://github.com/AGH-CEAI/aegis_gym/pull/65) - Added support for both shared convolutional encoder and per-camera convolutional encoders.
 - [PR-65](https://github.com/AGH-CEAI/aegis_gym/pull/65) - Introduced modular vision encoder interface for behavior cloning policies.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: added support for new gRPC client joints enum.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `gripper_width` properties to the `manipulator` abstractions.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `--plotjuggler` flag to the eval script.
+- [PR-64](https://github.com/AGH-CEAI/aegis_gym/pull/64) - Grasp Env: Added flag `--visualize-camera` to train, for preview of the simulated cameras.
 - [PR-63](https://github.com/AGH-CEAI/aegis_gym/pull/63) - Added success checking for Grasp environment.
 - [PR-61](https://github.com/AGH-CEAI/aegis_gym/pull/61) - Added reading visual observations from the gRPC server.
 - [PR-60](https://github.com/AGH-CEAI/aegis_gym/pull/60) - Added option for calibration movement.
@@ -35,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-69](https://github.com/AGH-CEAI/aegis_gym/pull/69) - Migrated from `poetry` to `uv` python package manager.
 - [PR-59](https://github.com/AGH-CEAI/aegis_gym/pull/59) - Changed control type in simulated GraspEnv to match the real one (velocity control).
 - [PR-58](https://github.com/AGH-CEAI/aegis_gym/pull/58) - Major development towards sim2real calibration.
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - The `AegisGrasp`'s rsl_rl robot config accepts ID to download URDF dataset from ClearML (see [aegis_ros PR-95](https://github.com/AGH-CEAI/aegis_ros/pull/95)).
@@ -51,14 +56,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
+- [PR-66](https://github.com/AGH-CEAI/aegis_gym/pull/66) - Grasp Env: Policy position control from Genesis.
 - [PR-3](https://github.com/AGH-CEAI/aegis_gym/pull/3) - Automatic change to ROSInterfaceMock for PyTest environment.
 
 ### Removed
 
+- [PR-66](https://github.com/AGH-CEAI/aegis_gym/pull/66) - Grasp Env: Reverted PD gains from [PR-58](https://github.com/AGH-CEAI/aegis_gym/pull/58).
 - [PR-49](https://github.com/AGH-CEAI/aegis_gym/pull/49) - Removed automatic URDF generation with `xacro`.
 
 ### Fixed
 
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Fixed real `grasp_and_lift_demo()`.
+- [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Fixed joints getters.
 - [PR-63](https://github.com/AGH-CEAI/aegis_gym/pull/63) - Fixed conditional checks for action commands.
 - [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Fixed model sorting and typos.
 - [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Fixed pose retrieval for Genesis entities.

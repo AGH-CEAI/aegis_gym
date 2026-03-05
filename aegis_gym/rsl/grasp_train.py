@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--calibration-move", type=str_to_list, default=None)
     parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     parser.add_argument("--calibration-steps", type=int, default=500)
+    parser.add_argument("--visualize-camera", action="store_true", default=False)
     parser.add_argument("--disable-vision", action="store_true", default=False)
     args = parser.parse_args()
 
@@ -62,6 +63,8 @@ def main():
     # === env ===
     # BC only needs a small number of envs
     env_cfg["num_envs"] = args.num_envs if args.stage != "bc" else 10
+    # Visualise cameras in GUI
+    env_cfg["visualize_camera"] = args.visualize_camera
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     env = None

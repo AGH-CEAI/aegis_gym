@@ -8,7 +8,7 @@ import torch as th
 from tensordict import TensorDict
 
 try:
-    from aegis_grpc_client import AegisRobotClient
+    from aegis_grpc_client import AegisJointIndex, AegisRobotClient
 except ImportError:
     print(
         "Failed to import aegis_grpc_client. "
@@ -173,13 +173,13 @@ class ManipulatorROS:
         return self._vision
 
     def get_joints_positions(self) -> th.Tensor:
-        return self._state["joints_pos"].to(device=self.device, dtype=th.float32)
+        return self._state["joints"][:, 0].to(device=self.device, dtype=th.float32)
 
     def get_joints_velocities(self) -> th.Tensor:
-        return self._state["joints_vel"].to(device=self.device, dtype=th.float32)
+        return self._state["joints"][:, 1].to(device=self.device, dtype=th.float32)
 
     def get_joints_efforts(self) -> th.Tensor:
-        return self._state["joints_eff"].to(device=self.device, dtype=th.float32)
+        return self._state["joints"][:, 2].to(device=self.device, dtype=th.float32)
 
     def get_tcp_position(self) -> th.Tensor:
         return self.get_tcp_pose()[:3]
@@ -321,3 +321,8 @@ class ManipulatorROS:
     @property
     def camera_tool_left(self) -> th.Tensor:
         return self.get_camera_tool_left_frame()
+
+    @property
+    def gripper_width(self) -> float:
+        idx = AegisJointIndex.ROBOTIQ_HANDE_LEFT_FINGER_JOINT.value
+        return self.get_joints_positions()[idx] * 2

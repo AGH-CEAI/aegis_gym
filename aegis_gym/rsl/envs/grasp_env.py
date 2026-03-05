@@ -49,6 +49,7 @@ class GraspEnv(VecEnv):
             f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 
+        self._cameras: dict[str, gs.Camera] = {}
         self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
         self.scene.build(
             n_envs=env_cfg["num_envs"],
@@ -63,6 +64,8 @@ class GraspEnv(VecEnv):
         self.reset()
 
     def _extract_config(self) -> None:
+        self.show_cameras_gui = self._cfg["visualize_camera"]
+
         self.num_envs = self._cfg["num_envs"]
         self.num_obs = self._cfg["num_obs"]
         self.num_privileged_obs = None
@@ -176,13 +179,13 @@ class GraspEnv(VecEnv):
                 self._add_camera(name="scene_left_cam", pos=(1.25, 0.3, 0.3), fov=60)
                 self._add_camera(name="scene_right_cam", pos=(1.25, -0.3, 0.3), fov=60)
 
-        if self._cfg["visualize_camera"]:
+        if self.show_cameras_gui:
             self.record_cam = self.scene.add_camera(
                 res=(1280, 720),
                 pos=(1.5, 0.0, 0.2),
                 lookat=(0.0, 0.0, 0.2),
                 fov=60,
-                GUI=self._cfg["visualize_camera"],
+                GUI=self.show_cameras_gui,
                 debug=True,
             )
 
@@ -197,16 +200,12 @@ class GraspEnv(VecEnv):
     ):
         if res is None:
             res = (self.image_width, self.image_height)
-        setattr(
-            self,
-            name,
-            self.scene.add_camera(
-                res=res,
-                pos=pos,
-                lookat=lookat,
-                fov=fov,
-                GUI=self._cfg["visualize_camera"],
-            ),
+        self._cameras[name] = self.scene.add_camera(
+            res=res,
+            pos=pos,
+            lookat=lookat,
+            fov=fov,
+            GUI=self.show_cameras_gui,
         )
 
     def _attach_cameras(self):
@@ -239,9 +238,10 @@ class GraspEnv(VecEnv):
         ]
 
         for cam_name, link_name, offset in cams_to_attach:
-            cam = getattr(self, cam_name)
-            cam.attach(self.robot._robot_entity.get_link(link_name), offset)
-            cam.move_to_attach()
+            self._cameras[cam_name].attach(
+                self.robot._robot_entity.get_link(link_name), offset
+            )
+            self._cameras[cam_name].move_to_attach()
 
     # Required by rsl_rl
     @property
@@ -348,6 +348,8 @@ class GraspEnv(VecEnv):
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
+        if self.show_cameras_gui:
+            self.get_observations_vis()
         self._log_state_to_plot_juggler()
 
         # check termination
@@ -470,15 +472,9 @@ class GraspEnv(VecEnv):
         return stereo_rgb
 
     def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
-        match self.camera_setup:
-            case "default":
-                cams = [self.scene_cam, self.tool_left_cam, self.tool_right_cam]
-            case "scene_dual":
-                cams = [self.scene_left_cam, self.scene_right_cam]
-            case _:
-                raise ValueError(f"Unknown camera setup {self.camera_setup}")
-
+        cams = tuple(self._cameras.values())
         rgb_list = [None] * len(cams)
+
         for cam_id, cam in enumerate(cams):
             rgb, _, _, _ = cam.render(
                 rgb=True, depth=False, segmentation=False, normal=False

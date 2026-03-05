@@ -345,14 +345,14 @@ class GraspEnvROS(VecEnv):
         self.robot.read_state()
 
         total_steps = 500
-        grab_height = 0.12
+        grab_height = 0.08
         min_width = 0.005
         max_width = 0.04
         goal_pose = self.robot.ee_pose.clone()
         goal_pose[:, 2] -= grab_height
 
         # lift pose (above the object)
-        lift_height = 0.2
+        lift_height = 0.16
         lift_pose = goal_pose.clone()
         lift_pose[:, 2] += lift_height
 
@@ -382,8 +382,7 @@ class GraspEnvROS(VecEnv):
                     continue
                 print("[GraspEnvROS][Demo] Going up to the lift pose")
                 self.robot.go_to_goal(lift_pose)
-                fingers = self.robot.get_joints_positions()[:, -2:]
-                fingers_width = fingers.sum(dim=1).item()
+                fingers_width = self.robot.gripper_width
                 success = (fingers_width > min_width) and (fingers_width < max_width)
                 step_3 = True
             else:  # reset
