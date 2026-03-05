@@ -40,6 +40,7 @@ class ManipulatorROS:
         self,
         num_envs: int,
         args: dict,
+        disable_vision: bool = False,
         device: th.device = th.device("cpu"),
     ):
         if hasattr(self, "_initialized") and self._initialized:
@@ -51,6 +52,7 @@ class ManipulatorROS:
         self.pt = PoseTransformUtils(device=device)
         self._num_envs = num_envs
         self._args = args
+        self._disable_vision = disable_vision
         self.device = device
 
         # TODO get from cfg / dynamically from rsl_rl
@@ -145,20 +147,22 @@ class ManipulatorROS:
         return future.result()  # blocks until complete
 
     def read_state(self) -> None:
-        # TOD(issue#62) add option to disable image processing
         states = self._run_coro(self._robot_client.get_all())
         self._state = TensorDict(
             {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
             device=self.device,
         )
         # We assume RGB channels instead of default BGR
-        self._vision = TensorDict(
-            {
-                k: th.from_numpy(v).to(self.device).roll(1, dims=-1)
-                for k, v in states["vision"].items()
-            },
-            device=self.device,
-        )
+        if not self._disable_vision:
+            self._vision = TensorDict(
+                {
+                    k: th.from_numpy(v).to(self.device).roll(1, dims=-1)
+                    for k, v in states["vision"].items()
+                },
+                device=self.device,
+            )
+        else:
+            self._vision = None
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
         self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
 

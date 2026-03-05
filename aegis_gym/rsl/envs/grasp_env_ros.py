@@ -50,9 +50,11 @@ class GraspEnvROS(VecEnv):
         self,
         env_cfg: dict,
         robot_cfg: dict,
+        disable_vision: bool = False,
         device: th.device = th.device("cpu"),
     ) -> None:
         self._cfg = env_cfg
+        self.disable_vision = disable_vision
         self.device = device
 
         self._extract_config()
