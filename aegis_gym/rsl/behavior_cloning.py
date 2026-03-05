@@ -3,7 +3,7 @@ import time
 from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch as th
@@ -443,7 +443,7 @@ class Policy(nn.Module):
             fused = th.cat([fused, state_obs], dim=-1)
         return self.action_head(fused)
 
-    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor]:
+    def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
@@ -515,12 +515,12 @@ class VisionEncoder(nn.Module):
         self.num_cameras = num_cameras
         self.output_dim = None
 
-    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         raise NotImplementedError
 
 
 class SharedCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder, vision_cfg: dict):
+    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoder = cnn_builder()
 
@@ -529,17 +529,17 @@ class SharedCNNEncoder(VisionEncoder):
 
         self.output_dim = last_channels * pool_size * pool_size
 
-    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = []
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
             feat = self.encoder(cam_rgb).flatten(start_dim=1)
             features.append(feat)
-        return features
+        return tuple(features)
 
 
 class PerCameraCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder, vision_cfg: dict):
+    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
 
@@ -548,10 +548,10 @@ class PerCameraCNNEncoder(VisionEncoder):
 
         self.output_dim = last_channels * pool_size * pool_size
 
-    def forward(self, rgb_obs: th.Tensor) -> list[th.Tensor]:
+    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = []
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
             feat = self.encoders[i](cam_rgb).flatten(start_dim=1)
             features.append(feat)
-        return features
+        return tuple(features)
