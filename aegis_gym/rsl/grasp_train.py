@@ -86,6 +86,7 @@ def main():
                 f"[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
             )
             return
+        env_cfg["num_envs"] = 1
         env = GraspEnvROS(
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,

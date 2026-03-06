@@ -65,6 +65,7 @@ class GraspEnvROS(VecEnv):
         self.robot = ManipulatorROS(
             num_envs=self.num_envs,
             args=robot_cfg,
+            disable_vision=self.disable_vision,
             device=self.device,
         )
 
