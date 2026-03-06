@@ -1,6 +1,7 @@
 # TODO CHANGE BEFORE MERGE
-ARG AEGIS_ROS_TAG=feature/aegis_grpc/simplified_cmake_build
-ARG AEIGS_GYM_TAG=feature/migrate_poetry_to_uv
+ARG AEGIS_GYM_TAG=devel
+ARG AEGIS_ROS_TAG=humble-devel
+ARG CEAI_RSL_RL_TAG=v3.3.1
 
 ARG UBUNTU_VERSION=22.04
 ARG CUDA_VERSION=12.9.1
@@ -10,7 +11,7 @@ ARG TORCHVISION_VERSION=0.23.0
 
 FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} as torch
 ARG AEGIS_ROS_TAG
-ARG AEIGS_GYM_TAG
+ARG AEGIS_GYM_TAG
 ARG UBUNTU_VERSION
 ARG CUDA_VERSION
 ARG CUDA_SHORT_VERSION
@@ -21,13 +22,14 @@ LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
 LABEL aegis.gym.cuda=${CUDA_VERSION}
 LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
 LABEL aegis.gym.torch=${TORCH_VERSION}
-LABEL aegis.gym.version=${AEIGS_GYM_TAG}
+LABEL aegis.gym.version=${AEGIS_GYM_TAG}
 LABEL aegis.ros.version=${AEGIS_ROS_TAG}
 
 USER root
 WORKDIR /ws
 
 # Install tools and PyTorch
+ENV UV_SYSTEM_PYTHON=1
 RUN apt update  \
     && apt install -y \
         curl \
@@ -35,7 +37,7 @@ RUN apt update  \
         wget \
         python3-pip \
     && pip install uv \
-    && pip install \
+    && uv pip install \
         torch==${TORCH_VERSION} \
         torchvision==${TORCHVISION_VERSION} \
         --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
@@ -43,17 +45,27 @@ RUN apt update  \
     && apt autoremove -y \
     && apt clean \
     && pip cache purge \
-    && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
 
 FROM torch as simulation
-ARG AEIGS_GYM_TAG
-RUN git clone -b ${AEIGS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
+ARG TORCH_VERSION
+ARG TORCHVISION_VERSION
+ARG CUDA_SHORT_VERSION
+ARG AEGIS_GYM_TAG
+ARG CEAI_RSL_RL_TAG
+
+ENV UV_SYSTEM_PYTHON=1
+RUN git clone -b ${CEAI_RSL_RL_TAG} https://github.com/AGH-CEAI/rsl_rl.git rsl_rl \
+    && cd ./rsl_rl \
+    && uv pip install --system . \
+    && cd /ws \
+    && git clone -b ${AEGIS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
     && cd ./aegis_gym \
     && uv pip install --system --extra sim-genesis -r pyproject.toml \
     && uv cache clean \
     && cd /ws \
-    && rm -rf ./aegis_gym \
-    && rm -rf ~/.cache/pip
+    && rm -rf ./rsl_rl ./aegis_gym \
+    && rm -rf ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
 
 CMD ["/bin/bash"]
 

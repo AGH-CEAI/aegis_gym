@@ -4,7 +4,9 @@
 ### Build and upload
 ```bash
 # Setup the arguments
-./build.sh VERSION=v1.0.0 REGISTRY=192.168.0.100:5000 PUSH=true
+VERSION=v1.0.0 REGISTRY=localhost PUSH=false ./build.sh
+VERSION=v1.0.0 REGISTRY=genesis.local PUSH=true ./build.sh
+VERSION=v0.0.1 REGISTRY=ghcr.io PUSH=true ./build.sh
 ```
 Will create
 * `${REGISTRY}/ceai/aegis_gym:${VERSION}-simulator` for learning only
