@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-72](https://github.com/AGH-CEAI/aegis_gym/pull/72) - Added flag to disable visual observations in Grasp ROS environment.
 - [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: added support for new gRPC client joints enum.
 - [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `gripper_width` properties to the `manipulator` abstractions.
 - [PR-67](https://github.com/AGH-CEAI/aegis_gym/pull/67) - Grasp Env: Added `--plotjuggler` flag to the eval script.
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-72](https://github.com/AGH-CEAI/aegis_gym/pull/72) - Enforced single environment for Grasp ROS training.
 - [PR-69](https://github.com/AGH-CEAI/aegis_gym/pull/69) - Migrated from `poetry` to `uv` python package manager.
 - [PR-59](https://github.com/AGH-CEAI/aegis_gym/pull/59) - Changed control type in simulated GraspEnv to match the real one (velocity control).
 - [PR-58](https://github.com/AGH-CEAI/aegis_gym/pull/58) - Major development towards sim2real calibration.
