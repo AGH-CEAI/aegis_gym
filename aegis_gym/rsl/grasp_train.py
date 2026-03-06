@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     parser.add_argument("--calibration-steps", type=int, default=500)
     parser.add_argument("--visualize-camera", action="store_true", default=False)
+    parser.add_argument("--disable-vision", action="store_true", default=False)
     args = parser.parse_args()
 
     # Set PyTorch default dtype to float32 for better performance
@@ -85,9 +86,11 @@ def main():
                 f"[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
             )
             return
+        env_cfg["num_envs"] = 1
         env = GraspEnvROS(
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
+            disable_vision=args.disable_vision,
             device=device,
         )
 
