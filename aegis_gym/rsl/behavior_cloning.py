@@ -459,6 +459,7 @@ class Policy(nn.Module):
         def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)
 
+        # TODO(issue#73): Extract vision encoder construction into a separate function
         if encoder_type == "shared_cnn":
             return SharedCNNEncoder(
                 self.num_cameras,
