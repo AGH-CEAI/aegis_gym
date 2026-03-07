@@ -9,7 +9,9 @@ ARG CUDA_SHORT_VERSION=cu129
 ARG TORCH_VERSION=2.8.0
 ARG TORCHVISION_VERSION=0.23.0
 
-FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} as torch
+ARG UBUNTU_VERSION=22.04
+FROM ubuntu:${UBUNTU_VERSION} as torch
+# FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} as torch
 ARG AEGIS_ROS_TAG
 ARG AEGIS_GYM_TAG
 ARG UBUNTU_VERSION
@@ -37,14 +39,29 @@ RUN apt update  \
         wget \
         python3-pip \
     && pip install uv \
+    # && uv pip install \
+    #     torch==${TORCH_VERSION} \
+    #     torchvision==${TORCHVISION_VERSION} \
+    #     --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
+    # HACK(issue#X) Do not download dependencies already in the base image
     && uv pip install \
         torch==${TORCH_VERSION} \
         torchvision==${TORCHVISION_VERSION} \
         --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
+        # --no-binary nvidia-cuda-nvrtc-cu12,nvidia-cuda-runtime-cu12,nvidia-cuda-cupti-cu12,nvidia-cudnn-cu12 \
+        # --no-deps \
+    # && uv pip install \
+    #     triton \
+    #     sympy \
+    #     networkx \
+    #     numpy \
+    #     pillow \
+    #     --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
     && export SUDO_FORCE_REMOVE=yes \
     && apt autoremove -y \
     && apt clean \
     && pip cache purge \
+    && uv cache clean \
     && rm -rf /var/lib/apt/lists/* ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
 
 FROM torch as simulation
@@ -55,18 +72,34 @@ ARG AEGIS_GYM_TAG
 ARG CEAI_RSL_RL_TAG
 
 ENV UV_SYSTEM_PYTHON=1
-RUN git clone -b ${CEAI_RSL_RL_TAG} https://github.com/AGH-CEAI/rsl_rl.git rsl_rl \
+RUN apt update \
+    && apt install -y --no-install-recommends \
+        libegl1 \
+        libegl-mesa0 \
+        libgl1 \
+        libgl1-mesa-dri \
+        libgles2 \
+        libglvnd0 \
+        libglx0 \
+        libgl1-mesa-glx \
+        mesa-utils \
+        xvfb \
+    && git clone -b ${CEAI_RSL_RL_TAG} https://github.com/AGH-CEAI/rsl_rl.git rsl_rl \
     && cd ./rsl_rl \
     && uv pip install --system . \
     && cd /ws \
     && git clone -b ${AEGIS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
     && cd ./aegis_gym \
     && uv pip install --system --extra sim-genesis -r pyproject.toml \
-    && uv cache clean \
     && cd /ws \
+    && apt autoremove -y \
+    && apt clean \
+    && uv cache clean \
     && rm -rf ./rsl_rl ./aegis_gym \
-    && rm -rf ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
 
+ENV PYOPENGL_PLATFORM=egl
+ENV PYGLET_HEADLESS=1
 CMD ["/bin/bash"]
 
 FROM simulation as hardware_control

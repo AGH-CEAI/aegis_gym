@@ -18,28 +18,32 @@ if [[ ! "$REGISTRY" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(:[0-9]+)?$|^[a-zA-Z0-9.-]+(:
   exit 1
 fi
 
-echo "> Building ${REGISTRY}/agh-ceai/aegis_gym:${VERSION} variants"
+# echo "> Building ${REGISTRY}/agh-ceai/aegis_gym:${VERSION} variants"
+echo "> Building ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}"
 
-podman build \
-  --target simulation \
-  -t "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator" \
-  --build-arg AEGIS_GYM_TAG=${AEGIS_GYM_TAG} \
-  --build-arg CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG} \
-  .
+# podman build \
+#   --target simulation \
+#   -t "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator" \
+#   --build-arg AEGIS_GYM_TAG=${AEGIS_GYM_TAG} \
+#   --build-arg CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG} \
+#   --build-arg AEGIS_GYM_TAG=${AEGIS_GYM_TAG} \
+#   .
 
 podman build \
   --target hardware_control \
-  -t "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-hardware" \
+  -t "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}" \
   --build-arg AEGIS_ROS_TAG=${AEGIS_ROS_TAG} \
   --build-arg CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG} \
   --build-arg AEGIS_GYM_TAG=${AEGIS_GYM_TAG} \
   .
 
-echo "> Built: ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator and :${VERSION}-hardware"
+# echo "> Built: ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator and :${VERSION}-hardware"
+echo "> Built: ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}"
 
 # Optional: Push if flag set
 if [[ "${PUSH}" == "true" ]]; then
-  podman push "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator"
-  podman push "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-hardware"
+  # podman push "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-simulator"
+  # podman push "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}-hardware"
+  podman push "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}"
   echo "> Pushed to $REGISTRY"
 fi
