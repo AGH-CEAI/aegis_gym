@@ -4,24 +4,21 @@ ARG AEGIS_ROS_TAG=humble-devel
 ARG CEAI_RSL_RL_TAG=v3.3.1
 
 ARG UBUNTU_VERSION=22.04
-ARG CUDA_VERSION=12.9.1
 ARG CUDA_SHORT_VERSION=cu129
 ARG TORCH_VERSION=2.8.0
 ARG TORCHVISION_VERSION=0.23.0
 
-ARG UBUNTU_VERSION=22.04
 FROM ubuntu:${UBUNTU_VERSION} as torch
-# FROM docker.io/nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu${UBUNTU_VERSION} as torch
+
 ARG AEGIS_ROS_TAG
 ARG AEGIS_GYM_TAG
 ARG UBUNTU_VERSION
-ARG CUDA_VERSION
 ARG CUDA_SHORT_VERSION
 ARG TORCH_VERSION
 ARG TORCHVISION_VERSION
 
 LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
-LABEL aegis.gym.cuda=${CUDA_VERSION}
+LABEL aegis.gym.cuda=${CUDA_SHORT_VERSION}
 LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
 LABEL aegis.gym.torch=${TORCH_VERSION}
 LABEL aegis.gym.version=${AEGIS_GYM_TAG}
@@ -39,24 +36,10 @@ RUN apt update  \
         wget \
         python3-pip \
     && pip install uv \
-    # && uv pip install \
-    #     torch==${TORCH_VERSION} \
-    #     torchvision==${TORCHVISION_VERSION} \
-    #     --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
-    # HACK(issue#X) Do not download dependencies already in the base image
     && uv pip install \
         torch==${TORCH_VERSION} \
         torchvision==${TORCHVISION_VERSION} \
         --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
-        # --no-binary nvidia-cuda-nvrtc-cu12,nvidia-cuda-runtime-cu12,nvidia-cuda-cupti-cu12,nvidia-cudnn-cu12 \
-        # --no-deps \
-    # && uv pip install \
-    #     triton \
-    #     sympy \
-    #     networkx \
-    #     numpy \
-    #     pillow \
-    #     --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
     && export SUDO_FORCE_REMOVE=yes \
     && apt autoremove -y \
     && apt clean \
@@ -74,15 +57,20 @@ ARG CEAI_RSL_RL_TAG
 ENV UV_SYSTEM_PYTHON=1
 RUN apt update \
     && apt install -y --no-install-recommends \
-        libegl1 \
         libegl-mesa0 \
+        libegl1 \
         libgl1 \
         libgl1-mesa-dri \
+        libgl1-mesa-glx \
         libgles2 \
+        libglvnd-dev \
         libglvnd0 \
         libglx0 \
-        libgl1-mesa-glx \
+        libvulkan-dev \
+        libvulkan1 \
         mesa-utils \
+        mesa-vulkan-drivers \
+        vulkan-tools \
         xvfb \
     && git clone -b ${CEAI_RSL_RL_TAG} https://github.com/AGH-CEAI/rsl_rl.git rsl_rl \
     && cd ./rsl_rl \
