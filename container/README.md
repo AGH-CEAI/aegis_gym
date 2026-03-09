@@ -9,13 +9,12 @@ VERSION=v1.0.0 REGISTRY=genesis.local PUSH=true ./build.sh
 VERSION=v0.0.1 REGISTRY=ghcr.io PUSH=true ./build.sh
 ```
 Will create
-* `${REGISTRY}/ceai/aegis_gym:${VERSION}-simulator` for learning only
-* `${REGISTRY}/ceai/aegis_gym:${VERSION}-hardware` for ROS-gRPC bridge
-and optionally push these images to the given repository.
+* `${REGISTRY}/ceai/aegis_gym:${VERSION}` for learning and ROS-gRPC bridge.
+and optionally push this image to the given repository.
 
 ### Run
 ```bash
-odman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v1.0.0 bash
+podman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v1.0.0 bash
 # In container
 git clone https://github.com/AGH-CEAI/aegis_gym.git
 cd aegis_gym/aegis_gym/rsl
