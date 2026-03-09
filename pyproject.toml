@@ -15,7 +15,7 @@ dependencies = [
     "strenum>=0.4.15",
     "torch>=2.8.0,<2.9.0",
     "torchvision>=0.23.0,<0.24.0",
-    "rsl-rl-lib==3.3.0",
+    "rsl-rl-lib>=3.3.0,<4",
     "tensorboard>=2.20.0",
     "colorama>=0.4.6",
 ]

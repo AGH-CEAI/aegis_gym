@@ -1,0 +1,122 @@
+ARG AEGIS_GYM_TAG=devel
+ARG AEGIS_ROS_TAG=v202603091730
+ARG CEAI_RSL_RL_TAG=v3.3.1
+
+ARG UBUNTU_VERSION=22.04
+ARG CUDA_SHORT_VERSION=cu129
+ARG TORCH_VERSION=2.8.0
+ARG TORCHVISION_VERSION=0.23.0
+
+FROM ubuntu:${UBUNTU_VERSION} as torch
+
+ARG AEGIS_ROS_TAG
+ARG AEGIS_GYM_TAG
+ARG UBUNTU_VERSION
+ARG CUDA_SHORT_VERSION
+ARG TORCH_VERSION
+ARG TORCHVISION_VERSION
+
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL aegis.gym.cuda=${CUDA_SHORT_VERSION}
+LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
+LABEL aegis.gym.torch=${TORCH_VERSION}
+LABEL aegis.gym.version=${AEGIS_GYM_TAG}
+LABEL aegis.ros.version=${AEGIS_ROS_TAG}
+
+USER root
+WORKDIR /ws
+
+# Install tools and PyTorch
+ENV UV_SYSTEM_PYTHON=1
+RUN apt update  \
+    && apt install -y \
+        curl \
+        git \
+        wget \
+        python3-pip \
+    && pip install uv \
+    && uv pip install \
+        torch==${TORCH_VERSION} \
+        torchvision==${TORCHVISION_VERSION} \
+        --index-url https://download.pytorch.org/whl/${CUDA_SHORT_VERSION} \
+    && export SUDO_FORCE_REMOVE=yes \
+    && apt autoremove -y \
+    && apt clean \
+    && pip cache purge \
+    && uv cache clean \
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
+
+FROM torch as simulation
+ARG TORCH_VERSION
+ARG TORCHVISION_VERSION
+ARG CUDA_SHORT_VERSION
+ARG AEGIS_GYM_TAG
+ARG CEAI_RSL_RL_TAG
+
+ENV UV_SYSTEM_PYTHON=1
+RUN apt update \
+    && apt install -y --no-install-recommends \
+        libegl-mesa0 \
+        libegl1 \
+        libgl1 \
+        libgl1-mesa-dri \
+        libgl1-mesa-glx \
+        libgles2 \
+        libglvnd-dev \
+        libglvnd0 \
+        libglx0 \
+        libvulkan-dev \
+        libvulkan1 \
+        mesa-utils \
+        mesa-vulkan-drivers \
+        vulkan-tools \
+        xvfb \
+    && git clone -b ${CEAI_RSL_RL_TAG} https://github.com/AGH-CEAI/rsl_rl.git rsl_rl \
+    && cd ./rsl_rl \
+    && uv pip install --system . \
+    && cd /ws \
+    && git clone -b ${AEGIS_GYM_TAG} https://github.com/AGH-CEAI/aegis_gym.git aegis_gym \
+    && cd ./aegis_gym \
+    && uv pip install --system --extra sim-genesis -r pyproject.toml \
+    && cd /ws \
+    && apt autoremove -y \
+    && apt clean \
+    && uv cache clean \
+    && rm -rf ./rsl_rl ./aegis_gym \
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip ~/.cache/uv /tmp/* /var/tmp/*
+
+ENV PYOPENGL_PLATFORM=egl
+ENV PYGLET_HEADLESS=1
+CMD ["/bin/bash"]
+
+FROM simulation as hardware_control
+ARG AEGIS_ROS_TAG
+RUN apt update  \
+    && apt install -y \
+        cmake \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        protobuf-compiler-grpc \
+        python3-grpc-tools \
+        python3-grpcio \
+        python3-protobuf \
+    && git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
+    && cd ./aegis_ros/aegis_grpc/ \
+    && bash ./install_client.sh \
+    && uv cache clean \
+    && cd /ws \
+    && rm -rf ./aegis_ros \
+    && apt remove -y \
+        cmake \
+        libgrpc++-dev \
+        libprotobuf-dev \
+        libprotoc-dev \
+        protobuf-compiler \
+        protobuf-compiler-grpc \
+    && apt autoremove -y \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
+
+CMD ["/bin/bash"]
