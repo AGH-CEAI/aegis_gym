@@ -4,8 +4,8 @@
 ### Build and upload
 ```bash
 # Setup the arguments
-VERSION=v1.0.0 REGISTRY=localhost PUSH=false ./build.sh
-VERSION=v1.0.0 REGISTRY=genesis.local PUSH=true ./build.sh
+VERSION=v0.0.1 REGISTRY=localhost PUSH=false ./build.sh
+VERSION=v0.0.1 REGISTRY=genesis.local PUSH=true ./build.sh
 VERSION=v0.0.1 REGISTRY=ghcr.io PUSH=true ./build.sh
 ```
 Will create
@@ -14,7 +14,7 @@ and optionally push this image to the given repository.
 
 ### Run
 ```bash
-podman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v1.0.0 bash
+podman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v0.0.1 bash
 # In container
 git clone https://github.com/AGH-CEAI/aegis_gym.git
 cd aegis_gym/aegis_gym/rsl
