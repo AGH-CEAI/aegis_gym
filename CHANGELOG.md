@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [v202603091815]
+
+### Added
 
 - [PR-72](https://github.com/AGH-CEAI/aegis_gym/pull/72) - Added flag to disable visual observations in Grasp ROS environment.
 - [PR-65](https://github.com/AGH-CEAI/aegis_gym/pull/65) - Added support for both shared convolutional encoder and per-camera convolutional encoders.
@@ -74,5 +83,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-46](https://github.com/AGH-CEAI/aegis_gym/pull/46) - Fixed model sorting and typos.
 - [PR-26](https://github.com/AGH-CEAI/aegis_gym/pull/26) - Fixed pose retrieval for Genesis entities.
 - [PR-21](https://github.com/AGH-CEAI/aegis_gym/pull/21) - Fixed TCP link handling in Genesis.
-
-### Security

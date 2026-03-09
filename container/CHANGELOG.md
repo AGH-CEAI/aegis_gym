@@ -8,11 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
-- [PR-70](https://github.com/AGH-CEAI/aegis_gym/pull/70) - Created first headless learning container.
-
 ### Changed
 ### Deprecated
 ### Removed
 ### Fixed
 ### Security
+
+## [v202603091815]
+
+### Added
+
+- [PR-70](https://github.com/AGH-CEAI/aegis_gym/pull/70) - Created first headless learning container.
