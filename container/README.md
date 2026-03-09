@@ -15,7 +15,7 @@ and optionally push these images to the given repository.
 
 ### Run
 ```bash
-podman run --rm -it --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v1.0.0 bash
+odman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v1.0.0 bash
 # In container
 git clone https://github.com/AGH-CEAI/aegis_gym.git
 cd aegis_gym/aegis_gym/rsl
