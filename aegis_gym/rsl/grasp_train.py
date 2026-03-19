@@ -10,7 +10,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
-from utils import load_teacher_policy
+from utils import load_rl_policy
 
 
 def str_to_list(arg: Optional[str]) -> list[float]:
@@ -134,9 +134,9 @@ def main():
     match args.stage:
         case "bc":
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
-            teacher_policy = load_teacher_policy(
+            teacher_policy = load_rl_policy(
                 env=env,
-                rl_train_cfg=rl_train_cfg,
+                rl_cfg=rl_train_cfg,
                 device=device,
                 exp_name=args.exp_name,
                 log_dir=log_dir,

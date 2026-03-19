@@ -63,6 +63,10 @@ def main():
         action="store_true",
         help="Load configs from saved pickle instead of generating them from code",
     )
+    parser.add_argument("--load-rl-task-id", type=str, default=None)
+    parser.add_argument("--load-rl-model-id", type=str, default=None)
+    parser.add_argument("--load-bc-task-id", type=str, default=None)
+    parser.add_argument("--load-bc-model-id", type=str, default=None)
     args = parser.parse_args()
 
     logger_cfg = get_logger_cfg()
@@ -134,9 +138,23 @@ def main():
 
     # Load the appropriate policy based on model type
     if args.stage == "rl":
-        policy = load_rl_policy(env, rl_train_cfg, log_dir, device)
+        policy = load_rl_policy(
+            env=env,
+            rl_cfg=rl_train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_rl_task_id,
+            clearml_model_id=args.load_rl_model_id,
+        )
     else:
-        policy = load_bc_policy(env, bc_train_cfg, log_dir, device)
+        policy = load_bc_policy(
+            env=env,
+            bc_cfg=bc_train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_bc_task_id,
+            clearml_model_id=args.load_bc_model_id,
+        )
         policy.eval()
 
     obs, _ = env.reset()
