@@ -25,8 +25,10 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--plotjuggler", action="store_true", default=False)
-    parser.add_argument("--max_iterations", type=int, default=300)
+    parser.add_argument("--max-iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
+    parser.add_argument("--load-rl-task-id", type=str, default=None)
+    parser.add_argument("--load-rl-model-id", type=str, default=None)
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     parser.add_argument("--calibration-move", type=str_to_list, default=None)
     parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
@@ -132,7 +134,14 @@ def main():
     match args.stage:
         case "bc":
             teacher_policy = load_teacher_policy(
-                env, rl_train_cfg, args.exp_name, device
+                env=env,
+                rl_train_cfg=rl_train_cfg,
+                device=device,
+                exp_name=args.exp_name,
+                log_dir=log_dir,
+                clearml_task_id=args.load_rl_task_id,
+                clearml_model_id=args.load_rl_model_id,
+                clearml_artifact_name="model",
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(
