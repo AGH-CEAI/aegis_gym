@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import torch as th
-from clearml import Task
+from clearml import Task, Model
 from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
@@ -20,20 +20,26 @@ def load_teacher_policy(
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
 ) -> Callable:
+    print("[Policy Loader] Resolving method and path to load the policy model")
     if clearml_model_id is not None:
-        from clearml import Model
-
+        print(f"[Policy Loader] Loading from ClearML model {clearml_model_id}")
         clearml_model = Model(model_id=clearml_model_id)
         last_ckpt = Path(clearml_model.get_weights(raise_on_error=True))
-        print(f"[Policy Loader] Loaded from ClearML model {clearml_model_id}")
+        print(
+            f"[Policy Loader] Loaded from ClearML model {clearml_model_id} from path {last_ckpt}"
+        )
 
     elif clearml_task_id is not None:
+        print(f"[Policy Loader] Loading from ClearML task {clearml_model_id}")
         last_ckpt = Path(
             get_latest_clearml_checkpoint(clearml_task_id, clearml_artifact_name)
         )
-        print(f"[Policy Loader] Loaded from ClearML task {clearml_task_id}")
+        print(
+            f"[Policy Loader] Loaded from ClearML task {clearml_task_id} from path {last_ckpt}"
+        )
 
     else:
+        print("[Policy Loader] Loading from local file system")
         if log_dir is None and exp_name is None:
             raise ValueError(
                 "Couldn't figure out the path to load the pre-trained policy. Provide log_dir or exp_name or ClearML's model_id or task_id."

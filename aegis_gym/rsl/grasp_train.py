@@ -133,6 +133,7 @@ def main():
     # === runner ===
     match args.stage:
         case "bc":
+            print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
             teacher_policy = load_teacher_policy(
                 env=env,
                 rl_train_cfg=rl_train_cfg,
@@ -149,6 +150,7 @@ def main():
             )
             runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
+            print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
             runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
