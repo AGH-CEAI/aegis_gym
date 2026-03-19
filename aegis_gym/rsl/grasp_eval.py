@@ -56,8 +56,7 @@ def main():
         help="Path to save the video file (default: auto-generated)",
     )
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
-    parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
-    parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
+    parser.add_argument("-nv", "--no-vis", action="store_true", default=False)
     parser.add_argument(
         "--load-from-pickle",
         action="store_true",
@@ -107,7 +106,6 @@ def main():
         env_cfg["box_collision"] = True
         env_cfg["box_fixed"] = False
         env_cfg["visualize_camera"] = args.record
-        env_cfg["sim_substeps"] = args.sim_substeps
 
         import genesis as gs
         from envs.grasp_env import GraspEnv
