@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from clearml import Task
 from clearml.automation import (
     HyperParameterOptimizer,
@@ -5,7 +7,6 @@ from clearml.automation import (
     UniformIntegerParameterRange,
     DiscreteParameterRange,
 )
-from clearml.automation.optuna import OptimizerOptuna
 
 
 # USER CONFIG
@@ -41,9 +42,6 @@ POOL_PERIOD_MIN = 0.2
 # Only affects logging, not optimization behavior
 REPORT_PERIOD_MIN = 1
 
-
-# HYPERPARAMETERS
-
 # Define hyperparameters to optimize
 HYPER_PARAMETERS = [
     UniformParameterRange(
@@ -60,26 +58,26 @@ HYPER_PARAMETERS = [
     DiscreteParameterRange("policy_cfg/activation", values=["relu", "elu"]),
 ]
 
-# OPTIMIZER SELECTION
 
-if OPTIMIZER_TYPE == "optuna":
-    optimizer_class = OptimizerOptuna
-elif OPTIMIZER_TYPE == "bohb":
-    from clearml.automation.hpbandster import OptimizerBOHB
+def get_optimizer_class(opt_type: str):
+    if opt_type == "optuna":
+        from clearml.automation.optuna import OptimizerOptuna
 
-    optimizer_class = OptimizerBOHB
-elif OPTIMIZER_TYPE == "random":
-    from clearml.automation import RandomSearch
+        return OptimizerOptuna
+    elif opt_type == "bohb":
+        from clearml.automation.hpbandster import OptimizerBOHB
 
-    optimizer_class = RandomSearch
-elif OPTIMIZER_TYPE == "grid":
-    from clearml.automation import GridSearch
+        return OptimizerBOHB
+    elif opt_type == "random":
+        from clearml.automation import RandomSearch
 
-    optimizer_class = GridSearch
-else:
-    raise ValueError(f"Unknown OPTIMIZER_TYPE: {OPTIMIZER_TYPE}")
+        return RandomSearch
+    elif opt_type == "grid":
+        from clearml.automation import GridSearch
 
-# CALLBACK
+        return GridSearch
+    else:
+        raise ValueError(f"Unknown optimizer type: {opt_type}")
 
 
 def job_complete_callback(
@@ -93,41 +91,46 @@ def job_complete_callback(
         print("NEW BEST MODEL")
 
 
-# MAIN
+def main():
+    optimizer_class = get_optimizer_class(OPTIMIZER_TYPE.lower())
 
-task = Task.init(
-    project_name="HPO",
-    task_name="hyperparameter_optimization",
-    task_type=Task.TaskTypes.optimizer,
-    reuse_last_task_id=False,
-)
+    Task.init(
+        project_name="HPO",
+        task_name="hyperparameter_optimization",
+        task_type=Task.TaskTypes.optimizer,
+        reuse_last_task_id=False,
+    )
 
-optimizer = HyperParameterOptimizer(
-    base_task_id=BASE_TASK_ID,
-    hyper_parameters=HYPER_PARAMETERS,
-    objective_metric_title=OBJECTIVE_TITLE,
-    objective_metric_series=OBJECTIVE_SERIES,
-    objective_metric_sign=OBJECTIVE_SIGN,
-    optimizer_class=optimizer_class,
-    execution_queue=EXECUTION_QUEUE,
-    max_number_of_concurrent_tasks=MAX_CONCURRENT_TASKS,
-    total_max_jobs=TOTAL_MAX_JOBS,
-    max_iteration_per_job=MAX_ITERATIONS_PER_JOB,
-    pool_period_min=POOL_PERIOD_MIN,
-)
+    optimizer = HyperParameterOptimizer(
+        base_task_id=BASE_TASK_ID,
+        hyper_parameters=HYPER_PARAMETERS,
+        objective_metric_title=OBJECTIVE_TITLE,
+        objective_metric_series=OBJECTIVE_SERIES,
+        objective_metric_sign=OBJECTIVE_SIGN,
+        optimizer_class=optimizer_class,
+        execution_queue=EXECUTION_QUEUE,
+        max_number_of_concurrent_tasks=MAX_CONCURRENT_TASKS,
+        total_max_jobs=TOTAL_MAX_JOBS,
+        max_iteration_per_job=MAX_ITERATIONS_PER_JOB,
+        pool_period_min=POOL_PERIOD_MIN,
+    )
 
-optimizer.set_report_period(REPORT_PERIOD_MIN)
+    optimizer.set_report_period(REPORT_PERIOD_MIN)
 
-optimizer.start(job_complete_callback=job_complete_callback)
+    optimizer.start(job_complete_callback=job_complete_callback)
 
-optimizer.wait()
+    optimizer.wait()
 
-# Number of best experiments to return (sorted by objective metric)
-top_exp = optimizer.get_top_experiments(top_k=3)
+    # Number of best experiments to return (sorted by objective metric)
+    top_exp = optimizer.get_top_experiments(top_k=3)
 
-print("Top experiments:")
-print([t.id for t in top_exp])
+    print("Top experiments:")
+    print([t.id for t in top_exp])
 
-optimizer.stop()
+    optimizer.stop()
 
-print("HPO finished")
+    print("HPO finished")
+
+
+if __name__ == "__main__":
+    main()
