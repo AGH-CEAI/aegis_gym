@@ -20,6 +20,7 @@ def load_rl_policy(
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
 ) -> Callable:
+    print("[Policy Loader] Resolving RL checkpoint")
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
         log_dir=log_dir,
@@ -27,10 +28,11 @@ def load_rl_policy(
         clearml_model_id=clearml_model_id,
         clearml_artifact_name=clearml_artifact_name,
     )
-    print(f"[Policy Loader] Loaded RL checkpoint from {last_ckpt}")
+    print(f"[Policy Loader] Resolved RL checkpoint path: {last_ckpt}")
 
     runner = OnPolicyRunner(env, rl_cfg, log_dir, device=device)
     runner.load(last_ckpt)
+    print("[Policy Loader] Loaded RL checkpoint")
     return runner.get_inference_policy(device=device)
 
 
@@ -44,6 +46,7 @@ def load_bc_policy(
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
 ) -> Callable:
+    print("[Policy Loader] Resolving BC checkpoint")
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
         log_dir=log_dir,
@@ -51,10 +54,11 @@ def load_bc_policy(
         clearml_model_id=clearml_model_id,
         clearml_artifact_name=clearml_artifact_name,
     )
-    print(f"[Policy Loader] Loaded BC checkpoint from {last_ckpt}")
+    print(f"[Policy Loader] Resolved BC checkpoint path: {last_ckpt}")
 
     bc_runner = BehaviorCloning(env, bc_cfg, None, log_dir, device=device)
     bc_runner.load(last_ckpt)
+    print("[Policy Loader] Loaded BC checkpoint")
     return bc_runner._policy
 
 
