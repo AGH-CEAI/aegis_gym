@@ -63,12 +63,7 @@ def main():
         pickle.dump((env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg), f)
 
     # === env ===
-    # BC only needs a small number of envs
-    env_cfg["num_envs"] = args.num_envs if args.stage != "bc" else 10
-    print(
-        f"[GraspTrain] Num of envs: {env_cfg['num_envs']}, passed arg: {args.num_envs}"
-    )
-    # Visualise cameras in GUI
+    env_cfg["num_envs"] = args.num_envs
     env_cfg["visualize_camera"] = args.visualize_camera
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
@@ -132,6 +127,10 @@ def main():
 
         print("[GraspTrain] >>> Finished relative joints movement.")
         exit()
+
+    print(f"[CFG-DUMP] rl_train_cfg:\n{rl_train_cfg}")
+    print(f"[CFG-DUMP] env_cfg:\n{env_cfg}")
+    print(f"[CFG-DUMP] robot_cfg:\n{robot_cfg}")
 
     # === runner ===
     match args.stage:
