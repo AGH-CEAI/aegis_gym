@@ -108,7 +108,7 @@ def main():
         import genesis as gs
         from envs.grasp_env import GraspEnv
 
-        gs.init(logging_level="warning", precision="32")
+        gs.init(logging_level="info", precision="32")
         env = GraspEnv(
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
