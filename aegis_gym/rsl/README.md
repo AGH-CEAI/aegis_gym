@@ -39,3 +39,9 @@ The environment supports configurable camera layouts, allowing different percept
 Currently, two camera setups are available:
 * **default** – matches the real robot setup (without the front tool camera): one static top-down scene camera plus two eye-in-hand cameras moving with the end-effector
 * **dual_scene** – legacy configuration: two static scene cameras forming a stereo view from the front
+
+## Hyperparameter Optimization
+This repository includes a template script `hpo.py` for hyperparameter optimization using ClearML.
+The script contains a user config section with user settings: base task ID, metric, optimizer type, execution queue, concurrency limits, total jobs, max iterations, pool and report periods, and the list of hyperparameters to optimize.
+Comments in the template explain what each setting does and how to modify it for your experiments.
+A base task must already exist in ClearML.
