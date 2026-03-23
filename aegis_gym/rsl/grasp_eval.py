@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-B", "--num_envs", type=int, default=100)
+    parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument(
         "--stage",
@@ -56,7 +57,6 @@ def main():
         help="Path to save the video file (default: auto-generated)",
     )
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
-    parser.add_argument("-nv", "--no-vis", action="store_true", default=False)
     parser.add_argument(
         "--load-from-pickle",
         action="store_true",
@@ -112,7 +112,7 @@ def main():
         env = GraspEnv(
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
-            show_viewer=not args.no_vis,
+            show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
