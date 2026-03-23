@@ -75,8 +75,6 @@ def main():
         task_name=f"{args.exp_name}_{args.stage}_eval",
     )
 
-    task.connect(vars(args))
-
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
 
