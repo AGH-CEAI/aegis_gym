@@ -65,6 +65,9 @@ def main():
     # === env ===
     # BC only needs a small number of envs
     env_cfg["num_envs"] = args.num_envs if args.stage != "bc" else 10
+    print(
+        f"[GraspTrain] Num of envs: {env_cfg['num_envs']}, passed arg: {args.num_envs}"
+    )
     # Visualise cameras in GUI
     env_cfg["visualize_camera"] = args.visualize_camera
 
