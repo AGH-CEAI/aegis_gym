@@ -27,6 +27,7 @@ def load_rl_policy(
         clearml_task_id=clearml_task_id,
         clearml_model_id=clearml_model_id,
         clearml_artifact_name=clearml_artifact_name,
+        local_checkpoint_pattern=r"model_\d+\.pt",
     )
     print(f"[Policy Loader] Resolved RL checkpoint path: {last_ckpt}")
 
@@ -53,6 +54,7 @@ def load_bc_policy(
         clearml_task_id=clearml_task_id,
         clearml_model_id=clearml_model_id,
         clearml_artifact_name=clearml_artifact_name,
+        local_checkpoint_pattern=r"checkpoint_\d+\.pt",
     )
     print(f"[Policy Loader] Resolved BC checkpoint path: {last_ckpt}")
 
