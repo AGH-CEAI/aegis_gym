@@ -128,10 +128,6 @@ def main():
         print("[GraspTrain] >>> Finished relative joints movement.")
         exit()
 
-    print(f"[CFG-DUMP] rl_train_cfg:\n{rl_train_cfg}")
-    print(f"[CFG-DUMP] env_cfg:\n{env_cfg}")
-    print(f"[CFG-DUMP] robot_cfg:\n{robot_cfg}")
-
     # === runner ===
     match args.stage:
         case "bc":
