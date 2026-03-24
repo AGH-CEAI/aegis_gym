@@ -547,6 +547,7 @@ class Policy(nn.Module):
                 layers.append(
                     nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
                 )
+            # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
             elif config.get("pooling") == "linear":
                 layers.append(nn.Flatten())
                 layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
@@ -618,6 +619,7 @@ class PerCameraCNNEncoder(VisionEncoder):
         return tuple(features)
 
 
+# TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
 class AutoencoderCNNEncoder(VisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
