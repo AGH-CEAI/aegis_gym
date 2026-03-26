@@ -491,7 +491,7 @@ class Policy(nn.Module):
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
-    
+
     def get_encoder(self):
         return self.vision_encoder
 
@@ -546,16 +546,18 @@ class Policy(nn.Module):
             layers.append(nn.BatchNorm2d(c["out_channels"]))
             layers.append(nn.ReLU())
 
-        if encoder_type != "autoencoder":
-            if config.get("pooling") == "adaptive_avg":
-                layers.append(
-                    nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
-                )
-            # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
-            elif config.get("pooling") == "linear":
-                layers.append(nn.Flatten())
-                layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
-                layers.append(nn.ReLU())
+        if encoder_type == "autoencoder":
+            return
+
+        if config.get("pooling") == "adaptive_avg":
+            layers.append(
+                nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
+            )
+        # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
+        elif config.get("pooling") == "linear":
+            layers.append(nn.Flatten())
+            layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
+            layers.append(nn.ReLU())
 
         return nn.Sequential(*layers)
 
@@ -629,6 +631,7 @@ class AutoencoderCNNEncoder(VisionEncoder):
         super().__init__(num_cameras)
 
         self.encoder = cnn_builder()
+        self.decoder = self.build_decoder()
 
         self.feature_channels = vision_cfg["conv_layers"][-1]["out_channels"]
         self.feature_size = 16
@@ -641,7 +644,8 @@ class AutoencoderCNNEncoder(VisionEncoder):
 
         self.output_dim = self.latent_dim
 
-        self.decoder = nn.Sequential(
+    def build_decoder(self):
+        return nn.Sequential(
             nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),
