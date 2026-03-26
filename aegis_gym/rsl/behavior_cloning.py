@@ -665,21 +665,17 @@ class AutoencoderCNNEncoder(VisionEncoder):
         return tuple(features)
 
     def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        recons = []
+        recons = [None] * self.num_cameras
 
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
 
-            fmap = self.encoder(cam_rgb)
-            flat = fmap.flatten(start_dim=1)
-
-            latent = self.to_latent(flat)
+            flat_fmap = self.encoder(cam_rgb).fmap.flatten(start_dim=1)
+            latent = self.to_latent(flat_fmap)
+            
             flat_recon = self.from_latent(latent)
-
             fmap_recon = flat_recon.view(-1, 32, 16, 16)
-
-            recon = self.decoder(fmap_recon)
-
-            recons.append(recon)
+            
+            recons[i] = self.decoder(fmap_recon)
 
         return tuple(recons)
