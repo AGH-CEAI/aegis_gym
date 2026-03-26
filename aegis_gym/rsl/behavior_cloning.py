@@ -9,6 +9,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.utils as vutils
 from clearml import Task
 from rsl_rl.utils.logger import Logger
 
@@ -86,8 +87,8 @@ class BehaviorCloning:
         self._buffer.clear()
         encoder_type = self._cfg["policy"]["type"]
         use_autoencoder = encoder_type == "autoencoder"
-        save_recons = True
-        save_recon_freq = 10
+        save_recons = self._cfg.get("save_recons", False)
+        save_recon_freq = self._cfg.get("save_recon_freq", 100)
 
         for it in range(num_learning_iterations):
             # Collect experience
@@ -126,10 +127,11 @@ class BehaviorCloning:
 
                 recon_loss = th.tensor(0.0, device=self._device)
                 if use_autoencoder:
-                    recons = self._policy.vision_encoder.reconstruct(batch["rgb_obs"])
-                    for i in range(self._policy.num_cameras):
-                        target = batch["rgb_obs"][:, i * 3 : (i + 1) * 3]
-                        recon_loss += F.mse_loss(recons[i], target)
+                    enc = self._policy.get_encoder()
+                    recons = enc.reconstruct(batch["rgb_obs"])
+                    for c in range(self._policy.num_cameras):
+                        target = batch["rgb_obs"][:, c * 3 : (c + 1) * 3]
+                        recon_loss += F.mse_loss(recons[c], target)
                     recon_loss /= self._policy.num_cameras
 
                     last_recons = recons
@@ -268,9 +270,7 @@ class BehaviorCloning:
                 self._cur_reward_sum[new_ids] = 0
 
     def _save_reconstructions(self, batch, recons, it):
-        import torchvision.utils as vutils
-
-        os.makedirs("reconstructions", exist_ok=True)
+        Path("reconstructions").mkdir(exist_ok=True)
 
         b = 0
         for c in range(self._policy.num_cameras):
@@ -491,6 +491,9 @@ class Policy(nn.Module):
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
+    
+    def get_encoder(self):
+        return self.vision_encoder
 
     @property
     def dtype(self) -> th.dtype:
@@ -505,26 +508,27 @@ class Policy(nn.Module):
             return self._build_cnn(vision_cfg, encoder_type)
 
         # TODO(issue#73): Extract vision encoder construction into a separate function
-        if encoder_type == "shared_cnn":
-            return SharedCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        elif encoder_type == "per_camera_cnn":
-            return PerCameraCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        elif encoder_type == "autoencoder":
-            return AutoencoderCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        else:
-            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+        match encoder_type:
+            case "shared_cnn":
+                return SharedCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case "per_camera_cnn":
+                return PerCameraCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case "autoencoder":
+                return AutoencoderCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case _:
+                raise ValueError(f"Unknown vision encoder type: {encoder_type}")
 
     @staticmethod
     def _build_cnn(config: dict, encoder_type: str) -> nn.Sequential:
