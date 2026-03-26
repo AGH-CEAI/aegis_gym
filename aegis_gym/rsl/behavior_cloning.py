@@ -655,17 +655,12 @@ class AutoencoderCNNEncoder(VisionEncoder):
         )
 
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
+        features = [None] * self.num_cameras
 
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-
-            fmap = self.encoder(cam_rgb)
-            flat = fmap.flatten(start_dim=1)
-
-            latent = self.to_latent(flat)
-
-            features.append(latent)
+            flat_fmap = self.encoder(cam_rgb).flatten(start_dim=1)
+            features[i] = self.to_latent(flat_fmap)
 
         return tuple(features)
 
