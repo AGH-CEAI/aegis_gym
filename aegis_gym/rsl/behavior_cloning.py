@@ -659,8 +659,13 @@ class AutoencoderCNNEncoder(VisionEncoder):
 
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            flat_fmap = self.encoder(cam_rgb).flatten(start_dim=1)
-            features[i] = self.to_latent(flat_fmap)
+
+            fmap = self.encoder(cam_rgb)
+            flat = fmap.flatten(start_dim=1)
+
+            latent = self.to_latent(flat)
+
+            features[i] = latent
 
         return tuple(features)
 
@@ -670,12 +675,14 @@ class AutoencoderCNNEncoder(VisionEncoder):
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
 
-            flat_fmap = self.encoder(cam_rgb).fmap.flatten(start_dim=1)
-            latent = self.to_latent(flat_fmap)
-            
+            fmap = self.encoder(cam_rgb)
+            flat = fmap.flatten(start_dim=1)
+
+            latent = self.to_latent(flat)
+
             flat_recon = self.from_latent(latent)
             fmap_recon = flat_recon.view(-1, 32, 16, 16)
-            
+
             recons[i] = self.decoder(fmap_recon)
 
         return tuple(recons)
