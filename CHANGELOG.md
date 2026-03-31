@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-80](https://github.com/AGH-CEAI/aegis_gym/pull/80) - Added support for autoencoder.
 - [PR-77](https://github.com/AGH-CEAI/aegis_gym/pull/77) - Added template script for hyperparameter optimization.
 
 ### Changed
