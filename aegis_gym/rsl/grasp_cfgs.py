@@ -73,11 +73,11 @@ def get_bc_cfg() -> dict:
         "num_epochs": 5,
         "num_mini_batches": 10,
         "max_grad_norm": 1.0,
-        "save_recons": True,
+        "save_recons": False,
         "save_recon_freq": 100,
         # network architecture
         "policy": {
-            "type": "autoencoder",  # shared_cnn, per_camera_cnn, autoencoder
+            "type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
             "vision_encoder": {
                 "conv_layers": [
                     {
