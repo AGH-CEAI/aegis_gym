@@ -644,9 +644,13 @@ class AutoencoderCNNEncoder(VisionEncoder):
 
     def build_decoder(self):
         return nn.Sequential(
-            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(
+                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
             nn.ReLU(),
-            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(
+                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
             nn.ReLU(),
             nn.Conv2d(8, 3, kernel_size=3, stride=1, padding=1),
             nn.Sigmoid(),
@@ -679,7 +683,9 @@ class AutoencoderCNNEncoder(VisionEncoder):
             latent = self.to_latent(flat)
 
             flat_recon = self.from_latent(latent)
-            fmap_recon = flat_recon.view(-1, 32, 16, 16)
+            fmap_recon = flat_recon.view(
+                -1, self.feature_channels, self.feature_size, self.feature_size
+            )
 
             recons[i] = self.decoder(fmap_recon)
 
