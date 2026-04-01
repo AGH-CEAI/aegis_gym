@@ -10,7 +10,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
-from utils import load_teacher_policy
+from utils import load_rl_policy
 
 
 def str_to_list(arg: Optional[str]) -> list[float]:
@@ -25,8 +25,10 @@ def main():
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--plotjuggler", action="store_true", default=False)
-    parser.add_argument("--max_iterations", type=int, default=300)
+    parser.add_argument("--max-iterations", type=int, default=300)
     parser.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
+    parser.add_argument("--load-rl-task-id", type=str, default=None)
+    parser.add_argument("--load-rl-model-id", type=str, default=None)
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     parser.add_argument("--calibration-move", type=str_to_list, default=None)
     parser.add_argument("--calibration-move-cart", type=str_to_list, default=None)
@@ -61,9 +63,7 @@ def main():
         pickle.dump((env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg), f)
 
     # === env ===
-    # BC only needs a small number of envs
-    env_cfg["num_envs"] = args.num_envs if args.stage != "bc" else 10
-    # Visualise cameras in GUI
+    env_cfg["num_envs"] = args.num_envs
     env_cfg["visualize_camera"] = args.visualize_camera
 
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
@@ -131,8 +131,16 @@ def main():
     # === runner ===
     match args.stage:
         case "bc":
-            teacher_policy = load_teacher_policy(
-                env, rl_train_cfg, args.exp_name, device
+            print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
+            teacher_policy = load_rl_policy(
+                env=env,
+                rl_cfg=rl_train_cfg,
+                device=device,
+                exp_name=args.exp_name,
+                log_dir=log_dir,
+                clearml_task_id=args.load_rl_task_id,
+                clearml_model_id=args.load_rl_model_id,
+                clearml_artifact_name="model",
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(
@@ -140,6 +148,7 @@ def main():
             )
             runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
+            print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
             runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True

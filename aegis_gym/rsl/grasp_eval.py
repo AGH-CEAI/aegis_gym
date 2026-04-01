@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
     parser.add_argument("-B", "--num_envs", type=int, default=100)
+    parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument(
         "--stage",
@@ -56,13 +57,15 @@ def main():
         help="Path to save the video file (default: auto-generated)",
     )
     parser.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
-    parser.add_argument("-nv", "--no_vis", action="store_true", default=False)
-    parser.add_argument("-ss", "--sim-substeps", type=int, default=2)
     parser.add_argument(
         "--load-from-pickle",
         action="store_true",
         help="Load configs from saved pickle instead of generating them from code",
     )
+    parser.add_argument("--load-rl-task-id", type=str, default=None)
+    parser.add_argument("--load-rl-model-id", type=str, default=None)
+    parser.add_argument("--load-bc-task-id", type=str, default=None)
+    parser.add_argument("--load-bc-model-id", type=str, default=None)
     args = parser.parse_args()
 
     logger_cfg = get_logger_cfg()
@@ -71,8 +74,6 @@ def main():
         project_name=f"{logger_cfg['clearml_project']}_eval-{args.stage}-{args.control}",
         task_name=f"{args.exp_name}_{args.stage}_eval",
     )
-
-    task.connect(vars(args))
 
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
@@ -103,7 +104,6 @@ def main():
         env_cfg["box_collision"] = True
         env_cfg["box_fixed"] = False
         env_cfg["visualize_camera"] = args.record
-        env_cfg["sim_substeps"] = args.sim_substeps
 
         import genesis as gs
         from envs.grasp_env import GraspEnv
@@ -112,7 +112,7 @@ def main():
         env = GraspEnv(
             env_cfg=env_cfg,
             robot_cfg=robot_cfg,
-            show_viewer=not args.no_vis,
+            show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
@@ -134,9 +134,23 @@ def main():
 
     # Load the appropriate policy based on model type
     if args.stage == "rl":
-        policy = load_rl_policy(env, rl_train_cfg, log_dir, device)
+        policy = load_rl_policy(
+            env=env,
+            rl_cfg=rl_train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_rl_task_id,
+            clearml_model_id=args.load_rl_model_id,
+        )
     else:
-        policy = load_bc_policy(env, bc_train_cfg, log_dir, device)
+        policy = load_bc_policy(
+            env=env,
+            bc_cfg=bc_train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_bc_task_id,
+            clearml_model_id=args.load_bc_model_id,
+        )
         policy.eval()
 
     obs, _ = env.reset()
