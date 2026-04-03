@@ -86,9 +86,9 @@ class BehaviorCloning:
     def learn(self, num_learning_iterations: int) -> None:
         self._buffer.clear()
         encoder_type = self._cfg["policy"]["type"]
-        use_autoencoder = encoder_type == "autoencoder"
-        save_recons = self._cfg.get("save_recons", False)
-        save_recon_freq = self._cfg.get("save_recon_freq", 100)
+        self._enable_recon = encoder_type == "autoencoder"
+        self._save_recons = self._cfg.get("save_recons", False)
+        self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
 
         for it in range(num_learning_iterations):
             # Collect experience
@@ -126,7 +126,7 @@ class BehaviorCloning:
                     )
 
                 recon_loss = th.tensor(0.0, device=self._device)
-                if use_autoencoder:
+                if self._enable_recon:
                     enc = self._policy.get_encoder()
                     recons = enc.reconstruct(batch["rgb_obs"])
                     for c in range(self._policy.num_cameras):
@@ -153,13 +153,7 @@ class BehaviorCloning:
                 total_recon_loss += recon_loss
                 num_batches += 1
 
-            if (
-                use_autoencoder
-                and save_recons
-                and (it + 1) % save_recon_freq == 0
-                and last_recons is not None
-            ):
-                self._save_reconstructions(last_batch, last_recons, it)
+            self._save_reconstructions(last_batch, last_recons, it)
 
             end_time = time.time()
             backward_time = end_time - start_time
@@ -167,10 +161,10 @@ class BehaviorCloning:
             # Compute average losses
             if num_batches == 0:
                 raise ValueError("No batches collected")
-            else:
-                avg_action_loss = total_action_loss / num_batches
-                avg_pose_loss = total_pose_loss / num_batches
-                avg_recon_loss = total_recon_loss / num_batches
+
+            avg_action_loss = total_action_loss / num_batches
+            avg_pose_loss = total_pose_loss / num_batches
+            avg_recon_loss = total_recon_loss / num_batches
 
             fps = (self._num_steps_per_env * self._env.num_envs) / (forward_time)
             # Logging
@@ -270,15 +264,21 @@ class BehaviorCloning:
                 self._cur_reward_sum[new_ids] = 0
 
     def _save_reconstructions(self, batch, recons, it):
-        Path("reconstructions").mkdir(exist_ok=True)
+        if (
+            self._enable_recon
+            and self._save_recons
+            and (it + 1) % self._save_recon_freq == 0
+            and recons is not None
+        ):
+            Path("reconstructions").mkdir(exist_ok=True)
 
-        b = 0
-        for c in range(self._policy.num_cameras):
-            orig = batch["rgb_obs"][b, c * 3 : (c + 1) * 3].detach().cpu()
-            recon = recons[c][b].detach().cpu()
+            batch_idx = 0
+            for c in range(self._policy.num_cameras):
+                orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
+                recon = recons[c][batch_idx].detach().cpu()
 
-            vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
-            vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
+                vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
+                vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
 
     def _log_metrics(
         self,
@@ -546,16 +546,18 @@ class Policy(nn.Module):
             layers.append(nn.BatchNorm2d(c["out_channels"]))
             layers.append(nn.ReLU())
 
-        if encoder_type != "autoencoder":
-            if config.get("pooling") == "adaptive_avg":
-                layers.append(
-                    nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
-                )
-            # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
-            elif config.get("pooling") == "linear":
-                layers.append(nn.Flatten())
-                layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
-                layers.append(nn.ReLU())
+        if encoder_type == "autoencoder":
+            return nn.Sequential(*layers)
+
+        if config.get("pooling") == "adaptive_avg":
+            layers.append(
+                nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
+            )
+        # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
+        elif config.get("pooling") == "linear":
+            layers.append(nn.Flatten())
+            layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
+            layers.append(nn.ReLU())
 
         return nn.Sequential(*layers)
 
