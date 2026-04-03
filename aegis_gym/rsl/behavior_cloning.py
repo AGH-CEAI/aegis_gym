@@ -277,8 +277,12 @@ class BehaviorCloning:
                 orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
                 recon = recons[c][batch_idx].detach().cpu()
 
-                vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
-                vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
+                vutils.save_image(
+                    orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png"
+                )
+                vutils.save_image(
+                    recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png"
+                )
 
     def _log_metrics(
         self,
