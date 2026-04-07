@@ -125,15 +125,8 @@ class BehaviorCloning:
                         pred_pose, batch["object_poses"]
                     )
 
-                recon_loss = th.tensor(0.0, device=self._device)
-                if self._enable_recon:
-                    enc = self._policy.get_encoder()
-                    recons = enc.reconstruct(batch["rgb_obs"])
-                    for c in range(self._policy.num_cameras):
-                        target = batch["rgb_obs"][:, c * 3 : (c + 1) * 3]
-                        recon_loss += F.mse_loss(recons[c], target)
-                    recon_loss /= self._policy.num_cameras
-
+                recon_loss, recons = self._compute_recon_loss(batch)
+                if recons is not None:
                     last_recons = recons
                     last_batch = batch
 
@@ -262,6 +255,25 @@ class BehaviorCloning:
                     self._cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist()
                 )
                 self._cur_reward_sum[new_ids] = 0
+
+    def _compute_recon_loss(
+        self, batch: dict[str, th.Tensor]
+    ) -> tuple[th.Tensor, tuple[th.Tensor, ...] | None]:
+        if not self._enable_recon:
+            return th.tensor(0.0, device=self._device), None
+
+        enc = self._policy.get_encoder()
+        recons = enc.reconstruct(batch["rgb_obs"])
+
+        recon_loss = th.tensor(0.0, device=self._device)
+
+        for c in range(self._policy.num_cameras):
+            target = batch["rgb_obs"][:, c * 3 : (c + 1) * 3]
+            recon_loss += F.mse_loss(recons[c], target)
+
+        recon_loss /= self._policy.num_cameras
+
+        return recon_loss, recons
 
     def _save_reconstructions(
         self,
