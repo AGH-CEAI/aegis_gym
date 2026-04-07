@@ -43,12 +43,7 @@ python3 ./test/sb3_run_train.py
 ---
 ## Utilities
 
-For topics such as:
-
-* Creating an URDF model for simulator
-* Analyze ClearML experimental results
-
-Check out the [utils README](./utils/README.md)!
+Check out the [utils README](./utils/README.md).
 
 ---
 ## Development notes

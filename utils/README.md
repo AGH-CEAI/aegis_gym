@@ -3,8 +3,12 @@
 [Back to main README](../README.md)
 
 ---
-## [`clearml_summarize.py`](./clearml_summarizer.py)
-Summarize ClearML experiments
+## [`clearml_enquee_tasks.py`](./clearml_enquee_tasks.py)
+Clone task multiple times into a selected queue.
+
+---
+## [`clearml_summarizer.py`](./clearml_summarizer.py)
+Summarize ClearML experiments.
 
 ### Usage
 ```bash
@@ -15,7 +19,7 @@ uv run ./clearml_summarizer.py -h
 
 ---
 ## [`upload_urdf_to_clearml.py`](./upload_urdf_to_clearml.py)
-URDF model for simulator
+Upload URDF model, required by simulators, into ClearML.
 
 ### Uploading
 1. Generate standalone URDF model with [aegis_ros/aegis_descrption]() launch command:
