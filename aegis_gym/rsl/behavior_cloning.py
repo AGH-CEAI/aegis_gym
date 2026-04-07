@@ -277,6 +277,7 @@ class BehaviorCloning:
                 orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
                 recon = recons[c][batch_idx].detach().cpu()
 
+                # TODO(issue#81): Save reconstructed images in ClearML
                 vutils.save_image(
                     orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png"
                 )
