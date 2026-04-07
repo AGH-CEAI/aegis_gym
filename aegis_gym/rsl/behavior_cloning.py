@@ -83,6 +83,9 @@ class BehaviorCloning:
             self._env.num_envs, dtype=th.float, device=self._device
         )
 
+        print("\n=== POLICY ===")
+        print(self._policy)
+
     def learn(self, num_learning_iterations: int) -> None:
         self._buffer.clear()
         encoder_type = self._cfg["policy"]["type"]
