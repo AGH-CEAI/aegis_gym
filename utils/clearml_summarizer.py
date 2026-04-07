@@ -134,9 +134,10 @@ class Summarizer:
         summary_task.set_parameter("summarize/max_samples", self.i_max_samples)
         summary_task.set_parameter("summarize/n_source_tasks", len(self.tasks))
 
+        # TODO somehow make it palaller (multiprocessing?)
         for cnt, path_str in enumerate(self.metric_paths):
             self.log.info(
-                f"Aggregating metric {cnt + 1}/{len(self.metric_paths)}: {path_str}"
+                f"[METRIC {cnt + 1}/{len(self.metric_paths)}][START]:\t {path_str}"
             )
             path_parts = path_str.split("/")
 
@@ -144,7 +145,7 @@ class Summarizer:
             if series_y is None:
                 self.log.warning(f"Skipping '{path_str}': extraction failed.")
                 self.log.debug(
-                    f"The content of series_y (len: {len(series_y)}): {series_y}"
+                    f"The content of series_y (len: {len(series_y)}):\t {series_y}"
                 )
                 something_failed = True
                 continue
@@ -158,6 +159,10 @@ class Summarizer:
             summary_logger = summary_task.get_logger()
             self._report_scalars(summary_logger, axis_x, summary, path_str)
             self._report_filled_plots(summary_logger, axis_x, summary, path_str)
+
+            self.log.info(
+                f"[METRIC {cnt + 1}/{len(self.metric_paths)}][END]:\t {path_str}"
+            )
 
         if something_failed:
             self.log.warning(
