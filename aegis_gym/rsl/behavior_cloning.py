@@ -263,27 +263,33 @@ class BehaviorCloning:
                 )
                 self._cur_reward_sum[new_ids] = 0
 
-    def _save_reconstructions(self, batch, recons, it):
-        if (
+    def _save_reconstructions(
+        self,
+        batch: dict[str, th.Tensor],
+        recons: tuple[th.Tensor, ...],
+        it: int,
+    ) -> None:
+        recon_enabled = (
             self._enable_recon
             and self._save_recons
             and (it + 1) % self._save_recon_freq == 0
             and recons is not None
-        ):
-            Path("reconstructions").mkdir(exist_ok=True)
+            and batch is not None
+        )
 
-            batch_idx = 0
-            for c in range(self._policy.num_cameras):
-                orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
-                recon = recons[c][batch_idx].detach().cpu()
+        if not recon_enabled:
+            return
 
-                # TODO(issue#81): Save reconstructed images in ClearML
-                vutils.save_image(
-                    orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png"
-                )
-                vutils.save_image(
-                    recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png"
-                )
+        Path("reconstructions").mkdir(exist_ok=True)
+
+        batch_idx = 0
+        for c in range(self._policy.num_cameras):
+            orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
+            recon = recons[c][batch_idx].detach().cpu()
+
+            # TODO(issue#81): Save reconstructed images in ClearML
+            vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
+            vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
 
     def _log_metrics(
         self,
