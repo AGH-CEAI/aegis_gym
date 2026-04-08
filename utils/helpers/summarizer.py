@@ -20,15 +20,19 @@ class Summarizer:
             SummaryType.MEAN_MINMAX,
         ],
         plots_backend: Literal["matplotlib", "plotly", "None"] = "plotly",
+        plot_merged_metrics: bool = False,
     ):
         """
         plots_backend:
             "matplotlib" – raster PNG stored in DEBUG SAMPLES tab
             "plotly"     – interactive vector figure stored in PLOTS tab
+        plot_merged_metrics - Instead of calculating means, plot every task on the plot
         """
 
         self.log = logging.getLogger(__name__)
         self.plots_backend = plots_backend
+        self.plot_merged_metrics = plot_merged_metrics
+        self.merged_metrics = None
 
         self.tasks = tasks_data.tasks
         self.metric_paths = tasks_data.metrics_paths
@@ -77,6 +81,12 @@ class Summarizer:
                 t.add_tags(tags)
             self.log.info(f"Added tag(s) {tags} to {len(self.tasks)} source tasks.")
 
+        # Persist configuration for reproducibility
+        summary_task.set_parameter("summarize/tags_filter", str(self.i_tags_filter))
+        summary_task.set_parameter("summarize/metric_paths", str(self.metric_paths))
+        summary_task.set_parameter("summarize/max_samples", self.i_max_samples)
+        summary_task.set_parameter("summarize/n_source_tasks", len(self.tasks))
+
         try:
             self._summarize(summary_task)
         except Exception as e:
@@ -94,6 +104,7 @@ class Summarizer:
         cleaned_tasks = 0
         removed_total = 0
 
+        # TODO make it multithread!
         for t_id in self.tasks.keys():
             t = Task.get_task(task_id=t_id)
 
@@ -113,57 +124,68 @@ class Summarizer:
             f"Removed {removed_total} summary tag(s) from {cleaned_tasks} task(s)."
         )
 
+    # TODO somehow make it palaller (multiprocessing?)
     def _summarize(self, summary_task: Task) -> None:
         something_failed = False
 
-        # Persist configuration for reproducibility
-        summary_task.set_parameter("summarize/tags_filter", str(self.i_tags_filter))
-        summary_task.set_parameter("summarize/metric_paths", str(self.metric_paths))
-        summary_task.set_parameter("summarize/max_samples", self.i_max_samples)
-        summary_task.set_parameter("summarize/n_source_tasks", len(self.tasks))
+        metric_paths = self.metric_paths
+        if self.plot_merged_metrics:
+            self._merge_metrics_series()
+            metric_paths = list(self.merged_metrics.keys())
 
-        # TODO somehow make it palaller (multiprocessing?)
-        for cnt, path_str in enumerate(self.metric_paths):
+        for cnt, path_str in enumerate(metric_paths):
             self.log.info(
-                f"[METRIC {cnt + 1}/{len(self.metric_paths)}][START]:\t {path_str}"
+                f"[METRIC {cnt + 1}/{len(metric_paths)}][START]:\t {path_str}"
             )
-            path_parts = path_str.split("/")
 
-            series_y, axis_x = self._extract_series(path_parts)
-            if series_y is None:
-                self.log.warning(f"Skipping '{path_str}': extraction failed.")
-                self.log.debug(
-                    f"The content of series_y (len: {len(series_y)}):\t {series_y}"
-                )
-                something_failed = True
-                continue
+            if not self.plot_merged_metrics:
+                series_y, axis_x = self._extract_series(path_str)
 
-            summary = {}
-            summary["mean_y"] = np.mean(series_y, axis=0)
-            summary["std_y"] = np.std(series_y, axis=0)
-            summary["min_y"] = np.min(series_y, axis=0)
-            summary["max_y"] = np.max(series_y, axis=0)
+                if series_y is None:
+                    self.log.warning(f"Skipping '{path_str}': extraction failed.")
+                    self.log.debug(
+                        f"The content of series_y (len: {len(series_y)}):\t {series_y}"
+                    )
+                    something_failed = True
+                    continue
+
+                data = self._calculate_series_summary(series_y)
+
+            else:
+                data, axis_x = self._extract_series_summary(path_str)
 
             summary_logger = summary_task.get_logger()
-            self._report_scalars(summary_logger, axis_x, summary, path_str)
-            self._report_filled_plots(summary_logger, axis_x, summary, path_str)
+            self._report_scalars(summary_logger, axis_x, data, path_str)
+            self._report_filled_plots(summary_logger, axis_x, data, path_str)
 
-            self.log.info(
-                f"[METRIC {cnt + 1}/{len(self.metric_paths)}][END]:\t {path_str}"
-            )
+            self.log.info(f"[METRIC {cnt + 1}/{len(metric_paths)}][END]:\t {path_str}")
 
         if something_failed:
             self.log.warning(
                 ">>>>>>>>>> SOMETHING WENT WRONG. CHECK THE LOGS! <<<<<<<<<<"
             )
 
+    def _merge_metrics_series(self) -> dict[str, dict[str]]:
+        self.merged_metrics = {}
+
+        for path_str in self.metric_paths:
+            path_parts = path_str.split("/")
+            # top_key = everything except the last 2 parts (stat + "y")
+            # e.g. "Loss/learning_rate/mean/y" → "Loss/learning_rate"
+            top_key = "/".join(path_parts[:-2])
+
+            if top_key not in self.merged_metrics:
+                self.merged_metrics[top_key] = {}
+
+            stat = path_parts[-2]
+            self.merged_metrics[top_key][stat] = path_str
+
     def _extract_series(
         self,
-        path_parts: list[str],
+        path_str: str,
     ) -> tuple[list[list[float]], list[float]]:
-
-        top_key = "/".join(path_parts[:-2])  # "Loss/action"
-
+        path_parts = path_str.split("/")
+        top_key = "/".join(path_parts[:-2])
         series_y: list[list[float]] = []
         axis_x: list[float] = None
 
@@ -175,6 +197,36 @@ class Summarizer:
                 axis_x = list(metric["x"])
 
         return series_y, axis_x
+
+    def _calculate_series_summary(series: list[float]) -> dict[str, float]:
+        summary = {}
+        summary["mean"] = np.mean(series, axis=0)
+        summary["std+"] = np.std(series, axis=0)
+        summary["min"] = np.min(series, axis=0)
+        summary["max"] = np.max(series, axis=0)
+        return summary
+
+    def _extract_series_summary(
+        self,
+        top_key: str,
+    ) -> tuple[dict[str, dict[str, list[float]]], list[float]]:
+
+        summary = {}
+        axis_x: list[float] = None
+
+        for stat, path_str in self.merged_metrics[top_key].items():
+            path_parts = path_str.split("/")
+            top_key = "/".join(path_parts[:-2])
+
+            summary[stat] = {}
+            for t_id, t_data in self.tasks.items():
+                metric = t_data[top_key][stat]
+                summary[stat][t_id] = list(metric["y"])
+
+                if axis_x is None:
+                    axis_x = list(range(0, len(metric["y"])))
+
+        return summary, axis_x
 
     @staticmethod
     def _path_to_title_series(path_str: str) -> tuple[str, str]:
@@ -189,7 +241,7 @@ class Summarizer:
         self,
         t_log: Logger,
         axis_x: list,
-        summary: dict,
+        data: dict,
         path_str: str,
     ) -> None:
         """
@@ -197,30 +249,34 @@ class Summarizer:
         """
         title, _ = self._path_to_title_series(path_str)
 
-        mean_y = summary["mean_y"]
-        std_y = summary["std_y"]
-        min_y = summary["min_y"]
-        max_y = summary["max_y"]
+        mean_y = data["mean"]
+        std_y = data["std+"]
+        min_y = data["min"]
+        max_y = data["max"]
 
         for step in range(len(axis_x)):
-            x = axis_x[step]
+            for t_id, mean in mean_y.items():
+                x = axis_x[step]
 
-            if SummaryType.MEAN in self.summary_types:
-                t_log.report_scalar(f"{title}_mean", "mean", mean_y[step], x)
+                if SummaryType.MEAN in self.summary_types:
+                    # t_log.report_scalar(f"{title}_mean", "mean", mean_y[step], x)
+                    t_log.report_scalar(f"{title}_mean", t_id, mean[step], x)
 
-            if SummaryType.MEAN_MINMAX in self.summary_types:
-                t_log.report_scalar(f"{title}_mean-min-max", "mean", mean_y[step], x)
-                t_log.report_scalar(f"{title}_mean-min-max", "min", min_y[step], x)
-                t_log.report_scalar(f"{title}_mean-min-max", "max", max_y[step], x)
+                if SummaryType.MEAN_MINMAX in self.summary_types:
+                    t_log.report_scalar(
+                        f"{title}_mean-min-max", "mean", mean_y[step], x
+                    )
+                    t_log.report_scalar(f"{title}_mean-min-max", "min", min_y[step], x)
+                    t_log.report_scalar(f"{title}_mean-min-max", "max", max_y[step], x)
 
-            if SummaryType.MEAN_STD in self.summary_types:
-                t_log.report_scalar(f"{title}_mean-std", "mean", mean_y[step], x)
-                t_log.report_scalar(
-                    f"{title}_mean-std", "std+", mean_y[step] + std_y[step], x
-                )
-                t_log.report_scalar(
-                    f"{title}_mean-std", "std-", mean_y[step] - std_y[step], x
-                )
+                if SummaryType.MEAN_STD in self.summary_types:
+                    t_log.report_scalar(f"{title}_mean-std", "mean", mean_y[step], x)
+                    t_log.report_scalar(
+                        f"{title}_mean-std", "std+", mean_y[step] + std_y[step], x
+                    )
+                    t_log.report_scalar(
+                        f"{title}_mean-std", "std-", mean_y[step] - std_y[step], x
+                    )
 
     def _report_filled_plots(
         self,
