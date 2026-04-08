@@ -51,6 +51,7 @@ class GraspEnv(VecEnv):
 
         self._cameras: dict[str, gs.Camera] = {}
         self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
+
         self.scene.build(
             n_envs=env_cfg["num_envs"],
             # env_spacing=(1.0, 1.0),
@@ -109,7 +110,7 @@ class GraspEnv(VecEnv):
                 enable_joint_limit=True,
             ),
             vis_options=gs.options.VisOptions(
-                rendered_envs_idx=list(range(min(self.num_envs, 10)))
+                rendered_envs_idx=list(range(min(self.num_envs, 10))),
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
@@ -188,6 +189,17 @@ class GraspEnv(VecEnv):
                 GUI=self.show_cameras_gui,
                 debug=True,
             )
+
+        # == add lighting ==
+        self.scene.add_light(
+            pos=(0.0, 0.0, 2.46),
+            dir=(1.0, 1.0, -1.0),
+            color=(1.0, 1.0, 1.0),
+            intensity=0.6,
+            directional=False,
+            castshadow=True,
+            cutoff=90.0,
+        )
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     def _add_camera(
