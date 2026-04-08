@@ -15,6 +15,7 @@ from typing import Optional
 import matplotlib
 
 from helpers.data_getter import DataGetter
+from helpers.summarizer import Summarizer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,10 +23,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s]: %(message)s",
 )
 matplotlib.use("Agg")  # non-interactive backend, safe in any env
-
-# ---------------------------------------------------------------------------
-# RUNNING SCRIPT IN CLI
-# ---------------------------------------------------------------------------
 
 
 def main(argv: Optional[list[str]] = None) -> None:
@@ -54,6 +51,17 @@ def main(argv: Optional[list[str]] = None) -> None:
         return
 
     print("TODO: implement reporting to the ClearML")
+    TAG_EXP_PLOTTER = "exp-summary"
+    summarizer = Summarizer(
+        tasks_data=data,
+        summary_task_name=args.summary_task_name,
+        plots_backend=args.plots_backend,
+        summary_task_tags=[TAG_EXP_PLOTTER],
+    )
+    summarizer.summarize(
+        tag_for_tasks=TAG_EXP_PLOTTER,
+        cleanup_previous_tags=args.cleanup_previous_tags,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -84,7 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--summary-task-name",
         default="EXPERIMENTS_SUMMARY",
-        help="Name for the created summary task (default: SUMMARY).",
+        help="Name for the created summary task (default: EXPERIMENTS_SUMMARY).",
     )
     p.add_argument(
         "--max-samples",
