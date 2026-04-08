@@ -16,11 +16,14 @@ import matplotlib
 
 from helpers.data_getter import DataGetter
 from helpers.summarizer import Summarizer
+from helpers.logging_formatter import CustomFormatter
 
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+handler.setFormatter(CustomFormatter())
 logging.basicConfig(
     level=logging.INFO,
-    # format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    format="%(asctime)s [%(levelname)s]: %(message)s",
+    handlers=[handler],
 )
 matplotlib.use("Agg")  # non-interactive backend, safe in any env
 
@@ -44,10 +47,10 @@ def main(argv: Optional[list[str]] = None) -> None:
         tags_select=["summary"] + args.tags,
     )
     if not data.tasks:
-        print("No tasks)")
+        print("))) No tasks")
         return
     if not data.metrics_paths:
-        print("No metrics")
+        print("))) No metrics")
         return
 
     print("TODO: implement reporting to the ClearML")
@@ -92,7 +95,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--summary-task-name",
         default="EXPERIMENTS_SUMMARY",
-        help="Name for the created summary task (default: EXPERIMENTS_SUMMARY).",
+        help="Name for the created summary task (default: `EXPERIMENTS_SUMMARY`).",
     )
     p.add_argument(
         "--max-samples",
@@ -105,9 +108,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--plots-backend",
         default="plotly",
         choices=["plotly", "matplotlib", "None"],
-        help=("Backend to use for plotting (default: plotly)."),
+        help=("Backend to use for plotting (default: `plotly`)."),
     )
-    p.add_argument("--cleanup-previous-tags", action="store_true", default=False)
+    p.add_argument(
+        "--cleanup-previous-tags",
+        action="store_true",
+        default=False,
+        help="Enable automatic remove of all `summary:XXX` tags from selected tasks.",
+    )
     return p
 
 
