@@ -1,4 +1,3 @@
-from enum import Enum, auto
 import logging
 from typing import Literal
 
@@ -7,13 +6,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from clearml import Task, TaskTypes, Logger
 
-from data_getter import DataGetter
-
-
-class SummaryType(Enum):
-    MEAN = auto()
-    MEAN_MINMAX = auto()
-    MEAN_STD = auto()
+from helpers.data_getter import DataGetter, SummaryType
 
 
 class Summarizer:

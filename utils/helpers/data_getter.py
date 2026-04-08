@@ -1,9 +1,16 @@
 import copy
 import logging
+from enum import StrEnum
 from typing import Iterable, Optional
 
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
+
+
+class SummaryType(StrEnum):
+    MEAN = "mean"
+    MEAN_MINMAX = "mean-min-max"
+    MEAN_STD = "mean-std"
 
 
 class DataGetter:
@@ -14,12 +21,14 @@ class DataGetter:
         recursive_projects: bool = False,
         metrics_paths: Optional[list[str]] = None,
         max_samples: Optional[int] = None,
+        merge_summaries_metrics: bool = False,
     ):
 
         self.log = logging.getLogger(__name__)
         self.project_name = project_name
         self.max_samples = max_samples
         self.recursive_projects = recursive_projects
+        self.merge_summaries_metrics = merge_summaries_metrics
 
         self.CLEARML_MAX_GET_TASKS = 500
         self.CLEARML_TASKS_FILTER = {
@@ -35,6 +44,7 @@ class DataGetter:
         if metrics_paths is None:
             metrics_paths = self._get_common_metrics()
         else:
+            # TODO implement merge of the summaries for selected metrics
             self._select_metrics(metrics_paths)
         self.metrics_paths = metrics_paths
 
@@ -157,17 +167,22 @@ class DataGetter:
             self.min_n_iterations = n_iterations
 
     def _get_common_metrics(self) -> list[str]:
-        self.log.info("Auto-detecteding shared metric path(s).")
+        self.log.info("Auto-detecting shared metric path(s).")
         metric_paths = self._detect_common_metric_paths()
         if not metric_paths:
             self.log.error(
                 "No scalar metrics are shared by all selected tasks. Returning empty list."
             )
             return []
+        if self.merge_summaries_metrics:
+            self.log.info(
+                f"Found {len(metric_paths)} metric path(s). Merging already processed metrics via title suffixes."
+            )
+            metric_paths = self._merge_metrics_series(metric_paths)
 
         projects_str = "\n\t".join(metric_paths)
         self.log.info(
-            f"Auto-detected {len(metric_paths)} shared metric path(s)\n{projects_str}"
+            f"Auto-detected {len(metric_paths)} shared metric path(s)\n\t{projects_str}"
         )
 
         return metric_paths
@@ -178,9 +193,9 @@ class DataGetter:
     ) -> list[str]:
         # We need a shallow copy to modify the original dictionary
         tasks = copy.copy(self.tasks)
-        sets: list[set[str]] = []
+        path_sets: list[set[str]] = [None] * len(tasks)
 
-        for t_id, t_data in tasks.items():
+        for cnt, (t_id, t_data) in enumerate(tasks.items()):
             if not t_data:
                 self.log.warning(
                     f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
@@ -192,17 +207,55 @@ class DataGetter:
             for title, series_dict in t_data.items():
                 if skip_time_series and "time" in title.lower():
                     continue
+
                 for series in series_dict:
                     paths.add(f"{title}/{series}/y")
 
-            sets.append(paths)
+            path_sets[cnt] = paths
 
-        if not sets:
+        if not path_sets:
             self.log.error("The given list of tasks do not have any metrics.")
             return []
 
-        common_paths = sets[0].intersection(*sets[1:])
+        common_paths = path_sets[0].intersection(*path_sets[1:])
         return sorted(common_paths)
+
+    def _merge_metrics_series(self, metric_paths: list[str]) -> list[str]:
+
+        results: set[str] = set()
+
+        for t_id in list(self.tasks.keys()):
+            titles_to_remove: set[str] = set()
+
+            for metric in metric_paths:
+                m_type, m_title, series, y = metric.split("/")
+
+                m_type_title = f"{m_type}/{m_title}"
+                m_title_merged = self._remove_strenum_suffix(m_title, SummaryType)
+                m_type_title_merged = f"{m_type}/{m_title_merged}"
+
+                if m_type_title_merged not in self.tasks[t_id]:
+                    self.tasks[t_id][m_type_title_merged] = {}
+
+                self.tasks[t_id][m_type_title_merged][series] = {
+                    y: self.tasks[t_id][m_type_title][series][y]
+                }
+
+                results.add(f"{m_type_title_merged}/{series}/{y}")
+                titles_to_remove.add(m_type_title)
+
+            for m_type_title in titles_to_remove:
+                self.tasks[t_id].pop(m_type_title)
+
+        return sorted(results)
+
+    @staticmethod
+    def _remove_strenum_suffix(s: str, enum: StrEnum) -> str:
+        for item in enum:
+            suffix = f"_{item.value}"
+            if s.endswith(suffix):
+                return s.removesuffix(suffix)
+        return s
 
     def _select_metrics(self, metric_paths: list[str]):
         for path_str in metric_paths:

@@ -45,6 +45,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         max_samples=args.max_samples,
         metrics_paths=args.metric_paths,
         tags_select=["summary"] + args.tags,
+        merge_summaries_metrics=True,
     )
     if not data.tasks:
         print("))) No tasks")
