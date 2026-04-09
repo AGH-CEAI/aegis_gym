@@ -73,9 +73,11 @@ def get_bc_cfg() -> dict:
         "num_epochs": 5,
         "num_mini_batches": 10,
         "max_grad_norm": 1.0,
+        "save_recons": False,
+        "save_recon_freq": 100,
         # network architecture
         "policy": {
-            "type": "shared_cnn",
+            "type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
             "vision_encoder": {
                 "conv_layers": [
                     {
@@ -100,7 +102,7 @@ def get_bc_cfg() -> dict:
                         "padding": 1,
                     },
                 ],
-                "pooling": "adaptive_avg",
+                "pooling": "adaptive_avg",  # adaptive_avg, linear
                 "pool_size": 4,
             },
             "action_head": {
