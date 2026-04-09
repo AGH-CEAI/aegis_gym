@@ -26,6 +26,12 @@ class BehaviorCloning:
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
+        self._use_teacher_mixing = self._cfg.get("use_teacher_mixing", False)
+        encoder_type = self._cfg["policy"]["type"]
+        self._enable_recon = encoder_type == "autoencoder"
+        self._save_recons = self._cfg.get("save_recons", False)
+        self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
+
         # ClearML allows only one active Task per process.
         # Since RSL-RL creates its own ClearML Task during RL training,
         # we explicitly close any existing Task here to allow Behavior Cloning
@@ -88,10 +94,6 @@ class BehaviorCloning:
 
     def learn(self, num_learning_iterations: int) -> None:
         self._buffer.clear()
-        encoder_type = self._cfg["policy"]["type"]
-        self._enable_recon = encoder_type == "autoencoder"
-        self._save_recons = self._cfg.get("save_recons", False)
-        self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
 
         for it in range(num_learning_iterations):
             # Collect experience
@@ -244,10 +246,14 @@ class BehaviorCloning:
                 # Step environment with student action
                 student_action = self._policy(rgb_obs.float(), ee_pose.float())
 
-                # Simple Dagger: use student action if its difference with teacher action is less than 0.5
-                action_diff = th.norm(student_action - teacher_action, dim=-1)
-                condition = (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
-                action = th.where(condition, student_action, teacher_action)
+                if self._use_teacher_mixing:
+                    action_diff = th.norm(student_action - teacher_action, dim=-1)
+                    condition = (
+                        (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
+                    )
+                    action = th.where(condition, student_action, teacher_action)
+                else:
+                    action = student_action
 
                 next_obs, reward, done, _ = self._env.step(action)
                 self._cur_reward_sum += reward
