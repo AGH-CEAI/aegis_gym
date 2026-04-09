@@ -9,6 +9,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.utils as vutils
 from clearml import Task
 from rsl_rl.utils.logger import Logger
 
@@ -82,8 +83,15 @@ class BehaviorCloning:
             self._env.num_envs, dtype=th.float, device=self._device
         )
 
+        print("\n=== POLICY ===")
+        print(self._policy)
+
     def learn(self, num_learning_iterations: int) -> None:
         self._buffer.clear()
+        encoder_type = self._cfg["policy"]["type"]
+        self._enable_recon = encoder_type == "autoencoder"
+        self._save_recons = self._cfg.get("save_recons", False)
+        self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
 
         for it in range(num_learning_iterations):
             # Collect experience
@@ -95,12 +103,16 @@ class BehaviorCloning:
             # Training steps for both action and pose prediction
             total_action_loss = 0.0
             total_pose_loss = 0.0
+            total_recon_loss = 0.0
             num_batches = 0
+            last_recons = None
+            last_batch = None
 
             start_time = time.time()
             generator = self._buffer.get_batches(
                 self._cfg.get("num_mini_batches", 4), self._cfg["num_epochs"]
             )
+
             for batch in generator:
                 # Forward pass for both action and pose prediction
                 pred_action = self._policy(batch["rgb_obs"], batch["robot_pose"])
@@ -110,14 +122,19 @@ class BehaviorCloning:
                 action_loss = F.mse_loss(pred_action, batch["actions"])
 
                 # Compute pose estimation loss (position + orientation)
-                pose_loss = 0.0
+                pose_loss = th.tensor(0.0, device=self._device)
                 for pred_pose in pred_poses:
                     pose_loss += self._compute_pose_loss(
                         pred_pose, batch["object_poses"]
                     )
 
+                recon_loss, recons = self._compute_recon_loss(batch)
+                if recons is not None:
+                    last_recons = recons
+                    last_batch = batch
+
                 # Combined loss with weights
-                total_loss = action_loss + pose_loss
+                total_loss = action_loss + pose_loss + recon_loss
 
                 # Backward pass
                 self._optimizer.zero_grad()
@@ -129,7 +146,10 @@ class BehaviorCloning:
 
                 total_action_loss += action_loss
                 total_pose_loss += pose_loss
+                total_recon_loss += recon_loss
                 num_batches += 1
+
+            self._save_reconstructions(last_batch, last_recons, it)
 
             end_time = time.time()
             backward_time = end_time - start_time
@@ -137,9 +157,10 @@ class BehaviorCloning:
             # Compute average losses
             if num_batches == 0:
                 raise ValueError("No batches collected")
-            else:
-                avg_action_loss = total_action_loss / num_batches
-                avg_pose_loss = total_pose_loss / num_batches
+
+            avg_action_loss = total_action_loss / num_batches
+            avg_pose_loss = total_pose_loss / num_batches
+            avg_recon_loss = total_recon_loss / num_batches
 
             fps = (self._num_steps_per_env * self._env.num_envs) / (forward_time)
             # Logging
@@ -150,6 +171,7 @@ class BehaviorCloning:
                     it=it,
                     avg_action_loss=avg_action_loss,
                     avg_pose_loss=avg_pose_loss,
+                    avg_recon_loss=avg_recon_loss,
                     current_lr=current_lr,
                     fps=fps,
                     forward_time=forward_time,
@@ -237,20 +259,69 @@ class BehaviorCloning:
                 )
                 self._cur_reward_sum[new_ids] = 0
 
+    def _compute_recon_loss(
+        self, batch: dict[str, th.Tensor]
+    ) -> tuple[th.Tensor, tuple[th.Tensor, ...] | None]:
+        if not self._enable_recon:
+            return th.tensor(0.0, device=self._device), None
+
+        enc = self._policy.get_encoder()
+        recons = enc.reconstruct(batch["rgb_obs"])
+
+        recon_loss = th.tensor(0.0, device=self._device)
+
+        for c in range(self._policy.num_cameras):
+            target = batch["rgb_obs"][:, c * 3 : (c + 1) * 3]
+            recon_loss += F.mse_loss(recons[c], target)
+
+        recon_loss /= self._policy.num_cameras
+
+        return recon_loss, recons
+
+    def _save_reconstructions(
+        self,
+        batch: dict[str, th.Tensor],
+        recons: tuple[th.Tensor, ...],
+        it: int,
+    ) -> None:
+        recon_enabled = (
+            self._enable_recon
+            and self._save_recons
+            and (it + 1) % self._save_recon_freq == 0
+            and recons is not None
+            and batch is not None
+        )
+
+        if not recon_enabled:
+            return
+
+        Path("reconstructions").mkdir(exist_ok=True)
+
+        batch_idx = 0
+        for c in range(self._policy.num_cameras):
+            orig = batch["rgb_obs"][batch_idx, c * 3 : (c + 1) * 3].detach().cpu()
+            recon = recons[c][batch_idx].detach().cpu()
+
+            # TODO(issue#81): Save reconstructed images in ClearML
+            vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
+            vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
+
     def _log_metrics(
         self,
         it: int,
         avg_action_loss: th.Tensor,
         avg_pose_loss: th.Tensor,
+        avg_recon_loss: th.Tensor,
         current_lr: float,
         fps: float,
         forward_time: float,
         backward_time: float,
     ) -> None:
-        total_loss = avg_action_loss + avg_pose_loss
+        total_loss = avg_action_loss + avg_pose_loss + avg_recon_loss
 
         self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
         self.logger.writer.add_scalar("Loss/pose", avg_pose_loss.item(), it)
+        self.logger.writer.add_scalar("Loss/recon", avg_recon_loss.item(), it)
         self.logger.writer.add_scalar("Loss/total", total_loss.item(), it)
         self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
         self.logger.writer.add_scalar("Train/buffer_size", self._buffer.size, it)
@@ -447,6 +518,9 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         return tuple(self.pose_head(f) for f in features)
 
+    def get_encoder(self):
+        return self.vision_encoder
+
     @property
     def dtype(self) -> th.dtype:
         """Get the dtype of the policy's parameters."""
@@ -457,26 +531,33 @@ class Policy(nn.Module):
         vision_cfg = config["vision_encoder"]
 
         def cnn_builder() -> nn.Sequential:
-            return self._build_cnn(vision_cfg)
+            return self._build_cnn(vision_cfg, encoder_type)
 
         # TODO(issue#73): Extract vision encoder construction into a separate function
-        if encoder_type == "shared_cnn":
-            return SharedCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        elif encoder_type == "per_camera_cnn":
-            return PerCameraCNNEncoder(
-                self.num_cameras,
-                cnn_builder=cnn_builder,
-                vision_cfg=vision_cfg,
-            )
-        else:
-            raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+        match encoder_type:
+            case "shared_cnn":
+                return SharedCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case "per_camera_cnn":
+                return PerCameraCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case "autoencoder":
+                return AutoencoderCNNEncoder(
+                    self.num_cameras,
+                    cnn_builder=cnn_builder,
+                    vision_cfg=vision_cfg,
+                )
+            case _:
+                raise ValueError(f"Unknown vision encoder type: {encoder_type}")
 
     @staticmethod
-    def _build_cnn(config: dict) -> nn.Sequential:
+    def _build_cnn(config: dict, encoder_type: str) -> nn.Sequential:
         layers = []
         for c in config["conv_layers"]:
             layers.append(
@@ -491,9 +572,18 @@ class Policy(nn.Module):
             layers.append(nn.BatchNorm2d(c["out_channels"]))
             layers.append(nn.ReLU())
 
+        if encoder_type == "autoencoder":
+            return nn.Sequential(*layers)
+
         if config.get("pooling") == "adaptive_avg":
-            pool_size = config["pool_size"]
-            layers.append(nn.AdaptiveAvgPool2d((pool_size, pool_size)))
+            layers.append(
+                nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
+            )
+        # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
+        elif config.get("pooling") == "linear":
+            layers.append(nn.Flatten())
+            layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
+            layers.append(nn.ReLU())
 
         return nn.Sequential(*layers)
 
@@ -559,3 +649,72 @@ class PerCameraCNNEncoder(VisionEncoder):
             feat = self.encoders[i](cam_rgb).flatten(start_dim=1)
             features.append(feat)
         return tuple(features)
+
+
+# TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
+class AutoencoderCNNEncoder(VisionEncoder):
+    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
+        super().__init__(num_cameras)
+
+        self.encoder = cnn_builder()
+        self.decoder = self.build_decoder()
+
+        self.feature_channels = vision_cfg["conv_layers"][-1]["out_channels"]
+        self.feature_size = 16
+
+        self.flatten_dim = self.feature_channels * self.feature_size * self.feature_size
+        self.latent_dim = 512
+
+        self.to_latent = nn.Linear(self.flatten_dim, self.latent_dim)
+        self.from_latent = nn.Linear(self.latent_dim, self.flatten_dim)
+
+        self.output_dim = self.latent_dim
+
+    def build_decoder(self):
+        return nn.Sequential(
+            nn.ConvTranspose2d(
+                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
+            nn.ReLU(),
+            nn.ConvTranspose2d(
+                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
+            nn.ReLU(),
+            nn.Conv2d(8, 3, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
+        features = [None] * self.num_cameras
+
+        for i in range(self.num_cameras):
+            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
+
+            fmap = self.encoder(cam_rgb)
+            flat = fmap.flatten(start_dim=1)
+
+            latent = self.to_latent(flat)
+
+            features[i] = latent
+
+        return tuple(features)
+
+    def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
+        recons = [None] * self.num_cameras
+
+        for i in range(self.num_cameras):
+            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
+
+            fmap = self.encoder(cam_rgb)
+            flat = fmap.flatten(start_dim=1)
+
+            latent = self.to_latent(flat)
+
+            flat_recon = self.from_latent(latent)
+            fmap_recon = flat_recon.view(
+                -1, self.feature_channels, self.feature_size, self.feature_size
+            )
+
+            recons[i] = self.decoder(fmap_recon)
+
+        return tuple(recons)

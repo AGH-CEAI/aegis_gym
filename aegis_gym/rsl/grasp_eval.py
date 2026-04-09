@@ -167,13 +167,13 @@ def main():
                 print("[GraspEval] Recording video...")
                 if env_cfg["camera_setup"] == "default":
                     env.record_cam.start_recording()
-                    env.scene_cam.start_recording()
-                    env.tool_left_cam.start_recording()
-                    env.tool_right_cam.start_recording()
+                    env._cameras["scene_cam"].start_recording()
+                    env._cameras["tool_left_cam"].start_recording()
+                    env._cameras["tool_right_cam"].start_recording()
                 elif env_cfg["camera_setup"] == "scene_dual":
                     env.record_cam.start_recording()
-                    env.scene_left_cam.start_recording()
-                    env.scene_right_cam.start_recording()
+                    env._cameras["scene_left_cam"].start_recording()
+                    env._cameras["scene_right_cam"].start_recording()
                 else:
                     raise RuntimeError(
                         f"Unknown camera_setup: {env_cfg['camera_setup']}"
@@ -236,15 +236,15 @@ def main():
                         save_to_filename=args.video_path,
                         fps=env_cfg["max_visualize_FPS"],
                     )
-                    env.scene_cam.stop_recording(
+                    env._cameras["scene_cam"].stop_recording(
                         save_to_filename="scene_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
-                    env.tool_left_cam.stop_recording(
+                    env._cameras["tool_left_cam"].stop_recording(
                         save_to_filename="tool_left_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
-                    env.tool_right_cam.stop_recording(
+                    env._cameras["tool_right_cam"].stop_recording(
                         save_to_filename="tool_right_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
@@ -253,11 +253,11 @@ def main():
                         save_to_filename=args.video_path,
                         fps=env_cfg["max_visualize_FPS"],
                     )
-                    env.scene_left_cam.stop_recording(
+                    env._cameras["scene_right_cam"].stop_recording(
                         save_to_filename="scene_left_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
-                    env.scene_right_cam.stop_recording(
+                    env._cameras["scene_left_cam"].stop_recording(
                         save_to_filename="scene_right_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
