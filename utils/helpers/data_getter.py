@@ -5,6 +5,8 @@ from typing import Iterable, Optional
 
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
+from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 
 class SummaryType(StrEnum):
@@ -28,7 +30,17 @@ class DataGetter:
         self.project_name = project_name
         self.max_samples = max_samples
         self.recursive_projects = recursive_projects
+
         self.merge_summaries_metrics = merge_summaries_metrics
+        self.MERGE_SERIES_MAPPING = {
+            "std+": "std",
+            "std-": None,
+        }
+        if self.merge_summaries_metrics:
+            self.log.info("Merging summaries: ENABLED")
+            self.log.debug(
+                f"Mapping for merging series (`None` drops data): {self.MERGE_SERIES_MAPPING}"
+            )
 
         self.CLEARML_MAX_GET_TASKS = 500
         self.CLEARML_TASKS_FILTER = {
@@ -77,20 +89,22 @@ class DataGetter:
         if tasks_raw is None:
             return tasks
 
+        self.log.info("Validating tasks metrics.")
         self.min_n_iterations = tasks_raw[0].get_last_iteration()
 
-        for t in tasks_raw:
-            try:
-                data = self._task_data_getter(t)
-                if remove_colon_scalars:
-                    data = self._remove_colcon_scalars(data)
+        with logging_redirect_tqdm():
+            for t in tqdm(tasks_raw):
+                try:
+                    data = self._task_data_getter(t)
+                    if remove_colon_scalars:
+                        data = self._remove_colcon_scalars(data)
 
-                if same_n_iterations:
-                    self._compare_n_iterations(t.get_last_iteration())
+                    if same_n_iterations:
+                        self._compare_n_iterations(t.get_last_iteration())
 
-                tasks[t.task_id] = data
-            except ValueError as e:
-                self.log.warning(f"Skipping task id {t.task_id} due to: {str(e)}")
+                    tasks[t.task_id] = data
+                except ValueError as e:
+                    self.log.warning(f"Skipping task id {t.task_id} due to: {str(e)}")
         return tasks
 
     def _get_cleraml_tasks(self) -> list[Task]:
@@ -195,23 +209,24 @@ class DataGetter:
         tasks = copy.copy(self.tasks)
         path_sets: list[set[str]] = [None] * len(tasks)
 
-        for cnt, (t_id, t_data) in enumerate(tasks.items()):
-            if not t_data:
-                self.log.warning(
-                    f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
-                )
-                self.tasks.pop(t_id)
-                continue
-
-            paths: set[str] = set()
-            for title, series_dict in t_data.items():
-                if skip_time_series and "time" in title.lower():
+        with logging_redirect_tqdm():
+            for cnt, (t_id, t_data) in tqdm(enumerate(tasks.items())):
+                if not t_data:
+                    self.log.warning(
+                        f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
+                    )
+                    self.tasks.pop(t_id)
                     continue
 
-                for series in series_dict:
-                    paths.add(f"{title}/{series}/y")
+                paths: set[str] = set()
+                for title, series_dict in t_data.items():
+                    if skip_time_series and "time" in title.lower():
+                        continue
 
-            path_sets[cnt] = paths
+                    for series in series_dict:
+                        paths.add(f"{title}/{series}/y")
+
+                path_sets[cnt] = paths
 
         if not path_sets:
             self.log.error("The given list of tasks do not have any metrics.")
@@ -224,30 +239,40 @@ class DataGetter:
 
         results: set[str] = set()
 
-        for t_id in list(self.tasks.keys()):
-            titles_to_remove: set[str] = set()
+        with logging_redirect_tqdm():
+            for t_id in tqdm(list(self.tasks.keys())):
+                titles_to_remove: set[str] = set()
 
-            for metric in metric_paths:
-                m_type, m_title, series, y = metric.split("/")
+                for metric in metric_paths:
+                    m_type, m_title, series, y = metric.split("/")
+                    new_series = self._map_series_names(series)
+                    if new_series is None:
+                        continue
 
-                m_type_title = f"{m_type}/{m_title}"
-                m_title_merged = self._remove_strenum_suffix(m_title, SummaryType)
-                m_type_title_merged = f"{m_type}/{m_title_merged}"
+                    m_type_title = f"{m_type}/{m_title}"
+                    m_title_merged = self._remove_strenum_suffix(m_title, SummaryType)
+                    m_type_title_merged = f"{m_type}/{m_title_merged}"
 
-                if m_type_title_merged not in self.tasks[t_id]:
-                    self.tasks[t_id][m_type_title_merged] = {}
+                    if m_type_title_merged not in self.tasks[t_id]:
+                        self.tasks[t_id][m_type_title_merged] = {}
 
-                self.tasks[t_id][m_type_title_merged][series] = {
-                    y: self.tasks[t_id][m_type_title][series][y]
-                }
+                    self.tasks[t_id][m_type_title_merged][new_series] = {
+                        y: self.tasks[t_id][m_type_title][series][y]
+                    }
 
-                results.add(f"{m_type_title_merged}/{series}/{y}")
-                titles_to_remove.add(m_type_title)
+                    results.add(f"{m_type_title_merged}/{new_series}/{y}")
+                    titles_to_remove.add(m_type_title)
 
-            for m_type_title in titles_to_remove:
-                self.tasks[t_id].pop(m_type_title)
+                for m_type_title in titles_to_remove:
+                    self.tasks[t_id].pop(m_type_title)
 
         return sorted(results)
+
+    def _map_series_names(self, series_name: str) -> Optional[str]:
+        # Hardcoded mapping for storing new data. Returns None if there is need to drop the data.
+        if not self.merge_summaries_metrics:
+            return series_name
+        return self.MERGE_SERIES_MAPPING.get(series_name, series_name)
 
     @staticmethod
     def _remove_strenum_suffix(s: str, enum: StrEnum) -> str:
