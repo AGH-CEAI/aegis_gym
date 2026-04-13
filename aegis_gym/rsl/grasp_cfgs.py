@@ -148,7 +148,6 @@ def get_bc_cfg() -> dict:
             },
             "attention_spatial_fusion": {
                 "fusion_output_dim": 256,
-                "pool_size_pose": 2,
                 "num_heads": 4,
             },
             "action_head": {
@@ -191,7 +190,7 @@ def get_task_cfgs():
         "image_resolution": (64, 64),
         "use_rasterizer": False,
         "visualize_camera": False,
-        "visualize_cell": False,
+        "visualize_cell": True,
         "camera_setup": "default",  # options: default, scene_dual
         "reward_scales": {
             "keypoints": 1.0,
