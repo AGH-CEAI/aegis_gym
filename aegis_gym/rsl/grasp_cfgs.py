@@ -188,7 +188,7 @@ def get_task_cfgs():
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
-        "use_rasterizer": False,
+        "use_rasterizer": True,
         "visualize_camera": False,
         "visualize_cell": True,
         "camera_setup": "default",  # options: default, scene_dual

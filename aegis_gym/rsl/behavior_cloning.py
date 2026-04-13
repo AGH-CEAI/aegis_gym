@@ -897,7 +897,6 @@ class SpatialAttentionFusion(FusionModule):
 
         self.spatial_pool = SpatialAttentionPooling(in_channels)
 
-        # self.pool_size_pose = pool_size_pose
         self.output_dim = vision_dim
         self.pose_input_dim = in_channels
 
