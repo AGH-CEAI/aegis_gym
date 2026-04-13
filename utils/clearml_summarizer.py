@@ -1,10 +1,11 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   "numpy",
-#   "matplotlib",
-#   "plotly",
 #   "clearml",
+#   "matplotlib",
+#   "numpy",
+#   "plotly",
+#   "tqdm",
 # ]
 # ///
 

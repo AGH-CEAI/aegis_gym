@@ -56,7 +56,6 @@ class DataGetter:
         if metrics_paths is None:
             metrics_paths = self._get_common_metrics()
         else:
-            # TODO implement merge of the summaries for selected metrics
             self._select_metrics(metrics_paths)
         self.metrics_paths = metrics_paths
 
@@ -257,7 +256,7 @@ class DataGetter:
                         self.tasks[t_id][m_type_title_merged] = {}
 
                     self.tasks[t_id][m_type_title_merged][new_series] = {
-                        y: self.tasks[t_id][m_type_title][series][y]
+                        y: self.tasks[t_id][m_type_title][series][y],
                     }
 
                     results.add(f"{m_type_title_merged}/{new_series}/{y}")

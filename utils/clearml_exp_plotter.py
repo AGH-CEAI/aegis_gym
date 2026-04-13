@@ -15,7 +15,8 @@ from typing import Optional
 
 import matplotlib
 
-from helpers.data_getter import DataGetter
+from helpers.data_getter import DataGetter, SummaryType
+from helpers.summarizer import Summarizer
 from helpers.logging_formatter import CustomFormatter
 
 handler = logging.StreamHandler()
@@ -54,20 +55,21 @@ def main(argv: Optional[list[str]] = None) -> None:
         print("))) No metrics")
         return
 
-    print("TODO: implement reporting to the ClearML")
-    # TAG_EXP_PLOTTER = "exp-summary"
-    # summarizer = Summarizer(
-    #     tasks_data=data,
-    #     summary_task_name=args.summary_task_name,
-    #     plots_backend=args.plots_backend,
-    #     summary_task_tags=[TAG_EXP_PLOTTER],
-    #     plot_merged_metrics=True,
-    #     summary_types=[SummaryType.MEAN],
-    # )
-    # summarizer.summarize(
-    #     tag_for_tasks=TAG_EXP_PLOTTER,
-    #     cleanup_previous_tags=args.cleanup_previous_tags,
-    # )
+    # print("TODO: implement reporting to the ClearML")
+    TAG_EXP_PLOTTER = "exp-summary"
+    summarizer = Summarizer(
+        tasks_data=data,
+        summary_task_name=args.summary_task_name,
+        plots_backend=args.plots_backend,
+        summary_task_tags=[TAG_EXP_PLOTTER],
+        plot_merged_metrics=True,
+        summary_types=[SummaryType.MEAN],
+    )
+    summarizer.summarize(
+        tag_for_tasks=TAG_EXP_PLOTTER,
+        cleanup_previous_tags=args.cleanup_previous_tags,
+        add_tag_to_tasks=False,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
