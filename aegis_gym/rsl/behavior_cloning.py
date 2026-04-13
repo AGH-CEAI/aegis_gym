@@ -27,7 +27,7 @@ class BehaviorCloning:
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
         self._use_teacher_mixing = self._cfg.get("use_teacher_mixing", False)
-        encoder_type = self._cfg["policy"]["type"]
+        encoder_type = self._cfg["policy"]["encoder_type"]
         self._enable_recon = encoder_type == "autoencoder"
         self._save_recons = self._cfg.get("save_recons", False)
         self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
@@ -60,6 +60,9 @@ class BehaviorCloning:
             raise ValueError(f"Unknown camera_setup: {env.camera_setup}")
 
         cfg["policy"]["num_cameras"] = num_cameras
+        cfg["policy"]["image_height"] = env.image_height
+        cfg["policy"]["image_width"] = env.image_width
+        cfg["policy"]["device"] = self._device
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 
@@ -570,35 +573,36 @@ class Policy(nn.Module):
 
     def _build_fusion(self, config: dict) -> "FusionModule":
         c, h, w = self.vision_encoder.infer_output_shape(
-            image_size=config.get("image_size", 64)
+            image_height=config.get("image_height", 64),
+            image_width=config.get("image_width", 64),
+            device=config.get("device", "cpu"),
         )
 
         match self.fusion_type:
             case "linear":
                 fusion_cfg = config["linear_fusion"]
                 return LinearFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                     num_cameras=self.num_cameras,
                     in_channels=c,
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                 )
             case "attention_vector":
                 fusion_cfg = config["attention_vector_fusion"]
                 return VectorAttentionFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                     num_cameras=self.num_cameras,
                     in_channels=c,
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                     num_heads=fusion_cfg.get("num_heads", 4),
                 )
             case "attention_spatial":
                 fusion_cfg = config["attention_spatial_fusion"]
                 return SpatialAttentionFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 256),
                     num_cameras=self.num_cameras,
                     in_channels=c,
-                    height=h,
-                    width=w,
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 256),
+                    image_height=h,
+                    image_width=w,
                     num_heads=fusion_cfg.get("num_heads", 4),
-                    pool_size_pose=fusion_cfg.get("pool_size_pose", 2),
                 )
             case _:
                 raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
@@ -642,14 +646,30 @@ class VisionEncoder(nn.Module):
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         raise NotImplementedError
 
-    def infer_output_shape(self, image_size: int = 64) -> tuple[int, int, int]:
-        dummy = th.zeros(1, 3, image_size, image_size)
+    def infer_output_shape(
+        self,
+        image_height: int = 64,
+        image_width: int = 64,
+        device: str = "cpu",
+    ) -> tuple[int, int, int]:
+        dummy = th.zeros((1, 3, image_height, image_width), device=device)
         with th.no_grad():
             out = self._single_forward(dummy)  # (1, C, H, W)
         _, c, h, w = out.shape
         return c, h, w
 
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
+        raise NotImplementedError
+
+
+class FusionModule(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, features: tuple) -> th.Tensor:
+        raise NotImplementedError
+
+    def prepare_pose_features(self, features: tuple) -> tuple:
         raise NotImplementedError
 
 
@@ -768,50 +788,44 @@ class AutoencoderCNNEncoder(VisionEncoder):
         return tuple(recons)
 
 
-class FusionModule(nn.Module):
-    output_dim: int
-    pose_input_dim: int
-
-    def forward(self, features: tuple) -> th.Tensor:
-        raise NotImplementedError
-
-    def prepare_pose_features(self, features: tuple) -> tuple:
-        raise NotImplementedError
-
-
 class LinearFusion(FusionModule):
     def __init__(
-        self, num_cameras: int, in_channels: int, vision_dim: int, pool_size: int = 4
+        self,
+        vision_dim: int = 512,
+        num_cameras: int = 3,
+        in_channels: int = 32,
+        pool_size: int = 4,
     ):
         super().__init__()
         self.pool_size = pool_size
-        flat_per_cam = in_channels * pool_size * pool_size
+        feature_dim_cam = in_channels * pool_size * pool_size
         self.net = nn.Sequential(
-            nn.Linear(flat_per_cam * num_cameras, vision_dim),
+            nn.Linear(feature_dim_cam * num_cameras, vision_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
         self.output_dim = vision_dim
-        self.pose_input_dim = flat_per_cam
+        self.pose_input_dim = feature_dim_cam
 
-    def _pool_and_flatten(self, feat: th.Tensor) -> th.Tensor:
+    def _to_feature_vector(self, feat: th.Tensor) -> th.Tensor:
         f = F.adaptive_avg_pool2d(feat, (self.pool_size, self.pool_size))
         return f.flatten(start_dim=1)
 
     def forward(self, features: tuple) -> th.Tensor:
-        flat = [self._pool_and_flatten(f) for f in features]
-        return self.net(th.cat(flat, dim=-1))
+        feat_vecs = [self._to_feature_vector(f) for f in features]
+        fused_feat_vec = th.cat(feat_vecs, dim=-1)
+        return self.net(fused_feat_vec)
 
     def prepare_pose_features(self, features: tuple) -> tuple:
-        return tuple(self._pool_and_flatten(f) for f in features)
+        return tuple(self._to_feature_vector(f) for f in features)
 
 
 class VectorAttentionFusion(FusionModule):
     def __init__(
         self,
-        in_channels: int,
-        num_cameras: int,
-        vision_dim: int,
+        vision_dim: int = 512,
+        num_cameras: int = 3,
+        in_channels: int = 32,
         num_heads: int = 4,
         pool_size: int = 4,
     ):
@@ -826,19 +840,19 @@ class VectorAttentionFusion(FusionModule):
         self.attn = nn.MultiheadAttention(
             vision_dim, num_heads, batch_first=True, dropout=0.0
         )
-        self.mlp = nn.Sequential(nn.Linear(vision_dim, vision_dim), nn.ReLU())
+        self.mlp = nn.Sequential(nn.Linear(vision_dim, vision_dim), nn.GELU())
 
         self.output_dim = vision_dim
         self.pose_input_dim = flat_per_cam
 
-    def _pool_and_flatten(self, feat: th.Tensor) -> th.Tensor:
+    def _to_feature_vector(self, feat: th.Tensor) -> th.Tensor:
         f = F.adaptive_avg_pool2d(feat, (self.pool_size, self.pool_size))
         return f.flatten(start_dim=1)
 
     def forward(self, features: tuple) -> th.Tensor:
-        vecs = [self.proj_in(self._pool_and_flatten(f)) for f in features]
+        feat_vecs = [self.proj_in(self._to_feature_vector(f)) for f in features]
 
-        x = th.stack(vecs, dim=1)
+        x = th.stack(feat_vecs, dim=1)
         x = x + self.cam_embed
 
         B = x.shape[0]
@@ -853,22 +867,21 @@ class VectorAttentionFusion(FusionModule):
         return self.mlp(cls_out)
 
     def prepare_pose_features(self, features: tuple) -> tuple:
-        return tuple(self._pool_and_flatten(f) for f in features)
+        return tuple(self._to_feature_vector(f) for f in features)
 
 
 class SpatialAttentionFusion(FusionModule):
     def __init__(
         self,
-        num_cameras: int,
-        in_channels: int,
-        height: int,
-        width: int,
         vision_dim: int = 256,
+        num_cameras: int = 3,
+        in_channels: int = 64,
+        image_height: int = 8,
+        image_width: int = 8,
         num_heads: int = 4,
-        pool_size_pose: int = 2,
     ):
         super().__init__()
-        num_patches = height * width
+        num_patches = image_height * image_width
 
         self.patch_proj = nn.Linear(in_channels, vision_dim)
         self.pos_embed = nn.Parameter(th.randn(1, num_patches, vision_dim) * 0.02)
@@ -880,24 +893,26 @@ class SpatialAttentionFusion(FusionModule):
             vision_dim, num_heads, batch_first=True, dropout=0.0
         )
         self.norm2 = nn.LayerNorm(vision_dim)
-        self.mlp = nn.Sequential(nn.Linear(vision_dim, vision_dim), nn.ReLU())
+        self.mlp = nn.Sequential(nn.Linear(vision_dim, vision_dim), nn.GELU())
 
-        self.pool_size_pose = pool_size_pose
+        self.spatial_pool = SpatialAttentionPooling(in_channels)
+
+        # self.pool_size_pose = pool_size_pose
         self.output_dim = vision_dim
-        self.pose_input_dim = in_channels * pool_size_pose * pool_size_pose
+        self.pose_input_dim = in_channels
 
     def forward(self, features: tuple) -> th.Tensor:
         B = features[0].shape[0]
-        cam_tokens = []
+        patch_tokens_per_cam = []
 
         for i, feat in enumerate(features):
-            t = feat.flatten(2).transpose(1, 2)
-            t = self.patch_proj(t)
-            t = t + self.pos_embed
-            t = t + self.cam_embed[:, i]
-            cam_tokens.append(t)
+            patches = feat.flatten(2).transpose(1, 2)
+            patch_tokens = self.patch_proj(patches)
+            patch_tokens = patch_tokens + self.pos_embed
+            patch_tokens = patch_tokens + self.cam_embed[:, i]
+            patch_tokens_per_cam.append(patch_tokens)
 
-        x = th.cat(cam_tokens, dim=1)
+        x = th.cat(patch_tokens_per_cam, dim=1)
 
         cls = self.cls_token.expand(B, -1, -1)
         x = th.cat([cls, x], dim=1)
@@ -910,7 +925,18 @@ class SpatialAttentionFusion(FusionModule):
         return self.mlp(self.norm2(cls_out))
 
     def prepare_pose_features(self, features: tuple) -> tuple:
-        p = self.pool_size_pose
-        return tuple(
-            F.adaptive_avg_pool2d(f, (p, p)).flatten(start_dim=1) for f in features
-        )
+        return tuple(self.spatial_pool(f) for f in features)
+
+
+class SpatialAttentionPooling(nn.Module):
+    def __init__(self, in_channels: int):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, 1, kernel_size=1)
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        B, C, H, W = x.shape
+        weights = self.conv(x)
+        weights = weights.view(B, 1, H * W)
+        weights = th.softmax(weights, dim=-1)
+        feats = x.view(B, C, H * W)
+        return (feats * weights).sum(dim=-1)
