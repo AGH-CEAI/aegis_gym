@@ -8,10 +8,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from clearml import Task, TaskTypes, Logger
+from joblib import Parallel, delayed
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 from helpers.data_getter import DataGetter, SummaryType
+
+
+def _add_task_tags(t_id: str, tags: list[str]) -> None:
+    Task.get_task(task_id=t_id).add_tags(tags)
+
+
+def _cleanup_task_tags(t_id: str) -> tuple[int, int]:
+    """Returns (tasks_cleaned, tags_removed) counts."""
+    t = Task.get_task(task_id=t_id)
+    current_tags = list(t.get_tags() or [])
+    filtered_tags = [tag for tag in current_tags if not tag.startswith("summary:")]
+
+    if filtered_tags != current_tags:
+        removed = [tag for tag in current_tags if tag.startswith("summary:")]
+        t.set_tags(filtered_tags)
+        return 1, len(removed)
+    return 0, 0
 
 
 @dataclass(slots=True)
@@ -32,6 +50,7 @@ class StatisticsSeries:
 
 FIELD_MAP = {"mean": "mean", "std": "std", "min": "minimum", "max": "maximum"}
 DEFAULT_SUMMARY_TASK_NAME = "SUMMARY"
+N_JOBS = -1  # use all available cores/threads
 
 
 class Summarizer:
@@ -46,6 +65,7 @@ class Summarizer:
         ],
         plots_backend: Literal["matplotlib", "plotly", "None"] = "plotly",
         plot_merged_metrics: bool = False,
+        n_jobs: int = N_JOBS,
     ):
         """
         plots_backend:
@@ -57,6 +77,7 @@ class Summarizer:
         self.log = logging.getLogger(__name__)
         self.plots_backend = plots_backend
         self.enable_summary_processing = plot_merged_metrics
+        self.n_jobs = n_jobs
 
         self.tasks = tasks_data.tasks
         self.metric_paths = tasks_data.metrics_paths
@@ -126,9 +147,6 @@ class Summarizer:
 
     def _process_merged_metrics(self) -> dict[str, StatisticsSeries]:
         """Read pre-processed per-task data directly — no statistics calculation."""
-        metrics_stats: dict[str, StatisticsSeries] = {}
-
-        # Group stats by top-level metric key
         metrics: dict[str, set[str]] = {}
         for path_str in self.metric_paths:
             parts = path_str.split("/")
@@ -137,93 +155,98 @@ class Summarizer:
             metrics.setdefault(top_key, set()).add(stat)
 
         self.log.info(f"Merged metrics paths into {len(metrics)} top-level metrics.")
-        self.log.info(f"Extracting summary data from {len(self.tasks)} tasks.")
 
-        with logging_redirect_tqdm():
-            for cnt, (top_key, stats) in tqdm(
-                enumerate(metrics.items()),
-                total=len(metrics),
-                desc="Metric",
-                leave=False,
-                position=0,
-            ):
-                self.log.info(f"[METRIC {cnt + 1}/{len(metrics)}]:\t {top_key}")
-                n_tasks = len(self.tasks)
-                metrics_stats[top_key] = StatisticsSeries(
-                    name=top_key, series=[None] * n_tasks
-                )
+        def _process_one_merged(
+            top_key: str, stats: set[str]
+        ) -> tuple[str, StatisticsSeries]:
+            n_tasks = len(self.tasks)
+            result = StatisticsSeries(name=top_key, series=[None] * n_tasks)
+            unique_series_names: set[str] = set()
 
-                unique_series_names = set()
-                for idx, (t_id, t_data) in enumerate(self.tasks.items()):
-                    m_stats = {
-                        FIELD_MAP[stat]: t_data[top_key][stat]["y"] for stat in stats
-                    }
+            for idx, (t_id, t_data) in enumerate(self.tasks.items()):
+                m_stats = {
+                    FIELD_MAP[stat]: t_data[top_key][stat]["y"] for stat in stats
+                }
+                task = Task.get_task(task_id=t_id)
+                series_name: str = task.name
 
-                    task = Task.get_task(task_id=t_id)
-                    series_name: str = task.name
-
-                    if series_name == DEFAULT_SUMMARY_TASK_NAME:
-                        series_name = Path(task.get_project_name()).name
-                    elif series_name.startswith(f"{DEFAULT_SUMMARY_TASK_NAME}_"):
-                        series_name = series_name.removeprefix(
-                            f"{DEFAULT_SUMMARY_TASK_NAME}_"
-                        )
-
-                    if series_name in unique_series_names:
-                        series_name = f"{unique_series_names}_{t_id[:6]}"
-
-                    unique_series_names.add(series_name)
-                    metrics_stats[top_key].series[idx] = StatisticsData(
-                        series_name=series_name,
-                        data_num=None,  # TODO: somehow restore data_num info from previous summaries (from the series name)
-                        **m_stats,
+                if series_name == DEFAULT_SUMMARY_TASK_NAME:
+                    series_name = Path(task.get_project_name()).name
+                elif series_name.startswith(f"{DEFAULT_SUMMARY_TASK_NAME}_"):
+                    series_name = series_name.removeprefix(
+                        f"{DEFAULT_SUMMARY_TASK_NAME}_"
                     )
 
-            self.log.info("Finished statistical summarization.")
+                if series_name in unique_series_names:
+                    series_name = f"{series_name}_{t_id[:6]}"
 
-            return metrics_stats
+                unique_series_names.add(series_name)
+                result.series[idx] = StatisticsData(
+                    series_name=series_name, data_num=None, **m_stats
+                )
+
+            return top_key, result
+
+        with logging_redirect_tqdm():
+            results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+                delayed(_process_one_merged)(top_key, stats)
+                for top_key, stats in tqdm(
+                    metrics.items(), desc="Metric", leave=False, position=0
+                )
+            )
+
+        self.log.info("Finished statistical summarization.")
+        return dict(results)
 
     def _process_summarized_metrics(self) -> dict[str, StatisticsSeries]:
         """Aggregate raw series from all tasks into mean/std/min/max."""
-        metrics_stats: dict[str, StatisticsSeries] = {}
 
-        with logging_redirect_tqdm():
-            for cnt, path_str in tqdm(
-                enumerate(self.metric_paths), desc="Metric", leave=False, position=0
-            ):
-                parts = path_str.split("/")
-                top_key = "/".join(parts[:-2])
-                stat = parts[-2]
-                variable = parts[-1]
+        def _process_one_summarized(path_str: str) -> tuple[str, str, StatisticsData]:
+            parts = path_str.split("/")
+            top_key = "/".join(parts[:-2])
+            variable = parts[-2]  # e.g. "y"
+            stat = parts[-1]
 
-                self.log.info(
-                    f"[METRIC {cnt + 1}/{len(self.metric_paths)}]:\t {path_str}"
-                )
+            data_series = [
+                list(t_data[top_key][variable][stat]) for t_data in self.tasks.values()
+            ]
+            if not data_series:
+                self.log.warning(f"Skipping '{path_str}': extraction failed.")
+                return top_key, stat, None
 
-                metrics_stats.setdefault(
-                    top_key, StatisticsSeries(name=top_key, series=[None])
-                )
-
-                data_series = [
-                    list(t_data[top_key][stat][variable])
-                    for t_data in self.tasks.values()
-                ]
-
-                if not data_series:
-                    self.log.warning(f"Skipping '{path_str}': extraction failed.")
-                    continue
-
-                metrics_stats[top_key].series[0] = StatisticsData(
+            return (
+                top_key,
+                stat,
+                StatisticsData(
                     series_name=f"tasks_n{len(self.tasks)}",
                     data_num=len(self.tasks),
                     mean=np.mean(data_series, axis=0),
                     std=np.std(data_series, axis=0),
                     minimum=np.min(data_series, axis=0),
                     maximum=np.max(data_series, axis=0),
-                )
-            self.log.info("Finished extraction of statistical summaries.")
+                ),
+            )
 
-            return metrics_stats
+        with logging_redirect_tqdm():
+            results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+                delayed(_process_one_summarized)(path_str)
+                for path_str in tqdm(
+                    self.metric_paths, desc="Metric", leave=False, position=0
+                )
+            )
+
+        # Reassemble in order — joblib preserves order, but we need to merge by top_key
+        metrics_stats: dict[str, StatisticsSeries] = {}
+        for top_key, stat, data in results:
+            if data is None:
+                continue
+            metrics_stats.setdefault(
+                top_key, StatisticsSeries(name=top_key, series=[None])
+            )
+            metrics_stats[top_key].series[0] = data
+
+        self.log.info("Finished extraction of statistical summaries.")
+        return metrics_stats
 
     def summarize(
         self,
@@ -240,9 +263,9 @@ class Summarizer:
             auto_resource_monitoring=False,
             auto_connect_streams=False,
         )
-
         self.log.info(
-            f"Summary task '{self.project_name}/{self.summary_task_name}' (id={summary_task.task_id}) created."
+            f"Summary task '{self.project_name}/{self.summary_task_name}' "
+            f"(id={summary_task.task_id}) created."
         )
 
         if cleanup_previous_tags:
@@ -252,14 +275,14 @@ class Summarizer:
             tags = [f"{tag_for_tasks}:{summary_task.task_id}"]
             self.log.info("Adding tag(s) to the source tasks.")
             with logging_redirect_tqdm():
-                for t_id in tqdm(
-                    self.tasks.keys(), desc="Task", leave=False, position=0
-                ):
-                    t = Task.get_task(task_id=t_id)
-                    t.add_tags(tags)
+                Parallel(n_jobs=self.n_jobs, backend="threading")(
+                    delayed(_add_task_tags)(t_id, tags)
+                    for t_id in tqdm(
+                        self.tasks.keys(), desc="Task", leave=False, position=0
+                    )
+                )
             self.log.info(f"Added tag(s) {tags} to {len(self.tasks)} source tasks.")
 
-        # Persist configuration for reproducibility
         summary_task.set_parameter("summarize/tags_filter", str(self.i_tags_filter))
         summary_task.set_parameter("summarize/metric_paths", str(self.metric_paths))
         summary_task.set_parameter("summarize/max_samples", self.i_max_samples)
@@ -280,30 +303,16 @@ class Summarizer:
     def _cleanup_previous_tags(self) -> None:
         self.log.info("Removing previous summary tags from task(s).")
 
-        cleaned_tasks = 0
-        removed_total = 0
-
-        # TODO make it multithread!
         with logging_redirect_tqdm():
-            for t_id in tqdm(self.tasks.keys(), desc="Task", leave=False, position=0):
-                t = Task.get_task(task_id=t_id)
+            results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+                delayed(_cleanup_task_tags)(t_id)
+                for t_id in tqdm(
+                    self.tasks.keys(), desc="Task", leave=False, position=0
+                )
+            )
 
-                current_tags = list(t.get_tags() or [])
-                filtered_tags = [
-                    tag for tag in current_tags if not tag.startswith("summary:")
-                ]
-
-                if filtered_tags != current_tags:
-                    removed = [
-                        tag for tag in current_tags if tag.startswith("summary:")
-                    ]
-                    t.set_tags(filtered_tags)
-                    cleaned_tasks += 1
-                    removed_total += len(removed)
-                    self.log.debug(
-                        f"Removed summary tags from task id {t_id}: {removed}"
-                    )
-
+        cleaned_tasks = sum(r[0] for r in results)
+        removed_total = sum(r[1] for r in results)
         self.log.info(
             f"Removed {removed_total} summary tag(s) from {cleaned_tasks} task(s)."
         )
@@ -311,21 +320,23 @@ class Summarizer:
     # TODO somehow make it palaller (multiprocessing?)
     def _summarize(self, summary_task: Task) -> None:
 
-        with logging_redirect_tqdm():
-            for cnt, metric in tqdm(
-                enumerate(self.metrics_stats.values()),
-                total=len(self.metrics_stats),
-                desc="Metric",
-                leave=False,
-                position=0,
-            ):
-                self.log.info(
-                    f"[METRIC {cnt + 1}/{len(self.metrics_stats)}]:\t {metric.name}"
-                )
+        summary_logger = summary_task.get_logger()
 
-                summary_logger = summary_task.get_logger()
-                self._report_scalars(summary_logger, metric)
-                self._report_filled_plots(summary_logger, metric)
+        def _summarize_one_metric(metric: StatisticsSeries) -> None:
+            self._report_scalars(summary_logger, metric)
+            self._report_filled_plots(summary_logger, metric)
+
+        with logging_redirect_tqdm():
+            Parallel(n_jobs=self.n_jobs, backend="threading")(
+                delayed(_summarize_one_metric)(metric)
+                for metric in tqdm(
+                    self.metrics_stats.values(),
+                    total=len(self.metrics_stats),
+                    desc="Metric",
+                    leave=False,
+                    position=0,
+                )
+            )
 
     @staticmethod
     def _path_to_title_series(path_str: str) -> tuple[str, str]:
@@ -336,20 +347,11 @@ class Summarizer:
             return "/".join(parts[:-1]), parts[-1]
         return parts[0], "default"
 
-    def _report_scalars(
-        self,
-        t_log: Logger,
-        metric: StatisticsSeries,
-    ) -> None:
-        """
-        Upload summary to a ClearML task via its logger.
-        """
-        self.log.info("Reporting scalars to ClearML server.")
+    def _report_scalars(self, t_log: Logger, metric: StatisticsSeries) -> None:
+        self.log.info(f"[METRIC] {metric.name} | Reporting scalars to ClearML server.")
         title = metric.name
 
-        for step in tqdm(
-            range(len(self.x_axis)), desc="Step..", leave=False, position=1
-        ):
+        for step in range(len(self.x_axis)):
             x = self.x_axis[step]
             for series in metric.series:
                 series_name = series.series_name
@@ -369,16 +371,10 @@ class Summarizer:
                         f"{title}_mean-min-max", f"{prefix}mean", mean[step], x
                     )
                     t_log.report_scalar(
-                        f"{title}_mean-min-max",
-                        f"{prefix}min",
-                        minimum[step],
-                        x,
+                        f"{title}_mean-min-max", f"{prefix}min", minimum[step], x
                     )
                     t_log.report_scalar(
-                        f"{title}_mean-min-max",
-                        f"{prefix}max",
-                        maximum[step],
-                        x,
+                        f"{title}_mean-min-max", f"{prefix}max", maximum[step], x
                     )
 
                 if SummaryType.MEAN_STD in self.summary_types:
@@ -386,27 +382,18 @@ class Summarizer:
                         f"{title}_mean-std", f"{prefix}mean", mean[step], x
                     )
                     t_log.report_scalar(
-                        f"{title}_mean-std",
-                        f"{prefix}std+",
-                        mean[step] + std[step],
-                        x,
+                        f"{title}_mean-std", f"{prefix}std+", mean[step] + std[step], x
                     )
                     t_log.report_scalar(
-                        f"{title}_mean-std",
-                        f"{prefix}std-",
-                        mean[step] - std[step],
-                        x,
+                        f"{title}_mean-std", f"{prefix}std-", mean[step] - std[step], x
                     )
 
-    def _report_filled_plots(
-        self,
-        t_log: Logger,
-        metric: StatisticsSeries,
-    ) -> None:
-        """
-        Create filled confidence-band figures and upload them to a ClearML task.
-        """
-        self.log.info("Creating and uploading plots to ClearML server.")
+        self.log.info(f"[METRIC] {metric.name} | Finished reporting scalars.")
+
+    def _report_filled_plots(self, t_log: Logger, metric: StatisticsSeries) -> None:
+        self.log.info(
+            f"[METRIC] {metric.name} | Creating and uploading plots to ClearML server."
+        )
 
         match self.plots_backend:
             case "plotly":
@@ -420,6 +407,8 @@ class Summarizer:
                     f"Unrecognized plots backend `{self.plots_backend}` "
                     "(Available: `plotly`, `matplotlib`). Skipping plots."
                 )
+
+        self.log.info(f"[METRIC] {metric.name} | Finished plots.")
 
     def _report_filled_plots_plotly(
         self,
@@ -442,9 +431,7 @@ class Summarizer:
         fig_mm = go.Figure() if SummaryType.MEAN_MINMAX in self.summary_types else None
         fig_std = go.Figure() if SummaryType.MEAN_STD in self.summary_types else None
 
-        for series, (line_color, fill_color) in tqdm(
-            zip(metric.series, series_colors), desc="Series", leave=False, position=1
-        ):
+        for series, (line_color, fill_color) in zip(metric.series, series_colors):
             series_name = series.series_name
             mean = np.asarray(series.mean)
             std = np.asarray(series.std)
@@ -571,7 +558,7 @@ class Summarizer:
             else (None, None)
         )
 
-        for series in tqdm(metric.series, desc="Series", leave=False, position=1):
+        for series in metric.series:
             series_name = series.series_name
             mean = np.asarray(series.mean)
             std = np.asarray(series.std)

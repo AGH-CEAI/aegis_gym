@@ -5,6 +5,7 @@ from typing import Iterable, Optional
 
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
+from joblib import Parallel, delayed
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
@@ -13,6 +14,9 @@ class SummaryType(StrEnum):
     MEAN = "mean"
     MEAN_MINMAX = "mean-min-max"
     MEAN_STD = "mean-std"
+
+
+N_JOBS = -1  # use all available cores/threads
 
 
 class DataGetter:
@@ -24,12 +28,14 @@ class DataGetter:
         metrics_paths: Optional[list[str]] = None,
         max_samples: Optional[int] = None,
         merge_summaries_metrics: bool = False,
+        n_jobs: int = N_JOBS,
     ):
 
         self.log = logging.getLogger(__name__)
         self.project_name = project_name
         self.max_samples = max_samples
         self.recursive_projects = recursive_projects
+        self.n_jobs = n_jobs
 
         self.merge_summaries_metrics = merge_summaries_metrics
         self.MERGE_SERIES_MAPPING = {
@@ -81,30 +87,49 @@ class DataGetter:
         remove_colon_scalars: bool = True,
         same_n_iterations: bool = True,
     ) -> dict[str, dict]:
-        # Returns: dict[task_id, task_data_dict]
-
         tasks = {}
         tasks_raw = self._get_cleraml_tasks()
         if tasks_raw is None:
             return tasks
 
         self.log.info("Validating tasks metrics.")
-        self.min_n_iterations = tasks_raw[0].get_last_iteration()
 
-        with logging_redirect_tqdm():
-            for t in tqdm(tasks_raw, desc="Task", leave=False, position=0):
-                try:
-                    data = self._task_data_getter(t)
-                    if remove_colon_scalars:
-                        data = self._remove_colcon_scalars(data)
+        results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+            delayed(self._load_one_task)(t, remove_colon_scalars)
+            for t in tqdm(tasks_raw, desc="Task", leave=False, position=0)
+        )
 
-                    if same_n_iterations:
-                        self._compare_n_iterations(t.get_last_iteration())
+        valid_iterations = []
+        for t_id, n_iter, data, err in results:
+            if err is not None:
+                self.log.warning(f"Skipping task id {t_id} due to: {err}")
+                continue
+            tasks[t_id] = data
+            if same_n_iterations and n_iter is not None:
+                valid_iterations.append(n_iter)
 
-                    tasks[t.task_id] = data
-                except ValueError as e:
-                    self.log.warning(f"Skipping task id {t.task_id} due to: {str(e)}")
+        if same_n_iterations and valid_iterations:
+            self.min_n_iterations = min(valid_iterations)
+
+            tasks = {
+                t_id: data
+                for t_id, data in tasks.items()
+                if tasks_raw[
+                    [t.task_id for t in tasks_raw].index(t_id)
+                ].get_last_iteration()
+                >= self.min_n_iterations
+            }
+
         return tasks
+
+    def _load_one_task(self, t, remove_colon_scalars: bool):
+        try:
+            data = self._task_data_getter(t)
+            if remove_colon_scalars:
+                data = self._remove_colcon_scalars(data)
+            return t.task_id, t.get_last_iteration(), data, None
+        except ValueError as e:
+            return t.task_id, None, None, str(e)
 
     def _get_cleraml_tasks(self) -> list[Task]:
         self.log.info(
@@ -200,41 +225,45 @@ class DataGetter:
 
         return metric_paths
 
-    def _detect_common_metric_paths(
-        self,
-        skip_time_series: bool = True,
-    ) -> list[str]:
-        # We need a shallow copy to modify the original dictionary
-        tasks = copy.copy(self.tasks)
-        path_sets: list[set[str]] = [None] * len(tasks)
+    def _detect_common_metric_paths(self, skip_time_series: bool = True) -> list[str]:
+        results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+            delayed(self._extract_task_paths)(item, skip_time_series)
+            for item in self.tasks.items()
+        )
 
-        with logging_redirect_tqdm():
-            for cnt, (t_id, t_data) in tqdm(
-                enumerate(tasks.items()), desc="Task", leave=False, position=0
-            ):
-                if not t_data:
-                    self.log.warning(
-                        f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
-                    )
-                    self.tasks.pop(t_id)
-                    continue
+        path_sets = []
+        invalid_ids = []
 
-                paths: set[str] = set()
-                for title, series_dict in t_data.items():
-                    if skip_time_series and "time" in title.lower():
-                        continue
+        for t_id, paths, err in results:
+            if err is not None:
+                self.log.warning(
+                    f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
+                )
+                invalid_ids.append(t_id)
+                continue
+            path_sets.append(paths)
 
-                    for series in series_dict:
-                        paths.add(f"{title}/{series}/y")
-
-                path_sets[cnt] = paths
+        for t_id in invalid_ids:
+            self.tasks.pop(t_id, None)
 
         if not path_sets:
             self.log.error("The given list of tasks do not have any metrics.")
             return []
 
-        common_paths = path_sets[0].intersection(*path_sets[1:])
-        return sorted(common_paths)
+        return sorted(path_sets[0].intersection(*path_sets[1:]))
+
+    def _extract_task_paths(self, item, skip_time_series: bool = True):
+        t_id, t_data = item
+        if not t_data:
+            return t_id, None, "no metrics"
+
+        paths = set()
+        for title, series_dict in t_data.items():
+            if skip_time_series and "time" in title.lower():
+                continue
+            for series in series_dict:
+                paths.add(f"{title}/{series}/y")
+        return t_id, paths, None
 
     def _merge_metrics_series(self, metric_paths: list[str]) -> list[str]:
 

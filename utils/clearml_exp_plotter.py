@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "clearml",
+#   "joblib",
 #   "matplotlib",
 #   "numpy",
 #   "plotly",
@@ -68,7 +69,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     summarizer.summarize(
         tag_for_tasks=TAG_EXP_PLOTTER,
         cleanup_previous_tags=args.cleanup_previous_tags,
-        add_tag_to_tasks=False,
+        add_tag_to_tasks=True,
     )
 
 

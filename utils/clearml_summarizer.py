@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "clearml",
+#   "joblib",
 #   "matplotlib",
 #   "numpy",
 #   "plotly",
