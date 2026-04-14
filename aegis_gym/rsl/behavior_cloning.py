@@ -585,6 +585,8 @@ class Policy(nn.Module):
                     vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                     num_cameras=self.num_cameras,
                     in_channels=c,
+                    image_height=h,
+                    image_width=w,
                 )
             case "attention_vector":
                 fusion_cfg = config["attention_vector_fusion"]
@@ -709,83 +711,69 @@ class PerCameraCNNEncoder(VisionEncoder):
         return tuple(features)
 
 
-# # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
+# TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
 class AutoencoderCNNEncoder(VisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
 
-        self.encoder = self._build_encoder()
+        self.encoder = cnn_builder()
+
+        self.feature_channels = vision_cfg["conv_layers"][-1]["out_channels"]
+        self.feature_size = 16
+        self.flatten_dim = self.feature_channels * self.feature_size * self.feature_size
+        self.latent_dim = 512
+
+        self.to_latent = nn.Linear(self.flatten_dim, self.latent_dim)
+        self.from_latent = nn.Linear(self.latent_dim, self.flatten_dim)
+        self.feature_channels = self.feature_channels
+        self.feature_size = self.feature_size
         self.decoder = self._build_decoder()
 
-    def _build_encoder(self) -> nn.Sequential:
-        return nn.Sequential(
-            # (B, 3, 64, 64)
-            nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            # (B, 8, 64, 64)
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            # (B, 16, 32, 32)
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            # (B, 32, 16, 16)
-            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            # (B, 32, 8, 8)
-            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            # (B, 32, 4, 4)
-        )
-
-    def _build_decoder(self) -> nn.Sequential:
-        return nn.Sequential(
-            # (B, 32, 4, 4)
-            nn.ConvTranspose2d(
-                32, 32, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            # (B, 32, 8, 8)
-            nn.ConvTranspose2d(
-                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            # (B, 16, 16, 16)
-            nn.ConvTranspose2d(
-                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            # (B, 8, 32, 32)
-            nn.ConvTranspose2d(
-                8, 3, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.Sigmoid(),
-            # (B, 3, 64, 64)
-        )
-
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
-        return self.encoder(x)
+        fmap = self.encoder(x)  # (1, 32, 16, 16)
+        latent = self.to_latent(fmap.flatten(start_dim=1))  # (1, 512)
+        return latent.unsqueeze(-1).unsqueeze(-1)  # (1, 512, 1, 1)
 
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = []
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoder(cam_rgb)
-            features.append(feat)
+            fmap = self.encoder(cam_rgb)  # (B, 32, 16, 16)
+            latent = self.to_latent(fmap.flatten(start_dim=1))  # (B, 512)
+            features.append(latent.unsqueeze(-1).unsqueeze(-1))  # (B, 512, 1, 1)
         return tuple(features)
 
     def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         recons = []
         for i in range(self.num_cameras):
             cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoder(cam_rgb)
-            recon = self.decoder(feat)
-            recons.append(recon)
+            fmap = self.encoder(cam_rgb)  # (B, 32, 16, 16)
+            flat = fmap.flatten(start_dim=1)
+            latent = self.to_latent(flat)  # (B, 512)
+            flat_recon = self.from_latent(latent)  # (B, 8192)
+            fmap_recon = flat_recon.view(
+                -1, self.feature_channels, self.feature_size, self.feature_size
+            )  # (B, 32, 16, 16)
+            recons.append(self.decoder(fmap_recon))  # (B, 3, 64, 64)
         return tuple(recons)
+
+    def _build_decoder(self) -> nn.Sequential:
+        return nn.Sequential(
+            # (B, 32, 16, 16)
+            nn.ConvTranspose2d(
+                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
+            nn.ReLU(),
+            # (B, 16, 32, 32)
+            nn.ConvTranspose2d(
+                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
+            ),
+            nn.ReLU(),
+            # (B, 8, 64, 64)
+            nn.Conv2d(8, 3, kernel_size=3, stride=1, padding=1),
+            nn.Sigmoid(),
+            # (B, 3, 64, 64)
+        )
 
 
 class LinearFusion(FusionModule):
@@ -794,11 +782,21 @@ class LinearFusion(FusionModule):
         vision_dim: int = 512,
         num_cameras: int = 3,
         in_channels: int = 32,
+        image_height: int = 64,
+        image_width: int = 64,
         pool_size: int = 4,
     ):
         super().__init__()
         self.pool_size = pool_size
-        feature_dim_cam = in_channels * pool_size * pool_size
+        self.is_latent_vector = image_height == 1 and image_width == 1
+
+        if self.is_latent_vector:
+            feature_dim_cam = in_channels
+            self.pose_proj = nn.Linear(in_channels, vision_dim)
+        else:
+            feature_dim_cam = in_channels * pool_size * pool_size
+            self.pose_proj = None
+
         self.net = nn.Sequential(
             nn.Linear(feature_dim_cam * num_cameras, vision_dim),
             nn.ReLU(),
@@ -808,8 +806,12 @@ class LinearFusion(FusionModule):
         self.pose_input_dim = feature_dim_cam
 
     def _to_feature_vector(self, feat: th.Tensor) -> th.Tensor:
-        f = F.adaptive_avg_pool2d(feat, (self.pool_size, self.pool_size))
-        return f.flatten(start_dim=1)
+        if self.is_latent_vector:
+            f = feat.flatten(start_dim=1)
+        else:
+            f = F.adaptive_avg_pool2d(feat, (self.pool_size, self.pool_size))
+            f = f.flatten(start_dim=1)
+        return f
 
     def forward(self, features: tuple) -> th.Tensor:
         feat_vecs = [self._to_feature_vector(f) for f in features]
@@ -817,7 +819,11 @@ class LinearFusion(FusionModule):
         return self.net(fused_feat_vec)
 
     def prepare_pose_features(self, features: tuple) -> tuple:
-        return tuple(self._to_feature_vector(f) for f in features)
+        feat_vecs = [self._to_feature_vector(f) for f in features]
+        if self.pose_proj is not None:
+            return tuple(self.pose_proj(f) for f in feat_vecs)
+        else:
+            return tuple(feat_vecs)
 
 
 class VectorAttentionFusion(FusionModule):
