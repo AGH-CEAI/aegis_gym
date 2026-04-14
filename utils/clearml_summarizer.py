@@ -20,11 +20,14 @@ import matplotlib
 
 from helpers.data_getter import DataGetter
 from helpers.summarizer import Summarizer
+from helpers.logging_formatter import CustomFormatter
 
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+handler.setFormatter(CustomFormatter())
 logging.basicConfig(
     level=logging.INFO,
-    # format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    format="%(asctime)s [%(levelname)s]: %(message)s",
+    handlers=[handler],
 )
 matplotlib.use("Agg")  # non-interactive backend, safe in any env
 
@@ -40,15 +43,19 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     args = _build_parser().parse_args(argv)
     data = DataGetter(
+        project_name=args.project_name,
         max_samples=args.max_samples,
         metrics_paths=args.metric_paths,
-        project_name=args.project_name,
         tags_select=args.tags,
     )
+
     if not data.tasks:
+        print(">>> No tasks! Exiting.")
         return
     if not data.metrics_paths:
+        print(">>> No metrics! Exiting.")
         return
+
     summarizer = Summarizer(
         tasks_data=data,
         summary_task_name=args.summary_task_name,

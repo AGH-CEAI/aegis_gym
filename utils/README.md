@@ -47,8 +47,8 @@ Summarize summarization of the ClearML experiments!
 To use it properly, you need to run the `clearml_summarizer.py` first.
 
 ```bash
-uv run ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJECT_PATH
-uv run ./clearml_exp_plotter.py -h
+uv run --script ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJECT_PATH
+uv run --script ./clearml_exp_plotter.py -h
 ```
 
 ---
@@ -57,8 +57,8 @@ Summarize ClearML experiments.
 
 ### Usage
 ```bash
-uv run ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJECT/PATH --tags bc
-uv run ./clearml_summarizer.py -h
+uv run --script ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJECT/PATH --tags bc
+uv run --script ./clearml_summarizer.py -h
 ```
 
 ---

@@ -64,7 +64,7 @@ class Summarizer:
             SummaryType.MEAN_MINMAX,
         ],
         plots_backend: Literal["matplotlib", "plotly", "None"] = "plotly",
-        plot_merged_metrics: bool = False,
+        experiments_summary_mode: bool = False,
         n_jobs: int = N_JOBS,
     ):
         """
@@ -76,7 +76,7 @@ class Summarizer:
 
         self.log = logging.getLogger(__name__)
         self.plots_backend = plots_backend
-        self.enable_summary_processing = plot_merged_metrics
+        self.enable_summary_processing = experiments_summary_mode
         self.n_jobs = n_jobs
 
         self.tasks = tasks_data.tasks
@@ -317,7 +317,6 @@ class Summarizer:
             f"Removed {removed_total} summary tag(s) from {cleaned_tasks} task(s)."
         )
 
-    # TODO somehow make it palaller (multiprocessing?)
     def _summarize(self, summary_task: Task) -> None:
 
         summary_logger = summary_task.get_logger()

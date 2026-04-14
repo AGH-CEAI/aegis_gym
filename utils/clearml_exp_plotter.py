@@ -45,8 +45,8 @@ def main(argv: Optional[list[str]] = None) -> None:
     args = _build_parser().parse_args(argv)
     data = DataGetter(
         project_name=args.project_name,
-        recursive_projects=True,
         max_samples=args.max_samples,
+        recursive_projects=True,
         metrics_paths=args.metric_paths,
         tags_select=["summary"] + args.tags,
         merge_summaries_metrics=True,
@@ -64,7 +64,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         summary_task_name=args.summary_task_name,
         plots_backend=args.plots_backend,
         summary_task_tags=[TAG_EXP_PLOTTER],
-        plot_merged_metrics=True,
+        experiments_summary_mode=True,
         summary_types=[SummaryType.MEAN],
     )
     summarizer.summarize(
