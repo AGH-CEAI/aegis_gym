@@ -46,8 +46,8 @@ class Summarizer:
     ):
         """
         plots_backend:
-            "matplotlib" – raster PNG stored in DEBUG SAMPLES tab
-            "plotly"     – interactive vector figure stored in PLOTS tab
+            "matplotlib" - raster PNG stored in DEBUG SAMPLES tab
+            "plotly"     - interactive vector figure stored in PLOTS tab
         plot_merged_metrics - Instead of calculating means, plot every task on the plot
         """
 
@@ -426,7 +426,7 @@ class Summarizer:
                 )
             )
             fig_mm.update_layout(
-                title=f"{metric_name} – {series_name}  [mean]",
+                title=f"{metric_name} - {series_name}  [mean]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
@@ -448,7 +448,7 @@ class Summarizer:
                     fillcolor=band_rgba,
                     line=dict(color="rgba(0,0,0,0)"),
                     hoverinfo="skip",
-                    name="min – max range",
+                    name="min - max range",
                 )
             )
             fig_mm.add_trace(
@@ -461,7 +461,7 @@ class Summarizer:
                 )
             )
             fig_mm.update_layout(
-                title=f"{metric_name} – {series_name}  [mean / min / max]",
+                title=f"{metric_name} - {series_name}  [mean / min / max]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
@@ -496,7 +496,7 @@ class Summarizer:
                 )
             )
             fig_std.update_layout(
-                title=f"{metric_name} – {series_name}  [mean ± std]",
+                title=f"{metric_name} - {series_name}  [mean ± std]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
@@ -530,7 +530,7 @@ class Summarizer:
         if SummaryType.MEAN in self.summary_types:
             fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
             ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
-            ax_mm.set_title(f"{metric_name} – {series_name}  [mean]")
+            ax_mm.set_title(f"{metric_name} - {series_name}  [mean]")
             ax_mm.set_xlabel("step")
             ax_mm.set_ylabel("value")
             ax_mm.legend(loc="best")
@@ -553,7 +553,7 @@ class Summarizer:
                 maximum,
                 alpha=self.plot_alpha_fill,
                 color=self.plot_color_band,
-                label="min – max range",
+                label="min - max range",
             )
             ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
             ax_mm.plot(
@@ -572,7 +572,7 @@ class Summarizer:
                 linestyle=":",
                 label="min",
             )
-            ax_mm.set_title(f"{metric_name} – {series_name}  [mean / min / max]")
+            ax_mm.set_title(f"{metric_name} - {series_name}  [mean / min / max]")
             ax_mm.set_xlabel("step")
             ax_mm.set_ylabel("value")
             ax_mm.legend(loc="best")
@@ -612,7 +612,7 @@ class Summarizer:
                 linewidth=0.8,
                 linestyle="--",
             )
-            ax_std.set_title(f"{metric_name} – {series_name}  [mean ± std]")
+            ax_std.set_title(f"{metric_name} - {series_name}  [mean ± std]")
             ax_std.set_xlabel("step")
             ax_std.set_ylabel("value")
             ax_std.legend(loc="best")
