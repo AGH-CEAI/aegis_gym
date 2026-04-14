@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-82](https://github.com/AGH-CEAI/aegis_gym/pull/82) - Added utility scripts to manage ClearML tasks: `clearml_enquee_tasks.py`, `clearml_exp_plotter.py` & `clearml_summarizer.py`.
 - [PR-75](https://github.com/AGH-CEAI/aegis_gym/pull/75) - Added ability to Load trained models from ClearML via new CLI arguments: `--load-rl-task-id` or `--load-rl-model-id`.
 - [PR-77](https://github.com/AGH-CEAI/aegis_gym/pull/77) - Added template script for hyperparameter optimization.
 
