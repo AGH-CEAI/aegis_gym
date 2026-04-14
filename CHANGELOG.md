@@ -15,7 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-82](https://github.com/AGH-CEAI/aegis_gym/pull/82) - Using `uv run --script` to run utility scripts (updated `upload_urdf_to_clearml.py`).
 - [PR-76](https://github.com/AGH-CEAI/aegis_gym/pull/76) - Increased genesis logging level from "warning" to "info".
+
+
 
 ### Deprecated
 ### Removed
