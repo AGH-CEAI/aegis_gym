@@ -3,8 +3,53 @@
 [Back to main README](../README.md)
 
 ---
-## [`clearml_enquee_tasks.py`](./clearml_enquee_tasks.py)
+## Tools for ClearML tasks management
+
+> [!NOTE]
+> Be sure to get the ClearML project structure to this:
+```
+PROJECTS/.../
+└── YOUR_PROJECT/
+    ├── EXPERIMENT_1/
+    │   ├── SUMMARY
+    │   ├── trial_run_1
+    │   ├── trial_run_2
+    │   ├── ...
+    │   └── trial_run_N
+    ├── EXPERIMENT_2/
+    │   ├── SUMMARY
+    │   ├── trial_run_1
+    │   ├── trial_run_2
+    │   ├── ...
+    │   └── trial_run_N
+    ├── EXPERIMENT_3/
+    │   ├── SUMMARY
+    │   ├── trial_run_1
+    │   ├── trial_run_2
+    │   ├── ...
+    │   └── trial_run_N
+    └── EXPERIMENTS_SUMMARY
+```
+where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PROJECT/EXPERIMENT_X` project name path, and the `EXPERIMENTS_SUMMARY` is the result of the `clearml_exp_plotter.py` run in the `YOUR_PROJECT` project name path.
+
+---
+
+### [`clearml_enquee_tasks.py`](./clearml_enquee_tasks.py)
 Clone task multiple times into a selected queue.
+
+---
+
+### [`clearml_exp_plotter.py`](./clearml_exp_plotter.py)
+Summarize summarization of the ClearML experiments!
+
+#### Usage
+
+To use it properly, you need to run the `clearml_summarizer.py` first.
+
+```bash
+uv run ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJECT_PATH
+uv run ./clearml_exp_plotter.py -h
+```
 
 ---
 ## [`clearml_summarizer.py`](./clearml_summarizer.py)
@@ -16,12 +61,15 @@ uv run ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJECT/PA
 uv run ./clearml_summarizer.py -h
 ```
 
+---
+
+## Dataset manipulation
 
 ---
-## [`upload_urdf_to_clearml.py`](./upload_urdf_to_clearml.py)
+### [`upload_urdf_to_clearml.py`](./upload_urdf_to_clearml.py)
 Upload URDF model, required by simulators, into ClearML.
 
-### Uploading
+#### Uploading
 1. Generate standalone URDF model with [aegis_ros/aegis_descrption]() launch command:
 ```bash
 ros2 launch aegis_description generate_standalone_urdf.launch.py disable_cell:=true
@@ -37,7 +85,7 @@ python3 utils/upload_urdf_to_clearml.py ~/ceai_ws/aegis_urdf --name AegisURDFMod
 
 3. Check the ClearML server's datasets.
 
-### Usage
+#### Usage
 
 In the robot's config set the `urdf_model_id` param to the ClearML's dataset ID.
 
