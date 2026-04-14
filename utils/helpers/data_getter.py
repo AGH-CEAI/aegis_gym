@@ -92,7 +92,7 @@ class DataGetter:
         self.min_n_iterations = tasks_raw[0].get_last_iteration()
 
         with logging_redirect_tqdm():
-            for t in tqdm(tasks_raw):
+            for t in tqdm(tasks_raw, desc="Task", leave=False, position=0):
                 try:
                     data = self._task_data_getter(t)
                     if remove_colon_scalars:
@@ -195,7 +195,7 @@ class DataGetter:
 
         projects_str = "\n\t".join(metric_paths)
         self.log.info(
-            f"Auto-detected {len(metric_paths)} shared metric path(s)\n\t{projects_str}"
+            f"Auto-detected {len(metric_paths)} shared metric path(s):\n\t{projects_str}"
         )
 
         return metric_paths
@@ -209,7 +209,9 @@ class DataGetter:
         path_sets: list[set[str]] = [None] * len(tasks)
 
         with logging_redirect_tqdm():
-            for cnt, (t_id, t_data) in tqdm(enumerate(tasks.items())):
+            for cnt, (t_id, t_data) in tqdm(
+                enumerate(tasks.items()), desc="Task", leave=False, position=0
+            ):
                 if not t_data:
                     self.log.warning(
                         f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
@@ -239,7 +241,9 @@ class DataGetter:
         results: set[str] = set()
 
         with logging_redirect_tqdm():
-            for t_id in tqdm(list(self.tasks.keys())):
+            for t_id in tqdm(
+                list(self.tasks.keys()), desc="Task", leave=False, position=0
+            ):
                 titles_to_remove: set[str] = set()
 
                 for metric in metric_paths:

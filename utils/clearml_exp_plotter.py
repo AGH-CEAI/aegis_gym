@@ -11,6 +11,7 @@
 
 import argparse
 import logging
+from time import perf_counter
 from typing import Optional
 
 import matplotlib
@@ -49,13 +50,12 @@ def main(argv: Optional[list[str]] = None) -> None:
         merge_summaries_metrics=True,
     )
     if not data.tasks:
-        print("))) No tasks")
+        print(">>> No tasks! Exiting.")
         return
     if not data.metrics_paths:
-        print("))) No metrics")
+        print(">>> No metrics! Exiting.")
         return
 
-    # print("TODO: implement reporting to the ClearML")
     TAG_EXP_PLOTTER = "exp-summary"
     summarizer = Summarizer(
         tasks_data=data,
@@ -125,4 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    start = perf_counter()
     main()
+    elapsed = perf_counter() - start
+    print(f">>> Execution took {elapsed:.4f} s")

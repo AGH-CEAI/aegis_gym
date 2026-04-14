@@ -1,5 +1,7 @@
+import colorsys
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Optional
 
 import numpy as np
@@ -29,13 +31,14 @@ class StatisticsSeries:
 
 
 FIELD_MAP = {"mean": "mean", "std": "std", "min": "minimum", "max": "maximum"}
+DEFAULT_SUMMARY_TASK_NAME = "SUMMARY"
 
 
 class Summarizer:
     def __init__(
         self,
         tasks_data: DataGetter,
-        summary_task_name: str = "SUMMARY",
+        summary_task_name: str = DEFAULT_SUMMARY_TASK_NAME,
         summary_task_tags: list[str] = ["summary"],
         summary_types: list[SummaryType] = [
             SummaryType.MEAN_STD,
@@ -133,68 +136,94 @@ class Summarizer:
             stat = parts[-2]
             metrics.setdefault(top_key, set()).add(stat)
 
-        self.log.info(f"\tMerged metrics paths into {len(metrics)} top-level metrics.")
-        self.log.info(f"\tExtracting summary data from {len(self.tasks)} tasks.")
+        self.log.info(f"Merged metrics paths into {len(metrics)} top-level metrics.")
+        self.log.info(f"Extracting summary data from {len(self.tasks)} tasks.")
 
-        for cnt, (top_key, stats) in enumerate(metrics.items()):
-            self.log.info(f"\t[METRIC {cnt + 1}/{len(metrics)}]:\t {top_key}")
-            n_tasks = len(self.tasks)
-            metrics_stats[top_key] = StatisticsSeries(
-                name=top_key, series=[None] * n_tasks
-            )
-
-            for idx, (t_id, t_data) in enumerate(self.tasks.items()):
-                m_stats = {
-                    FIELD_MAP[stat]: t_data[top_key][stat]["y"] for stat in stats
-                }
-                # TODO somehow add unique names in detected collision of "SUMMARY" names, or even cutoff the SUMMARY name.
-                metrics_stats[top_key].series[idx] = StatisticsData(
-                    series_name=f"{Task.get_task(task_id=t_id).name}_{t_id[:6]}",
-                    data_num=None,  # TODO: restore data_num info
-                    **m_stats,
+        with logging_redirect_tqdm():
+            for cnt, (top_key, stats) in tqdm(
+                enumerate(metrics.items()),
+                total=len(metrics),
+                desc="Metric",
+                leave=False,
+                position=0,
+            ):
+                self.log.info(f"[METRIC {cnt + 1}/{len(metrics)}]:\t {top_key}")
+                n_tasks = len(self.tasks)
+                metrics_stats[top_key] = StatisticsSeries(
+                    name=top_key, series=[None] * n_tasks
                 )
 
-        self.log.info("Finished statistical summarization.")
+                unique_series_names = set()
+                for idx, (t_id, t_data) in enumerate(self.tasks.items()):
+                    m_stats = {
+                        FIELD_MAP[stat]: t_data[top_key][stat]["y"] for stat in stats
+                    }
 
-        return metrics_stats
+                    task = Task.get_task(task_id=t_id)
+                    series_name: str = task.name
+
+                    if series_name == DEFAULT_SUMMARY_TASK_NAME:
+                        series_name = Path(task.get_project_name()).name
+                    elif series_name.startswith(f"{DEFAULT_SUMMARY_TASK_NAME}_"):
+                        series_name = series_name.removeprefix(
+                            f"{DEFAULT_SUMMARY_TASK_NAME}_"
+                        )
+
+                    if series_name in unique_series_names:
+                        series_name = f"{unique_series_names}_{t_id[:6]}"
+
+                    unique_series_names.add(series_name)
+                    metrics_stats[top_key].series[idx] = StatisticsData(
+                        series_name=series_name,
+                        data_num=None,  # TODO: somehow restore data_num info from previous summaries (from the series name)
+                        **m_stats,
+                    )
+
+            self.log.info("Finished statistical summarization.")
+
+            return metrics_stats
 
     def _process_summarized_metrics(self) -> dict[str, StatisticsSeries]:
         """Aggregate raw series from all tasks into mean/std/min/max."""
         metrics_stats: dict[str, StatisticsSeries] = {}
 
-        for cnt, path_str in enumerate(self.metric_paths):
-            parts = path_str.split("/")
-            top_key = "/".join(parts[:-2])
-            stat = parts[-2]
-            variable = parts[-1]
+        with logging_redirect_tqdm():
+            for cnt, path_str in tqdm(
+                enumerate(self.metric_paths), desc="Metric", leave=False, position=0
+            ):
+                parts = path_str.split("/")
+                top_key = "/".join(parts[:-2])
+                stat = parts[-2]
+                variable = parts[-1]
 
-            self.log.info(
-                f"\t[METRIC {cnt + 1}/{len(self.metric_paths)}]:\t {path_str}"
-            )
+                self.log.info(
+                    f"[METRIC {cnt + 1}/{len(self.metric_paths)}]:\t {path_str}"
+                )
 
-            metrics_stats.setdefault(
-                top_key, StatisticsSeries(name=top_key, series=[None])
-            )
+                metrics_stats.setdefault(
+                    top_key, StatisticsSeries(name=top_key, series=[None])
+                )
 
-            data_series = [
-                list(t_data[top_key][stat][variable]) for t_data in self.tasks.values()
-            ]
+                data_series = [
+                    list(t_data[top_key][stat][variable])
+                    for t_data in self.tasks.values()
+                ]
 
-            if not data_series:
-                self.log.warning(f"Skipping '{path_str}': extraction failed.")
-                continue
+                if not data_series:
+                    self.log.warning(f"Skipping '{path_str}': extraction failed.")
+                    continue
 
-            metrics_stats[top_key].series[0] = StatisticsData(
-                series_name=f"tasks_n{len(self.tasks)}",
-                data_num=len(self.tasks),
-                mean=np.mean(data_series, axis=0),
-                std=np.std(data_series, axis=0),
-                minimum=np.min(data_series, axis=0),
-                maximum=np.max(data_series, axis=0),
-            )
-        self.log.info("Finished extraction of statistical summaries.")
+                metrics_stats[top_key].series[0] = StatisticsData(
+                    series_name=f"tasks_n{len(self.tasks)}",
+                    data_num=len(self.tasks),
+                    mean=np.mean(data_series, axis=0),
+                    std=np.std(data_series, axis=0),
+                    minimum=np.min(data_series, axis=0),
+                    maximum=np.max(data_series, axis=0),
+                )
+            self.log.info("Finished extraction of statistical summaries.")
 
-        return metrics_stats
+            return metrics_stats
 
     def summarize(
         self,
@@ -209,6 +238,7 @@ class Summarizer:
             tags=self.summary_task_tags,
             reuse_last_task_id=False,
             auto_resource_monitoring=False,
+            auto_connect_streams=False,
         )
 
         self.log.info(
@@ -222,7 +252,9 @@ class Summarizer:
             tags = [f"{tag_for_tasks}:{summary_task.task_id}"]
             self.log.info("Adding tag(s) to the source tasks.")
             with logging_redirect_tqdm():
-                for t_id in tqdm(self.tasks.keys()):
+                for t_id in tqdm(
+                    self.tasks.keys(), desc="Task", leave=False, position=0
+                ):
                     t = Task.get_task(task_id=t_id)
                     t.add_tags(tags)
             self.log.info(f"Added tag(s) {tags} to {len(self.tasks)} source tasks.")
@@ -238,6 +270,7 @@ class Summarizer:
         except Exception as e:
             self.log.exception(f"Caught an exception: {e}")
         finally:
+            self.log.info("Closing the summary task.")
             summary_task.close()
 
         self.log.info(
@@ -252,7 +285,7 @@ class Summarizer:
 
         # TODO make it multithread!
         with logging_redirect_tqdm():
-            for t_id in tqdm(self.tasks.keys()):
+            for t_id in tqdm(self.tasks.keys(), desc="Task", leave=False, position=0):
                 t = Task.get_task(task_id=t_id)
 
                 current_tags = list(t.get_tags() or [])
@@ -278,14 +311,21 @@ class Summarizer:
     # TODO somehow make it palaller (multiprocessing?)
     def _summarize(self, summary_task: Task) -> None:
 
-        for cnt, metric in enumerate(self.metrics_stats.values()):
-            self.log.info(
-                f"[METRIC {cnt + 1}/{len(self.metrics_stats)}]:\t {metric.name}"
-            )
+        with logging_redirect_tqdm():
+            for cnt, metric in tqdm(
+                enumerate(self.metrics_stats.values()),
+                total=len(self.metrics_stats),
+                desc="Metric",
+                leave=False,
+                position=0,
+            ):
+                self.log.info(
+                    f"[METRIC {cnt + 1}/{len(self.metrics_stats)}]:\t {metric.name}"
+                )
 
-            summary_logger = summary_task.get_logger()
-            self._report_scalars(summary_logger, metric)
-            self._report_filled_plots(summary_logger, metric)
+                summary_logger = summary_task.get_logger()
+                self._report_scalars(summary_logger, metric)
+                self._report_filled_plots(summary_logger, metric)
 
     @staticmethod
     def _path_to_title_series(path_str: str) -> tuple[str, str]:
@@ -304,62 +344,59 @@ class Summarizer:
         """
         Upload summary to a ClearML task via its logger.
         """
-        self.log.info("\tReporting scalars to ClearML server.")
+        self.log.info("Reporting scalars to ClearML server.")
         title = metric.name
 
-        with logging_redirect_tqdm():
-            for step in tqdm(range(len(self.x_axis))):
-                x = self.x_axis[step]
+        for step in tqdm(
+            range(len(self.x_axis)), desc="Step..", leave=False, position=1
+        ):
+            x = self.x_axis[step]
+            for series in metric.series:
+                series_name = series.series_name
+                mean = series.mean
+                std = series.std
+                minimum = series.minimum
+                maximum = series.maximum
 
-                for series in metric.series:
-                    series_name = series.series_name
-                    mean = series.mean
-                    std = series.std
-                    minimum = series.minimum
-                    maximum = series.maximum
+                mean_name = "mean" if len(metric.series) == 1 else series_name
+                prefix = "" if len(metric.series) == 1 else f"{series_name}_"
 
-                    mean_name = "mean" if len(metric.series) == 1 else series_name
-                    prefix = "" if len(metric.series) == 1 else f"{series_name}_"
+                if SummaryType.MEAN in self.summary_types:
+                    t_log.report_scalar(f"{title}_mean", mean_name, mean[step], x)
 
-                    match self.summary_types:
-                        case SummaryType.MEAN:
-                            t_log.report_scalar(
-                                f"{title}_mean", mean_name, mean[step], x
-                            )
+                if SummaryType.MEAN_MINMAX in self.summary_types:
+                    t_log.report_scalar(
+                        f"{title}_mean-min-max", f"{prefix}mean", mean[step], x
+                    )
+                    t_log.report_scalar(
+                        f"{title}_mean-min-max",
+                        f"{prefix}min",
+                        minimum[step],
+                        x,
+                    )
+                    t_log.report_scalar(
+                        f"{title}_mean-min-max",
+                        f"{prefix}max",
+                        maximum[step],
+                        x,
+                    )
 
-                        case SummaryType.MEAN_MINMAX:
-                            t_log.report_scalar(
-                                f"{title}_mean-min-max", f"{prefix}mean", mean[step], x
-                            )
-                            t_log.report_scalar(
-                                f"{title}_mean-min-max",
-                                f"{prefix}min",
-                                minimum[step],
-                                x,
-                            )
-                            t_log.report_scalar(
-                                f"{title}_mean-min-max",
-                                f"{prefix}max",
-                                maximum[step],
-                                x,
-                            )
-
-                        case SummaryType.MEAN_STD:
-                            t_log.report_scalar(
-                                f"{title}_mean-std", f"{prefix}mean", mean[step], x
-                            )
-                            t_log.report_scalar(
-                                f"{title}_mean-std",
-                                f"{prefix}std+",
-                                mean[step] + std[step],
-                                x,
-                            )
-                            t_log.report_scalar(
-                                f"{title}_mean-std",
-                                f"{prefix}std-",
-                                mean[step] - std[step],
-                                x,
-                            )
+                if SummaryType.MEAN_STD in self.summary_types:
+                    t_log.report_scalar(
+                        f"{title}_mean-std", f"{prefix}mean", mean[step], x
+                    )
+                    t_log.report_scalar(
+                        f"{title}_mean-std",
+                        f"{prefix}std+",
+                        mean[step] + std[step],
+                        x,
+                    )
+                    t_log.report_scalar(
+                        f"{title}_mean-std",
+                        f"{prefix}std-",
+                        mean[step] - std[step],
+                        x,
+                    )
 
     def _report_filled_plots(
         self,
@@ -369,260 +406,281 @@ class Summarizer:
         """
         Create filled confidence-band figures and upload them to a ClearML task.
         """
-        self.log.info("\tCreating and uploading plots to ClearML server.")
+        self.log.info("Creating and uploading plots to ClearML server.")
 
-        for series in metric.series:
-            match self.plots_backend:
-                case "plotly":
-                    self._report_filled_plots_plotly(
-                        t_log=t_log,
-                        metric_name=metric.name,
-                        metric_serie=series,
-                    )
-                case "matplotlib":
-                    self._report_filled_plots_matplotlib(
-                        t_log=t_log,
-                        metric_name=metric.name,
-                        metric_serie=series,
-                    )
-                case "None":
-                    pass
-                case _:
-                    self.log.warning(
-                        f"Unregonized plots backend `{self.plots_backend}` (Available: `plotly`,`matplotlib`). Skipping plots."
-                    )
+        match self.plots_backend:
+            case "plotly":
+                self._report_filled_plots_plotly(t_log=t_log, metric=metric)
+            case "matplotlib":
+                self._report_filled_plots_matplotlib(t_log=t_log, metric=metric)
+            case "None":
+                pass
+            case _:
+                self.log.warning(
+                    f"Unrecognized plots backend `{self.plots_backend}` "
+                    "(Available: `plotly`, `matplotlib`). Skipping plots."
+                )
 
     def _report_filled_plots_plotly(
         self,
         t_log: Logger,
-        metric_name: str,
-        metric_serie: StatisticsData,
+        metric: StatisticsSeries,
     ) -> None:
 
-        series_name = metric_serie.series_name
+        series_colors = self._generate_series_colors(
+            n=len(metric.series),
+            single_line_color=self.plot_color_mean,
+            single_band_color=self.plot_color_band,
+            band_alpha=self.plot_alpha_fill,
+        )
+
         x = np.asarray(self.x_axis)
-        mean = np.asarray(metric_serie.mean)
-        std = np.asarray(metric_serie.std)
-        minimum = np.asarray(metric_serie.minimum)
-        maximum = np.asarray(metric_serie.maximum)
+        metric_name = metric.name
 
-        def _hex_to_rgba(hex_color: str, alpha: float) -> str:
-            hex_color = hex_color.lstrip("#")
-            r, g, b = (int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-            return f"rgba({r},{g},{b},{alpha})"
+        # One figure per summary type, all series added before reporting
+        fig_mean = go.Figure() if SummaryType.MEAN in self.summary_types else None
+        fig_mm = go.Figure() if SummaryType.MEAN_MINMAX in self.summary_types else None
+        fig_std = go.Figure() if SummaryType.MEAN_STD in self.summary_types else None
 
-        band_rgba = _hex_to_rgba(self.plot_color_band, self.plot_alpha_fill)
+        for series, (line_color, fill_color) in tqdm(
+            zip(metric.series, series_colors), desc="Series", leave=False, position=1
+        ):
+            series_name = series.series_name
+            mean = np.asarray(series.mean)
+            std = np.asarray(series.std)
+            minimum = np.asarray(series.minimum)
+            maximum = np.asarray(series.maximum)
 
-        if SummaryType.MEAN in self.summary_types:
-            fig_mm = go.Figure()
-
-            fig_mm.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=mean,
-                    line=dict(color=self.plot_color_mean, width=2),
-                    hovertemplate="mean: %{y:.4f}<extra></extra>",
-                    name="mean",
+            if fig_mean is not None:
+                fig_mean.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=mean,
+                        line=dict(color=line_color, width=2),
+                        hovertemplate="mean: %{y:.4f}<extra></extra>",
+                        name=series_name,
+                    )
                 )
-            )
-            fig_mm.update_layout(
-                title=f"{metric_name} - {series_name}  [mean]",
+
+            if fig_mm is not None:
+                fig_mm.add_trace(
+                    go.Scatter(
+                        x=np.concatenate([x, x[::-1]]),
+                        y=np.concatenate([maximum, minimum[::-1]]),
+                        fill="toself",
+                        fillcolor=fill_color,
+                        line=dict(color=line_color),
+                        hoverinfo="skip",
+                        name=f"{series_name}-range",
+                    )
+                )
+                fig_mm.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=mean,
+                        line=dict(color=line_color, width=2),
+                        hovertemplate="mean: %{y:.4f}<extra></extra>",
+                        name=series_name,
+                    )
+                )
+
+            if fig_std is not None:
+                fig_std.add_trace(
+                    go.Scatter(
+                        x=np.concatenate([x, x[::-1]]),
+                        y=np.concatenate([mean + std, (mean - std)[::-1]]),
+                        fill="toself",
+                        fillcolor=fill_color,
+                        line=dict(color=line_color),
+                        hoverinfo="skip",
+                        name=f"{series_name}-std",
+                    )
+                )
+                fig_std.add_trace(
+                    go.Scatter(
+                        x=x,
+                        y=mean,
+                        line=dict(color=line_color, width=2),
+                        hovertemplate="mean: %{y:.4f}<extra></extra>",
+                        name=series_name,
+                    )
+                )
+
+        # Report once per summary type, after all series are added
+        if fig_mean is not None:
+            fig_mean.update_layout(
+                title=f"{metric_name} [mean]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
-
             t_log.report_plotly(
                 title=f"{metric_name}_mean",
-                series=f"{metric_name}_mean",
-                figure=fig_mm,
+                # series=f"{metric_name}_mean",
+                series="mean",
+                figure=fig_mean,
             )
 
-        if SummaryType.MEAN_MINMAX in self.summary_types:
-            fig_mm = go.Figure()
-
-            fig_mm.add_trace(
-                go.Scatter(
-                    x=np.concatenate([x, x[::-1]]),
-                    y=np.concatenate([maximum, minimum[::-1]]),
-                    fill="toself",
-                    fillcolor=band_rgba,
-                    line=dict(color="rgba(0,0,0,0)"),
-                    hoverinfo="skip",
-                    name="min - max range",
-                )
-            )
-            fig_mm.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=mean,
-                    line=dict(color=self.plot_color_mean, width=2),
-                    hovertemplate="mean: %{y:.4f}<extra></extra>",
-                    name="mean",
-                )
-            )
+        if fig_mm is not None:
             fig_mm.update_layout(
-                title=f"{metric_name} - {series_name}  [mean / min / max]",
+                title=f"{metric_name} [mean / min / max]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
-
             t_log.report_plotly(
                 title=f"{metric_name}_mean-min-max",
-                series=f"{metric_name}_mean-min-max",
+                # series=f"{metric_name}_mean-min-max",
+                series="mean-min-max",
                 figure=fig_mm,
             )
 
-        if SummaryType.MEAN_STD in self.summary_types:
-            fig_std = go.Figure()
-
-            fig_std.add_trace(
-                go.Scatter(
-                    x=np.concatenate([x, x[::-1]]),
-                    y=np.concatenate([mean + std, (mean - std)[::-1]]),
-                    fill="toself",
-                    fillcolor=band_rgba,
-                    line=dict(color="rgba(0,0,0,0)"),
-                    hoverinfo="skip",
-                    name="mean ± std",
-                )
-            )
-            fig_std.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=mean,
-                    line=dict(color=self.plot_color_mean, width=2),
-                    hovertemplate="mean: %{y:.4f}<extra></extra>",
-                    name="mean",
-                )
-            )
+        if fig_std is not None:
             fig_std.update_layout(
-                title=f"{metric_name} - {series_name}  [mean ± std]",
+                title=f"{metric_name} [mean ± std]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
-
             t_log.report_plotly(
                 title=f"{metric_name}_mean-std",
-                series=f"{metric_name}_mean-std",
+                # series=f"{metric_name}_mean-std",
+                series="mean-std",
                 figure=fig_std,
             )
 
     def _report_filled_plots_matplotlib(
         self,
         t_log: Logger,
-        metric_name: str,
-        metric_serie: StatisticsData,
-        # t_log: Logger,
-        # path_str: str,
-        # x,
-        # mean_y,
-        # std_y,
-        # min_y,
-        # max_y,
+        metric: StatisticsSeries,
     ) -> None:
-        series_name = metric_serie.series_name
         x = np.asarray(self.x_axis)
-        mean = np.asarray(metric_serie.mean)
-        std = np.asarray(metric_serie.std)
-        minimum = np.asarray(metric_serie.minimum)
-        maximum = np.asarray(metric_serie.maximum)
+        metric_name = metric.name
 
-        if SummaryType.MEAN in self.summary_types:
-            fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
-            ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
-            ax_mm.set_title(f"{metric_name} - {series_name}  [mean]")
+        # Create one figure per summary type upfront
+        fig_mean, ax_mean = (
+            plt.subplots(figsize=self.plot_fig_size)
+            if SummaryType.MEAN in self.summary_types
+            else (None, None)
+        )
+        fig_mm, ax_mm = (
+            plt.subplots(figsize=self.plot_fig_size)
+            if SummaryType.MEAN_MINMAX in self.summary_types
+            else (None, None)
+        )
+        fig_std, ax_std = (
+            plt.subplots(figsize=self.plot_fig_size)
+            if SummaryType.MEAN_STD in self.summary_types
+            else (None, None)
+        )
+
+        for series in tqdm(metric.series, desc="Series", leave=False, position=1):
+            series_name = series.series_name
+            mean = np.asarray(series.mean)
+            std = np.asarray(series.std)
+            minimum = np.asarray(series.minimum)
+            maximum = np.asarray(series.maximum)
+
+            if ax_mean is not None:
+                ax_mean.plot(x, mean, linewidth=2, label=series_name)
+
+            if ax_mm is not None:
+                ax_mm.fill_between(
+                    x,
+                    minimum,
+                    maximum,
+                    alpha=self.plot_alpha_fill,
+                    label=f"{series_name}-range",
+                )
+                ax_mm.plot(x, mean, linewidth=2, label=series_name)
+                ax_mm.plot(x, maximum, linewidth=0.8, linestyle="--")
+                ax_mm.plot(x, minimum, linewidth=0.8, linestyle=":")
+
+            if ax_std is not None:
+                ax_std.fill_between(
+                    x,
+                    mean - std,
+                    mean + std,
+                    alpha=self.plot_alpha_fill,
+                    label=f"{series_name}-std",
+                )
+                ax_std.plot(x, mean, linewidth=2, label=series_name)
+                ax_std.plot(x, mean + std, linewidth=0.8, linestyle="--")
+                ax_std.plot(x, mean - std, linewidth=0.8, linestyle="--")
+
+        # Finalise and report once per summary type
+        if fig_mean is not None:
+            ax_mean.set_title(f"{metric_name} [mean]")
+            ax_mean.set_xlabel("step")
+            ax_mean.set_ylabel("value")
+            ax_mean.legend(loc="best")
+            ax_mean.grid(True, alpha=0.3)
+            fig_mean.tight_layout()
+            t_log.report_matplotlib_figure(
+                title=f"{metric_name}_mean",
+                series="filled_plot",
+                figure=fig_mean,
+                report_image=True,
+            )
+            plt.close(fig_mean)
+
+        if fig_mm is not None:
+            ax_mm.set_title(f"{metric_name} [mean / min / max]")
             ax_mm.set_xlabel("step")
             ax_mm.set_ylabel("value")
             ax_mm.legend(loc="best")
             ax_mm.grid(True, alpha=0.3)
             fig_mm.tight_layout()
-
             t_log.report_matplotlib_figure(
-                title=f"{metric_name}/{series_name}_mean",
+                title=f"{metric_name}_mean-min-max",
                 series="filled_plot",
                 figure=fig_mm,
                 report_image=True,
             )
             plt.close(fig_mm)
 
-        if SummaryType.MEAN_MINMAX in self.summary_types:
-            fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
-            ax_mm.fill_between(
-                x,
-                minimum,
-                maximum,
-                alpha=self.plot_alpha_fill,
-                color=self.plot_color_band,
-                label="min - max range",
-            )
-            ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
-            ax_mm.plot(
-                x,
-                maximum,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle="--",
-                label="max",
-            )
-            ax_mm.plot(
-                x,
-                minimum,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle=":",
-                label="min",
-            )
-            ax_mm.set_title(f"{metric_name} - {series_name}  [mean / min / max]")
-            ax_mm.set_xlabel("step")
-            ax_mm.set_ylabel("value")
-            ax_mm.legend(loc="best")
-            ax_mm.grid(True, alpha=0.3)
-            fig_mm.tight_layout()
-
-            t_log.report_matplotlib_figure(
-                title=f"{metric_name}/{series_name}_mean-min-max",
-                series="filled_plot",
-                figure=fig_mm,
-                report_image=True,
-            )
-            plt.close(fig_mm)
-
-        if SummaryType.MEAN_STD in self.summary_types:
-            fig_std, ax_std = plt.subplots(figsize=self.plot_fig_size)
-            ax_std.fill_between(
-                x,
-                mean - std,
-                mean + std,
-                alpha=self.plot_alpha_fill,
-                color=self.plot_color_band,
-                label="mean ± std",
-            )
-            ax_std.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
-            ax_std.plot(
-                x,
-                mean + std,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle="--",
-            )
-            ax_std.plot(
-                x,
-                mean - std,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle="--",
-            )
-            ax_std.set_title(f"{metric_name} - {series_name}  [mean ± std]")
+        if fig_std is not None:
+            ax_std.set_title(f"{metric_name} [mean ± std]")
             ax_std.set_xlabel("step")
             ax_std.set_ylabel("value")
             ax_std.legend(loc="best")
             ax_std.grid(True, alpha=0.3)
             fig_std.tight_layout()
-
             t_log.report_matplotlib_figure(
-                title=f"{metric_name}/{series_name}_mean-std",
+                title=f"{metric_name}_mean-std",
                 series="filled_plot",
                 figure=fig_std,
                 report_image=True,
             )
             plt.close(fig_std)
+
+    @staticmethod
+    def _generate_series_colors(
+        n: int,
+        single_line_color: str,
+        single_band_color: str,
+        band_alpha: float,
+    ) -> list[tuple[str, str]]:
+        """
+        Returns a list of (line_rgba, fill_rgba) pairs — one per series.
+        For n==1 the class defaults are used as-is.
+        """
+        if n == 1:
+            hex_color = single_line_color.lstrip("#")
+            r, g, b = (int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
+            line = f"rgb({r},{g},{b})"
+            fill = f"rgba({r},{g},{b},{band_alpha})"
+            return [(line, fill)]
+
+        colors = []
+        for i in range(n):
+            hue = i / n  # evenly spaced hues around the wheel
+            r_f, g_f, b_f = colorsys.hsv_to_rgb(hue, 0.75, 0.80)  # vivid line color
+            r, g, b = int(r_f * 255), int(g_f * 255), int(b_f * 255)
+
+            # Lighter fill: lower saturation + higher value
+            r_l, g_l, b_l = colorsys.hsv_to_rgb(hue, 0.35, 0.95)
+            rl, gl, bl = int(r_l * 255), int(g_l * 255), int(b_l * 255)
+
+            line = f"rgb({r},{g},{b})"
+            fill = f"rgba({rl},{gl},{bl},{band_alpha})"
+            colors.append((line, fill))
+
+        return colors

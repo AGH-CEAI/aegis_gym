@@ -11,6 +11,7 @@
 
 import argparse
 import logging
+from time import perf_counter
 from typing import Optional
 
 import matplotlib
@@ -100,4 +101,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
+    start = perf_counter()
     main()
+    elapsed = perf_counter() - start
+    print(f">>> Execution took {elapsed:.4f} s")
