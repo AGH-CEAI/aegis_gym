@@ -162,7 +162,7 @@ class Summarizer:
         """Aggregate raw series from all tasks into mean/std/min/max."""
         metrics_stats: dict[str, StatisticsSeries] = {}
 
-        for path_str in self.metric_paths:
+        for cnt, path_str in enumerate(self.metric_paths):
             parts = path_str.split("/")
             top_key = "/".join(parts[:-2])
             stat = parts[-2]
@@ -321,36 +321,45 @@ class Summarizer:
                     mean_name = "mean" if len(metric.series) == 1 else series_name
                     prefix = "" if len(metric.series) == 1 else f"{series_name}_"
 
-                    if SummaryType.MEAN in self.summary_types:
-                        t_log.report_scalar(f"{title}_mean", mean_name, mean[step], x)
+                    match self.summary_types:
+                        case SummaryType.MEAN:
+                            t_log.report_scalar(
+                                f"{title}_mean", mean_name, mean[step], x
+                            )
 
-                    if SummaryType.MEAN_MINMAX in self.summary_types:
-                        t_log.report_scalar(
-                            f"{title}_mean-min-max", f"{prefix}mean", mean[step], x
-                        )
-                        t_log.report_scalar(
-                            f"{title}_mean-min-max", f"{prefix}min", minimum[step], x
-                        )
-                        t_log.report_scalar(
-                            f"{title}_mean-min-max", f"{prefix}max", maximum[step], x
-                        )
+                        case SummaryType.MEAN_MINMAX:
+                            t_log.report_scalar(
+                                f"{title}_mean-min-max", f"{prefix}mean", mean[step], x
+                            )
+                            t_log.report_scalar(
+                                f"{title}_mean-min-max",
+                                f"{prefix}min",
+                                minimum[step],
+                                x,
+                            )
+                            t_log.report_scalar(
+                                f"{title}_mean-min-max",
+                                f"{prefix}max",
+                                maximum[step],
+                                x,
+                            )
 
-                    if SummaryType.MEAN_STD in self.summary_types:
-                        t_log.report_scalar(
-                            f"{title}_mean-std", f"{prefix}mean", mean[step], x
-                        )
-                        t_log.report_scalar(
-                            f"{title}_mean-std",
-                            f"{prefix}std+",
-                            mean[step] + std[step],
-                            x,
-                        )
-                        t_log.report_scalar(
-                            f"{title}_mean-std",
-                            f"{prefix}std-",
-                            mean[step] - std[step],
-                            x,
-                        )
+                        case SummaryType.MEAN_STD:
+                            t_log.report_scalar(
+                                f"{title}_mean-std", f"{prefix}mean", mean[step], x
+                            )
+                            t_log.report_scalar(
+                                f"{title}_mean-std",
+                                f"{prefix}std+",
+                                mean[step] + std[step],
+                                x,
+                            )
+                            t_log.report_scalar(
+                                f"{title}_mean-std",
+                                f"{prefix}std-",
+                                mean[step] - std[step],
+                                x,
+                            )
 
     def _report_filled_plots(
         self,
@@ -361,54 +370,41 @@ class Summarizer:
         Create filled confidence-band figures and upload them to a ClearML task.
         """
         self.log.info("\tCreating and uploading plots to ClearML server.")
-        x = np.asarray(self.x_axis)
-        if len(metric.series) != 1:
-            self.log.warning("TODO: implement support for plotting StatisitcsSeries.")
-            return
-        mean_y = np.asarray(summary["mean_y"])
-        std_y = np.asarray(summary["std_y"])
-        min_y = np.asarray(summary["min_y"])
-        max_y = np.asarray(summary["max_y"])
 
-        match self.plots_backend:
-            case "plotly":
-                self._report_filled_plots_plotly(
-                    t_log,
-                    path_str,
-                    x,
-                    mean_y,
-                    std_y,
-                    min_y,
-                    max_y,
-                )
-            case "matplotlib":
-                self._report_filled_plots_matplotlib(
-                    t_log,
-                    path_str,
-                    x,
-                    mean_y,
-                    std_y,
-                    min_y,
-                    max_y,
-                )
-            case "None":
-                pass
-            case _:
-                self.log.warning(
-                    f"Unregonized plots backend `{self.plots_backend}` (Available: `plotly`,`matplotlib`). Skipping plots."
-                )
+        for series in metric.series:
+            match self.plots_backend:
+                case "plotly":
+                    self._report_filled_plots_plotly(
+                        t_log=t_log,
+                        metric_name=metric.name,
+                        metric_serie=series,
+                    )
+                case "matplotlib":
+                    self._report_filled_plots_matplotlib(
+                        t_log=t_log,
+                        metric_name=metric.name,
+                        metric_serie=series,
+                    )
+                case "None":
+                    pass
+                case _:
+                    self.log.warning(
+                        f"Unregonized plots backend `{self.plots_backend}` (Available: `plotly`,`matplotlib`). Skipping plots."
+                    )
 
     def _report_filled_plots_plotly(
         self,
         t_log: Logger,
-        path_str: str,
-        x,
-        mean_y,
-        std_y,
-        min_y,
-        max_y,
+        metric_name: str,
+        metric_serie: StatisticsData,
     ) -> None:
-        agg_title, agg_series = self._path_to_title_series(path_str)
+
+        series_name = metric_serie.series_name
+        x = np.asarray(self.x_axis)
+        mean = np.asarray(metric_serie.mean)
+        std = np.asarray(metric_serie.std)
+        minimum = np.asarray(metric_serie.minimum)
+        maximum = np.asarray(metric_serie.maximum)
 
         def _hex_to_rgba(hex_color: str, alpha: float) -> str:
             hex_color = hex_color.lstrip("#")
@@ -417,50 +413,37 @@ class Summarizer:
 
         band_rgba = _hex_to_rgba(self.plot_color_band, self.plot_alpha_fill)
 
-        # Plot A: mean ± std
-        if SummaryType.MEAN_STD in self.summary_types:
-            fig_std = go.Figure()
+        if SummaryType.MEAN in self.summary_types:
+            fig_mm = go.Figure()
 
-            fig_std.add_trace(
-                go.Scatter(
-                    x=np.concatenate([x, x[::-1]]),
-                    y=np.concatenate([mean_y + std_y, (mean_y - std_y)[::-1]]),
-                    fill="toself",
-                    fillcolor=band_rgba,
-                    line=dict(color="rgba(0,0,0,0)"),
-                    hoverinfo="skip",
-                    name="mean ± std",
-                )
-            )
-            fig_std.add_trace(
+            fig_mm.add_trace(
                 go.Scatter(
                     x=x,
-                    y=mean_y,
+                    y=mean,
                     line=dict(color=self.plot_color_mean, width=2),
                     hovertemplate="mean: %{y:.4f}<extra></extra>",
                     name="mean",
                 )
             )
-            fig_std.update_layout(
-                title=f"{agg_title} – {agg_series}  [mean ± std]",
+            fig_mm.update_layout(
+                title=f"{metric_name} – {series_name}  [mean]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
 
             t_log.report_plotly(
-                title=f"{agg_title}_mean-std",
-                series=f"{agg_title}_mean-std",
-                figure=fig_std,
+                title=f"{metric_name}_mean",
+                series=f"{metric_name}_mean",
+                figure=fig_mm,
             )
 
-        # Plot B: mean / min / max
         if SummaryType.MEAN_MINMAX in self.summary_types:
             fig_mm = go.Figure()
 
             fig_mm.add_trace(
                 go.Scatter(
                     x=np.concatenate([x, x[::-1]]),
-                    y=np.concatenate([max_y, min_y[::-1]]),
+                    y=np.concatenate([maximum, minimum[::-1]]),
                     fill="toself",
                     fillcolor=band_rgba,
                     line=dict(color="rgba(0,0,0,0)"),
@@ -471,119 +454,111 @@ class Summarizer:
             fig_mm.add_trace(
                 go.Scatter(
                     x=x,
-                    y=mean_y,
+                    y=mean,
                     line=dict(color=self.plot_color_mean, width=2),
                     hovertemplate="mean: %{y:.4f}<extra></extra>",
                     name="mean",
                 )
             )
             fig_mm.update_layout(
-                title=f"{agg_title} – {agg_series}  [mean / min / max]",
+                title=f"{metric_name} – {series_name}  [mean / min / max]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
 
             t_log.report_plotly(
-                title=f"{agg_title}_mean-min-max",
-                series=f"{agg_title}_mean-min-max",
+                title=f"{metric_name}_mean-min-max",
+                series=f"{metric_name}_mean-min-max",
                 figure=fig_mm,
             )
 
-        # Plot C: mean
-        if SummaryType.MEAN in self.summary_types:
-            fig_mm = go.Figure()
+        if SummaryType.MEAN_STD in self.summary_types:
+            fig_std = go.Figure()
 
-            fig_mm.add_trace(
+            fig_std.add_trace(
+                go.Scatter(
+                    x=np.concatenate([x, x[::-1]]),
+                    y=np.concatenate([mean + std, (mean - std)[::-1]]),
+                    fill="toself",
+                    fillcolor=band_rgba,
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    name="mean ± std",
+                )
+            )
+            fig_std.add_trace(
                 go.Scatter(
                     x=x,
-                    y=mean_y,
+                    y=mean,
                     line=dict(color=self.plot_color_mean, width=2),
                     hovertemplate="mean: %{y:.4f}<extra></extra>",
                     name="mean",
                 )
             )
-            fig_mm.update_layout(
-                title=f"{agg_title} – {agg_series}  [mean]",
+            fig_std.update_layout(
+                title=f"{metric_name} – {series_name}  [mean ± std]",
                 xaxis_title="step",
                 yaxis_title="value",
             )
 
             t_log.report_plotly(
-                title=f"{agg_title}_mean",
-                series=f"{agg_title}_mean",
-                figure=fig_mm,
+                title=f"{metric_name}_mean-std",
+                series=f"{metric_name}_mean-std",
+                figure=fig_std,
             )
 
     def _report_filled_plots_matplotlib(
         self,
         t_log: Logger,
-        path_str: str,
-        x,
-        mean_y,
-        std_y,
-        min_y,
-        max_y,
+        metric_name: str,
+        metric_serie: StatisticsData,
+        # t_log: Logger,
+        # path_str: str,
+        # x,
+        # mean_y,
+        # std_y,
+        # min_y,
+        # max_y,
     ) -> None:
-        agg_title, agg_series = self._path_to_title_series(path_str)
+        series_name = metric_serie.series_name
+        x = np.asarray(self.x_axis)
+        mean = np.asarray(metric_serie.mean)
+        std = np.asarray(metric_serie.std)
+        minimum = np.asarray(metric_serie.minimum)
+        maximum = np.asarray(metric_serie.maximum)
 
-        # Plot A: mean ± std
-        if SummaryType.MEAN_STD in self.summary_types:
-            fig_std, ax_std = plt.subplots(figsize=self.plot_fig_size)
-            ax_std.fill_between(
-                x,
-                mean_y - std_y,
-                mean_y + std_y,
-                alpha=self.plot_alpha_fill,
-                color=self.plot_color_band,
-                label="mean ± std",
-            )
-            ax_std.plot(
-                x, mean_y, color=self.plot_color_mean, linewidth=2, label="mean"
-            )
-            ax_std.plot(
-                x,
-                mean_y + std_y,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle="--",
-            )
-            ax_std.plot(
-                x,
-                mean_y - std_y,
-                color=self.plot_color_band,
-                linewidth=0.8,
-                linestyle="--",
-            )
-            ax_std.set_title(f"{agg_title} – {agg_series}  [mean ± std]")
-            ax_std.set_xlabel("step")
-            ax_std.set_ylabel("value")
-            ax_std.legend(loc="best")
-            ax_std.grid(True, alpha=0.3)
-            fig_std.tight_layout()
+        if SummaryType.MEAN in self.summary_types:
+            fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
+            ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
+            ax_mm.set_title(f"{metric_name} – {series_name}  [mean]")
+            ax_mm.set_xlabel("step")
+            ax_mm.set_ylabel("value")
+            ax_mm.legend(loc="best")
+            ax_mm.grid(True, alpha=0.3)
+            fig_mm.tight_layout()
 
             t_log.report_matplotlib_figure(
-                title=f"{agg_title}/{agg_series}_mean-std",
+                title=f"{metric_name}/{series_name}_mean",
                 series="filled_plot",
-                figure=fig_std,
+                figure=fig_mm,
                 report_image=True,
             )
-            plt.close(fig_std)
+            plt.close(fig_mm)
 
-        # Plot B: mean / min / max
         if SummaryType.MEAN_MINMAX in self.summary_types:
             fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
             ax_mm.fill_between(
                 x,
-                min_y,
-                max_y,
+                minimum,
+                maximum,
                 alpha=self.plot_alpha_fill,
                 color=self.plot_color_band,
                 label="min – max range",
             )
-            ax_mm.plot(x, mean_y, color=self.plot_color_mean, linewidth=2, label="mean")
+            ax_mm.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
             ax_mm.plot(
                 x,
-                max_y,
+                maximum,
                 color=self.plot_color_band,
                 linewidth=0.8,
                 linestyle="--",
@@ -591,13 +566,13 @@ class Summarizer:
             )
             ax_mm.plot(
                 x,
-                min_y,
+                minimum,
                 color=self.plot_color_band,
                 linewidth=0.8,
                 linestyle=":",
                 label="min",
             )
-            ax_mm.set_title(f"{agg_title} – {agg_series}  [mean / min / max]")
+            ax_mm.set_title(f"{metric_name} – {series_name}  [mean / min / max]")
             ax_mm.set_xlabel("step")
             ax_mm.set_ylabel("value")
             ax_mm.legend(loc="best")
@@ -605,28 +580,49 @@ class Summarizer:
             fig_mm.tight_layout()
 
             t_log.report_matplotlib_figure(
-                title=f"{agg_title}/{agg_series}_mean-min-max",
+                title=f"{metric_name}/{series_name}_mean-min-max",
                 series="filled_plot",
                 figure=fig_mm,
                 report_image=True,
             )
             plt.close(fig_mm)
 
-        # Plot C: mean
-        if SummaryType.MEAN in self.summary_types:
-            fig_mm, ax_mm = plt.subplots(figsize=self.plot_fig_size)
-            ax_mm.plot(x, mean_y, color=self.plot_color_mean, linewidth=2, label="mean")
-            ax_mm.set_title(f"{agg_title} – {agg_series}  [mean]")
-            ax_mm.set_xlabel("step")
-            ax_mm.set_ylabel("value")
-            ax_mm.legend(loc="best")
-            ax_mm.grid(True, alpha=0.3)
-            fig_mm.tight_layout()
+        if SummaryType.MEAN_STD in self.summary_types:
+            fig_std, ax_std = plt.subplots(figsize=self.plot_fig_size)
+            ax_std.fill_between(
+                x,
+                mean - std,
+                mean + std,
+                alpha=self.plot_alpha_fill,
+                color=self.plot_color_band,
+                label="mean ± std",
+            )
+            ax_std.plot(x, mean, color=self.plot_color_mean, linewidth=2, label="mean")
+            ax_std.plot(
+                x,
+                mean + std,
+                color=self.plot_color_band,
+                linewidth=0.8,
+                linestyle="--",
+            )
+            ax_std.plot(
+                x,
+                mean - std,
+                color=self.plot_color_band,
+                linewidth=0.8,
+                linestyle="--",
+            )
+            ax_std.set_title(f"{metric_name} – {series_name}  [mean ± std]")
+            ax_std.set_xlabel("step")
+            ax_std.set_ylabel("value")
+            ax_std.legend(loc="best")
+            ax_std.grid(True, alpha=0.3)
+            fig_std.tight_layout()
 
             t_log.report_matplotlib_figure(
-                title=f"{agg_title}/{agg_series}_mean",
+                title=f"{metric_name}/{series_name}_mean-std",
                 series="filled_plot",
-                figure=fig_mm,
+                figure=fig_std,
                 report_image=True,
             )
-            plt.close(fig_mm)
+            plt.close(fig_std)
