@@ -249,14 +249,15 @@ class BehaviorCloning:
                 # Step environment with student action
                 student_action = self._policy(rgb_obs.float(), ee_pose.float())
 
+                action = student_action
+
                 if self._use_teacher_mixing:
+                    # Simple Dagger: use student action if its difference with teacher action is less than 0.5
                     action_diff = th.norm(student_action - teacher_action, dim=-1)
                     condition = (
                         (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
                     )
                     action = th.where(condition, student_action, teacher_action)
-                else:
-                    action = student_action
 
                 next_obs, reward, done, _ = self._env.step(action)
                 self._cur_reward_sum += reward
