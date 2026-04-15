@@ -250,6 +250,7 @@ class BehaviorCloning:
                 student_action = self._policy(rgb_obs.float(), ee_pose.float())
 
                 action = student_action
+
                 if self._use_teacher_mixing:
                     # Simple Dagger: use student action if its difference with teacher action is less than 0.5
                     action_diff = th.norm(student_action - teacher_action, dim=-1)
