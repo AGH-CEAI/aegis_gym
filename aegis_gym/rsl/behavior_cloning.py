@@ -253,7 +253,7 @@ class BehaviorCloning:
                     condition = (
                         (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
                     )
-                    action = th.where(condition, student_action, teacher_action)     
+                    action = th.where(condition, student_action, teacher_action)
 
                 next_obs, reward, done, _ = self._env.step(action)
                 self._cur_reward_sum += reward
