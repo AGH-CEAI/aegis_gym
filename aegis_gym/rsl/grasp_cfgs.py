@@ -75,6 +75,7 @@ def get_bc_cfg() -> dict:
         "max_grad_norm": 1.0,
         "save_recons": False,
         "save_recon_freq": 100,
+        "use_teacher_mixing": False,
         # network architecture
         "policy": {
             "type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
