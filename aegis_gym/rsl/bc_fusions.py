@@ -28,12 +28,11 @@ class LinearFusion(FusionModule):
         self.pool_size = pool_size
         self.is_latent_vector = image_height == 1 and image_width == 1
 
+        feature_dim_cam = in_channels * pool_size * pool_size
+        self.pose_proj = None
         if self.is_latent_vector:
             feature_dim_cam = in_channels
             self.pose_proj = nn.Linear(in_channels, vision_dim)
-        else:
-            feature_dim_cam = in_channels * pool_size * pool_size
-            self.pose_proj = None
 
         self.net = nn.Sequential(
             nn.Linear(feature_dim_cam * num_cameras, vision_dim),
