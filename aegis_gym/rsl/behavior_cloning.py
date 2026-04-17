@@ -263,7 +263,6 @@ class BehaviorCloning:
                 student_action = self._policy(rgb_obs.float(), ee_pose.float())
 
                 action = student_action
-
                 if self._use_teacher_mixing:
                     # Simple Dagger: use student action if its difference with teacher action is less than 0.5
                     action_diff = th.norm(student_action - teacher_action, dim=-1)
@@ -554,10 +553,9 @@ class Policy(nn.Module):
 
     def _build_vision_encoder(self, config: dict) -> "VisionEncoder":
 
+        vision_cfg = config["vision_encoder"]
         if self.fusion_type == "attention_spatial":
             vision_cfg = config["vision_encoder_spatial"]
-        else:
-            vision_cfg = config["vision_encoder"]
 
         def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)
