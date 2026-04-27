@@ -19,6 +19,7 @@ def load_rl_policy(
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
+    enable_logging: bool = True,
 ) -> Callable:
     print("[Policy Loader] Resolving RL checkpoint")
     last_ckpt = resolve_checkpoint(
@@ -31,7 +32,12 @@ def load_rl_policy(
     )
     print(f"[Policy Loader] Resolved RL checkpoint path: {last_ckpt}")
 
-    runner = OnPolicyRunner(env, rl_cfg, log_dir, device=device)
+    runner = OnPolicyRunner(
+        env,
+        rl_cfg,
+        log_dir if enable_logging else None,
+        device=device,
+    )
     runner.load(last_ckpt)
     print("[Policy Loader] Loaded RL checkpoint")
     return runner.get_inference_policy(device=device)

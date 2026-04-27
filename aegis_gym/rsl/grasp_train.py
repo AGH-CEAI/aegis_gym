@@ -141,6 +141,7 @@ def main():
                 clearml_task_id=args.load_rl_task_id,
                 clearml_model_id=args.load_rl_model_id,
                 clearml_artifact_name="model",
+                enable_logging=False,
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(
