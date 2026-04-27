@@ -11,14 +11,14 @@
 # ]
 # ///
 
-import argparse
 import logging
 from time import perf_counter
 from typing import Optional
 
 import matplotlib
 
-from helpers.data_getter import DataGetter
+from helpers.cli import build_parser
+from helpers.data_getter import DataGetter, NoMetricsError, NoTasksError
 from helpers.summarizer import Summarizer
 from helpers.logging_formatter import CustomFormatter
 
@@ -41,19 +41,17 @@ def main(argv: Optional[list[str]] = None) -> None:
         "Maciej Aleksandrowicz 2026"
     )
 
-    args = _build_parser().parse_args(argv)
-    data = DataGetter(
-        project_name=args.project_name,
-        max_samples=args.max_samples,
-        metrics_paths=args.metric_paths,
-        tags_select=args.tags,
-    )
-
-    if not data.tasks:
-        print(">>> No tasks! Exiting.")
-        return
-    if not data.metrics_paths:
-        print(">>> No metrics! Exiting.")
+    args = build_parser(
+        tags_required=True, default_summary_task_name="SUMMARY"
+    ).parse_args(argv)
+    try:
+        data = DataGetter(
+            project_name=args.project_name,
+            max_samples=args.max_samples,
+            metrics_paths=args.metric_paths,
+            tags_select=args.tags,
+        )
+    except (NoTasksError, NoMetricsError):
         return
 
     summarizer = Summarizer(
@@ -62,51 +60,6 @@ def main(argv: Optional[list[str]] = None) -> None:
         plots_backend=args.plots_backend,
     )
     summarizer.summarize(cleanup_previous_tags=args.cleanup_previous_tags)
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p.add_argument("--project-name", help="ClearML project name.", required=True)
-    p.add_argument(
-        "--tags",
-        nargs="+",
-        help="One or more tags to select tasks (ClearML ANDs multiple tags).",
-        required=True,
-    )
-    p.add_argument(
-        "--metrics",
-        nargs="+",
-        metavar="PATH",
-        dest="metric_paths",
-        help=(
-            "Slash-separated metric paths to aggregate, e.g. "
-            "'episode_reward/train/y'. "
-            "Omit to auto-detect all metrics shared by every selected task."
-        ),
-    )
-    p.add_argument(
-        "--summary-task-name",
-        default="SUMMARY",
-        help="Name for the created summary task (default: SUMMARY).",
-    )
-    p.add_argument(
-        "--max-samples",
-        type=int,
-        default=1_000,
-        dest="max_samples",
-        help="Maximum scalar samples fetched per task (default: 1000).",
-    )
-    p.add_argument(
-        "--plots-backend",
-        default="plotly",
-        choices=["plotly", "matplotlib", "None"],
-        help=("Backend to use for plotting (default: plotly)."),
-    )
-    p.add_argument("--cleanup-previous-tags", action="store_true", default=False)
-    return p
 
 
 if __name__ == "__main__":
