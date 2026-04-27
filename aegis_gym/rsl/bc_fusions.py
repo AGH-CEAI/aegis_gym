@@ -57,10 +57,9 @@ class LinearFusion(BaseFusionModule):
 
     def prepare_pose_features(self, features: tuple) -> tuple:
         feat_vecs = [self._to_feature_vector(f) for f in features]
-        if self.pose_proj is not None:
-            return tuple(self.pose_proj(f) for f in feat_vecs)
-        else:
+        if self.pose_proj is None:
             return tuple(feat_vecs)
+        return tuple(self.pose_proj(f) for f in feat_vecs)
 
 
 class VectorAttentionFusion(BaseFusionModule):
