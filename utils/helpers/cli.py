@@ -1,30 +1,27 @@
-# TODO implement for help with script
 """
-> ## 2. Duplication between the two scripts
->
-> `clearml_summarizer.py` and `clearml_exp_plotter.py` share:
-> - ASCII banner print + author line
-> - Logging setup (handler, formatter, basicConfig)
-> - `matplotlib.use("Agg")`
-> - Argument parser (~80% identical args)
-> - `if __name__ == "__main__"` timing wrapper
->
-> **Proposal:** extract a tiny `helpers/cli.py` with:
-> ```python
-> def setup_logging() -> None: ...
-> def print_banner(text: str) -> None: ...
-> def common_parser_args(p: argparse.ArgumentParser) -> None: ...  # adds --metrics, --max-samples, --plots-backend, --cleanup-previous-tags
-> def timed(main_fn): ...  # decorator for the elapsed print
-> ```
-> Each script then keeps only its banner string and its specific args (`--tags` required vs optional, `--summary-task-name` default).
->
-> This is the highest-leverage cleanup. ~50 lines saved, future changes happen in one place.
->
-> ### 2a. Inconsistency to fix in passing
-> - `--cleanup-previous-tags` has no `help=` in `clearml_summarizer.py`, has one in `clearml_exp_plotter.py`.
-> - `--tags` is **required** in summarizer, **optional** in plotter. Intentional (plotter prepends `"summary"`)? Worth a comment.
->
-> ---
+> Be sure to get the ClearML project structure to this:
+PROJECTS/.../
+└── YOUR_PROJECT/
+ ├── EXPERIMENT_1/
+ │   ├── SUMMARY
+ │   ├── trial_run_1
+ │   ├── trial_run_2
+ │   ├── ...
+ │   └── trial_run_N
+ ├── EXPERIMENT_2/
+ │   ├── SUMMARY
+ │   ├── trial_run_1
+ │   ├── trial_run_2
+ │   ├── ...
+ │   └── trial_run_N
+ ├── EXPERIMENT_3/
+ │   ├── SUMMARY
+ │   ├── trial_run_1
+ │   ├── trial_run_2
+ │   ├── ...
+ │   └── trial_run_N
+    └── EXPERIMENTS_SUMMARY
+where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PROJECT/EXPERIMENT_X` project name path, and the `EXPERIMENTS_SUMMARY` is the result of the `clearml_exp_plotter.py` run in the `YOUR_PROJECT` project name path.
 """
 
 import argparse

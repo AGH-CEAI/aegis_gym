@@ -1,4 +1,4 @@
-import copy
+import functools
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
@@ -110,12 +110,11 @@ class DataGetter:
 
         self.log.info("Validating tasks metrics.")
 
-        results: list[TaskLoadResult] = Parallel(
-            n_jobs=self.n_jobs, backend="threading"
-        )(
-            delayed(self._load_one_task)(t, remove_colon_scalars)
-            for t in tqdm(tasks_raw, desc="Task", leave=False, position=0)
-        )
+        with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+            results: list[TaskLoadResult] = parallel(
+                delayed(self._load_one_task)(t, remove_colon_scalars)
+                for t in tqdm(tasks_raw, desc="Task", leave=False, position=0)
+            )
 
         valid_iterations = []
         for result in results:
@@ -324,27 +323,31 @@ class DataGetter:
 
     def _select_metrics(self, metric_paths: list[str]):
         for path_str in metric_paths:
-            path = path_str.split("/")
+            path_parts = self._normalize_metric_path(path_str)
 
-            # We need a CURRENT shallow copy to modify the original dictionary
-            tasks = copy.copy(self.tasks)
-            for t_id, t_data in tasks.items():
+            to_remove = set()
+            for t_id, t_data in self.tasks.items():
                 if not t_data:
                     self.log.warning(
                         f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
                     )
-                    self.tasks.pop(t_id)
+                    to_remove.add(t_id)
                     continue
 
                 try:
-                    val = t_data
-                    for key in path:
-                        val = val[key]
+                    functools.reduce(lambda d, key: d[key], path_parts, t_data)
                 except KeyError:
                     self.log.warning(
                         f"Metric path '{path_str}' not found in the task id {t_id}. This task will be omitted.",
                     )
-                    self.tasks.pop(t_id)
+                    to_remove.add(t_id)
+
+            for t_id in to_remove:
+                self.tasks.pop(t_id)
+
+    def _normalize_metric_path(self, path_str: str) -> list[str]:
+        parts = path_str.split("/")
+        return ["/".join(parts[:-2]), *parts[-2:]]
 
     def assert_data_existence(self) -> None:
         if not self.tasks:

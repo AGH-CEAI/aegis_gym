@@ -1,4 +1,27 @@
+import functools
 import logging
+import warnings
+from time import perf_counter
+
+
+def timed(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = perf_counter() - start
+        print(f">>> {func.__name__}() took {elapsed:.4f} s")
+        return result
+
+    return wrapper
+
+
+def ignore_joblib_loky_semaphores_warnings() -> None:
+    warnings.filterwarnings(
+        "ignore",
+        message="resource_tracker: There appear to be",
+        category=UserWarning,
+    )
 
 
 class CustomFormatter(logging.Formatter):

@@ -12,7 +12,6 @@
 # ///
 
 import logging
-from time import perf_counter
 from typing import Optional
 
 import matplotlib
@@ -20,7 +19,11 @@ import matplotlib
 from helpers.cli import build_parser
 from helpers.data_getter import DataGetter, SummaryType, NoTasksError, NoMetricsError
 from helpers.summarizer import Summarizer
-from helpers.logging_formatter import CustomFormatter
+from helpers.logging import (
+    CustomFormatter,
+    timed,
+    ignore_joblib_loky_semaphores_warnings,
+)
 
 handler = logging.StreamHandler()
 handler.setLevel(logging.INFO)
@@ -32,14 +35,17 @@ logging.basicConfig(
 matplotlib.use("Agg")  # non-interactive backend, safe in any env
 
 
+@timed
 def main(argv: Optional[list[str]] = None) -> None:
     print(
-        "▄▖▜       ▖  ▖▖   ▄▖      ▄▖▜   ▗ ▗     \n"
-        "▌ ▐ █▌▀▌▛▘▛▖▞▌▌   ▙▖▚▘▛▌  ▙▌▐ ▛▌▜▘▜▘█▌▛▘\n"
-        "▙▖▐▖▙▖█▌▌ ▌▝ ▌▙▖  ▙▖▞▖▙▌  ▌ ▐▖▙▌▐▖▐▖▙▖▌ \n"
-        "                      ▌                 \n"
-        "AGH Center of Excellence in Artificial Intelligence\n"
-        "Maciej Aleksandrowicz 2026"
+        "#######################################################\n"
+        "#      ▄▖▜       ▖  ▖▖   ▄▖      ▄▖▜   ▗ ▗            #\n"
+        "#      ▌ ▐ █▌▀▌▛▘▛▖▞▌▌   ▙▖▚▘▛▌  ▙▌▐ ▛▌▜▘▜▘█▌▛▘       #\n"
+        "#      ▙▖▐▖▙▖█▌▌ ▌▝ ▌▙▖  ▙▖▞▖▙▌  ▌ ▐▖▙▌▐▖▐▖▙▖▌        #\n"
+        "#                            ▌                        #\n"
+        "# AGH Center of Excellence in Artificial Intelligence #\n"
+        "# ........... Maciej Aleksandrowicz 2026 ............ #\n"
+        "#######################################################"
     )
 
     args = build_parser(
@@ -74,7 +80,5 @@ def main(argv: Optional[list[str]] = None) -> None:
 
 
 if __name__ == "__main__":
-    start = perf_counter()
+    ignore_joblib_loky_semaphores_warnings()
     main()
-    elapsed = perf_counter() - start
-    print(f">>> Execution took {elapsed:.4f} s")
