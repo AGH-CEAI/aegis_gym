@@ -7,8 +7,6 @@ from typing import Iterable, Optional
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
 from joblib import Parallel, delayed
-from tqdm import tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
 
 
 class NoTasksError(Exception):
@@ -112,8 +110,7 @@ class DataGetter:
 
         with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
             results: list[TaskLoadResult] = parallel(
-                delayed(self._load_one_task)(t, remove_colon_scalars)
-                for t in tqdm(tasks_raw, desc="Task", leave=False, position=0)
+                delayed(self._load_one_task)(t, remove_colon_scalars) for t in tasks_raw
             )
 
         valid_iterations = []
@@ -276,34 +273,31 @@ class DataGetter:
 
         results: set[str] = set()
 
-        with logging_redirect_tqdm():
-            for t_id in tqdm(
-                list(self.tasks.keys()), desc="Task", leave=False, position=0
-            ):
-                titles_to_remove: set[str] = set()
+        for t_id in list(self.tasks.keys()):
+            titles_to_remove: set[str] = set()
 
-                for metric in metric_paths:
-                    m_type, m_title, series, y = metric.split("/")
-                    new_series = self._map_series_names(series)
-                    if new_series is None:
-                        continue
+            for metric in metric_paths:
+                m_type, m_title, series, y = metric.split("/")
+                new_series = self._map_series_names(series)
+                if new_series is None:
+                    continue
 
-                    m_type_title = f"{m_type}/{m_title}"
-                    m_title_merged = self._remove_strenum_suffix(m_title, SummaryType)
-                    m_type_title_merged = f"{m_type}/{m_title_merged}"
+                m_type_title = f"{m_type}/{m_title}"
+                m_title_merged = self._remove_strenum_suffix(m_title, SummaryType)
+                m_type_title_merged = f"{m_type}/{m_title_merged}"
 
-                    if m_type_title_merged not in self.tasks[t_id]:
-                        self.tasks[t_id][m_type_title_merged] = {}
+                if m_type_title_merged not in self.tasks[t_id]:
+                    self.tasks[t_id][m_type_title_merged] = {}
 
-                    self.tasks[t_id][m_type_title_merged][new_series] = {
-                        y: self.tasks[t_id][m_type_title][series][y],
-                    }
+                self.tasks[t_id][m_type_title_merged][new_series] = {
+                    y: self.tasks[t_id][m_type_title][series][y],
+                }
 
-                    results.add(f"{m_type_title_merged}/{new_series}/{y}")
-                    titles_to_remove.add(m_type_title)
+                results.add(f"{m_type_title_merged}/{new_series}/{y}")
+                titles_to_remove.add(m_type_title)
 
-                for m_type_title in titles_to_remove:
-                    self.tasks[t_id].pop(m_type_title)
+            for m_type_title in titles_to_remove:
+                self.tasks[t_id].pop(m_type_title)
 
         return sorted(results)
 

@@ -7,7 +7,6 @@
 #   "matplotlib",
 #   "numpy",
 #   "plotly",
-#   "tqdm",
 # ]
 # ///
 

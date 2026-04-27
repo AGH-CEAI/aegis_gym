@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from clearml import Task, TaskTypes, Logger
 from joblib import Parallel, delayed
-from tqdm import tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
 
 from helpers.data_getter import DataGetter, SummaryType, N_JOBS
 
@@ -194,14 +192,11 @@ class Summarizer:
             tasks_cache[t_id] = Task.get_task(task_id=t_id)
 
         self.log.info("Proceeding to parallel statistical summarization.")
-        with logging_redirect_tqdm():
-            with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                results = parallel(
-                    delayed(_process_one_merged)(top_key, stats, tasks_cache)
-                    for top_key, stats in tqdm(
-                        metrics.items(), desc="Metric", leave=False, position=0
-                    )
-                )
+        with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+            results = parallel(
+                delayed(_process_one_merged)(top_key, stats, tasks_cache)
+                for top_key, stats in metrics.items()
+            )
 
         self.log.info("Finished statistical summarization.")
         return dict(results)
@@ -235,14 +230,11 @@ class Summarizer:
                 ),
             )
 
-        with logging_redirect_tqdm():
-            with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                results = parallel(
-                    delayed(_process_one_summarized)(path_str)
-                    for path_str in tqdm(
-                        self.metric_paths, desc="Metric", leave=False, position=0
-                    )
-                )
+        with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+            results = parallel(
+                delayed(_process_one_summarized)(path_str)
+                for path_str in self.metric_paths
+            )
 
         # Reassemble in order — joblib preserves order, but we need to merge by top_key
         metrics_stats: dict[str, StatisticsSeries] = {}
@@ -283,14 +275,10 @@ class Summarizer:
         if add_tag_to_tasks:
             tags = [f"{tag_for_tasks}:{summary_task.task_id}"]
             self.log.info("Adding tag(s) to the source tasks.")
-            with logging_redirect_tqdm():
-                with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                    parallel(
-                        delayed(_add_task_tags)(t_id, tags)
-                        for t_id in tqdm(
-                            self.tasks.keys(), desc="Task", leave=False, position=0
-                        )
-                    )
+            with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+                parallel(
+                    delayed(_add_task_tags)(t_id, tags) for t_id in self.tasks.keys()
+                )
             self.log.info(f"Added tag(s) {tags} to {len(self.tasks)} source tasks.")
 
         summary_task.set_parameter("summarize/tags_filter", str(self.i_tags_filter))
@@ -313,14 +301,10 @@ class Summarizer:
     def _cleanup_previous_tags(self, tag: str) -> None:
         self.log.info("Removing previous summary tags from task(s).")
 
-        with logging_redirect_tqdm():
-            with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                results = parallel(
-                    delayed(_cleanup_task_tags)(t_id, tag)
-                    for t_id in tqdm(
-                        self.tasks.keys(), desc="Task", leave=False, position=0
-                    )
-                )
+        with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+            results = parallel(
+                delayed(_cleanup_task_tags)(t_id, tag) for t_id in self.tasks.keys()
+            )
 
         cleaned_tasks = sum(r[0] for r in results)
         removed_total = sum(r[1] for r in results)
@@ -336,18 +320,11 @@ class Summarizer:
             self._report_scalars(summary_logger, metric)
             self._report_filled_plots(summary_logger, metric)
 
-        with logging_redirect_tqdm():
-            with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                parallel(
-                    delayed(_summarize_one_metric)(metric)
-                    for metric in tqdm(
-                        self.metrics_stats.values(),
-                        total=len(self.metrics_stats),
-                        desc="Metric",
-                        leave=False,
-                        position=0,
-                    )
-                )
+        with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
+            parallel(
+                delayed(_summarize_one_metric)(metric)
+                for metric in self.metrics_stats.values()
+            )
 
     def _report_scalars(self, t_log: Logger, metric: StatisticsSeries) -> None:
         self.log.info(f"[METRIC] {metric.name} | Reporting scalars to ClearML server.")
