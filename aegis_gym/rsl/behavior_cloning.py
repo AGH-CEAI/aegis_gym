@@ -10,7 +10,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.utils as vutils
-from clearml import Task
 from rsl_rl.utils.logger import Logger
 
 from bc_encoders import (
@@ -44,13 +43,6 @@ class BehaviorCloning:
         self._enable_recon = encoder_type == "autoencoder"
         self._save_recons = self._cfg.get("save_recons", False)
         self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
-
-        # ClearML allows only one active Task per process.
-        # Since RSL-RL creates its own ClearML Task during RL training,
-        # we explicitly close any existing Task here to allow Behavior Cloning
-        # to create and log to a new, separate ClearML Task.
-        if Task.current_task():
-            Task.current_task().close()
 
         self.logger = None
         if log_dir is not None:

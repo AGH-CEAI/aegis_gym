@@ -3,11 +3,10 @@ from pathlib import Path
 import time
 
 import torch as th
+from clearml import Task
 
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy
-
-from clearml import Task
 
 
 def log_metrics(task, metrics):
@@ -73,6 +72,7 @@ def main():
     task = Task.init(
         project_name=f"{logger_cfg['clearml_project']}_eval-{args.stage}-{args.control}",
         task_name=f"{args.exp_name}_{args.stage}_eval",
+        reuse_last_task_id=False,
     )
 
     # Set PyTorch default dtype to float32 for better performance
