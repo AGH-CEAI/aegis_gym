@@ -10,6 +10,14 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 
+class NoTasksError(Exception):
+    pass
+
+
+class NoMetricsError(Exception):
+    pass
+
+
 class SummaryType(StrEnum):
     MEAN = "mean"
     MEAN_MINMAX = "mean-min-max"
@@ -65,12 +73,7 @@ class DataGetter:
             self._select_metrics(metrics_paths)
         self.metrics_paths = metrics_paths
 
-        if not self.tasks:
-            self.log.error("Failed to found valid tasks.")
-            return
-        if not self.metrics_paths:
-            self.log.error("Failed to select any valid metrics.")
-            return
+        self.assert_data_existence()
         self.log.info(
             f"Prepared {len(self.tasks)} tasks for summarization with {len(self.metrics_paths)} metrics."
         )
@@ -126,7 +129,7 @@ class DataGetter:
         try:
             data = self._task_data_getter(t)
             if remove_colon_scalars:
-                data = self._remove_colcon_scalars(data)
+                data = self._remove_colon_prefixed_scalars(data)
             return t.task_id, t.get_last_iteration(), data, None
         except ValueError as e:
             return t.task_id, None, None, str(e)
@@ -191,7 +194,7 @@ class DataGetter:
             return t.get_all_reported_scalars()
         return t.get_reported_scalars(max_samples=self.max_samples)
 
-    def _remove_colcon_scalars(self, data: dict) -> dict:
+    def _remove_colon_prefixed_scalars(self, data: dict) -> dict:
         for k in list(data.keys()):
             if k.startswith(":"):
                 data.pop(k)
@@ -337,3 +340,12 @@ class DataGetter:
                         f"Metric path '{path_str}' not found in the task id {t_id}. This task will be omitted.",
                     )
                     self.tasks.pop(t_id)
+
+    def assert_data_existence(self) -> None:
+        if not self.tasks:
+            self.log.error("Failed to found valid tasks.")
+            raise NoTasksError()
+
+        if not self.metrics_paths:
+            self.log.error("Failed to select any valid metrics.")
+            raise NoMetricsError()
