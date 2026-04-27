@@ -337,15 +337,6 @@ class Summarizer:
                 )
             )
 
-    @staticmethod
-    def _path_to_title_series(path_str: str) -> tuple[str, str]:
-        # Use a clean prefix derived from the path for ClearML titles
-        # e.g. "episode_reward/train/y" → title "episode_reward", series "train"
-        parts = path_str.rstrip("/y").split("/")
-        if len(parts) >= 2:
-            return "/".join(parts[:-1]), parts[-1]
-        return parts[0], "default"
-
     def _report_scalars(self, t_log: Logger, metric: StatisticsSeries) -> None:
         self.log.info(f"[METRIC] {metric.name} | Reporting scalars to ClearML server.")
         title = metric.name
