@@ -1,5 +1,6 @@
 import copy
 import logging
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Iterable, Optional
 
@@ -22,6 +23,18 @@ class SummaryType(StrEnum):
     MEAN = "mean"
     MEAN_MINMAX = "mean-min-max"
     MEAN_STD = "mean-std"
+
+
+@dataclass(slots=True)
+class TaskLoadResult:
+    task_id: str
+    last_iteration: int | None
+    data: any | None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
 
 
 N_JOBS = -1  # use all available cores/threads
@@ -97,42 +110,49 @@ class DataGetter:
 
         self.log.info("Validating tasks metrics.")
 
-        results = Parallel(n_jobs=self.n_jobs, backend="threading")(
+        results: list[TaskLoadResult] = Parallel(
+            n_jobs=self.n_jobs, backend="threading"
+        )(
             delayed(self._load_one_task)(t, remove_colon_scalars)
             for t in tqdm(tasks_raw, desc="Task", leave=False, position=0)
         )
 
         valid_iterations = []
-        for t_id, n_iter, data, err in results:
-            if err is not None:
-                self.log.warning(f"Skipping task id {t_id} due to: {err}")
+        for result in results:
+            if not result.ok:
+                self.log.warning(
+                    f"Skipping task id {result.task_id} due to: {result.error}"
+                )
                 continue
-            tasks[t_id] = data
-            if same_n_iterations and n_iter is not None:
-                valid_iterations.append(n_iter)
+            tasks[result.task_id] = result.data
+            if same_n_iterations and result.last_iteration is not None:
+                valid_iterations.append(result.last_iteration)
 
         if same_n_iterations and valid_iterations:
             self.min_n_iterations = min(valid_iterations)
 
             tasks = {
-                t_id: data
-                for t_id, data in tasks.items()
-                if tasks_raw[
-                    [t.task_id for t in tasks_raw].index(t_id)
-                ].get_last_iteration()
-                >= self.min_n_iterations
+                result.task_id: result.data
+                for result in results
+                if result.ok and result.last_iteration >= self.min_n_iterations
             }
 
         return tasks
 
-    def _load_one_task(self, t, remove_colon_scalars: bool):
+    def _load_one_task(self, t: Task, remove_colon_scalars: bool) -> TaskLoadResult:
         try:
             data = self._task_data_getter(t)
             if remove_colon_scalars:
                 data = self._remove_colon_prefixed_scalars(data)
-            return t.task_id, t.get_last_iteration(), data, None
+            return TaskLoadResult(
+                task_id=t.task_id,
+                last_iteration=t.get_last_iteration(),
+                data=data,
+            )
         except ValueError as e:
-            return t.task_id, None, None, str(e)
+            return TaskLoadResult(
+                task_id=t.task_id, last_iteration=None, data=None, error=str(e)
+            )
 
     def _get_cleraml_tasks(self) -> list[Task]:
         self.log.info(
@@ -200,13 +220,6 @@ class DataGetter:
                 data.pop(k)
         return data
 
-    def _compare_n_iterations(self, n_iterations: int) -> None:
-        if self.min_n_iterations < n_iterations:
-            raise ValueError("Too few data samples.")
-
-        if self.min_n_iterations > n_iterations:
-            self.min_n_iterations = n_iterations
-
     def _get_common_metrics(self) -> list[str]:
         self.log.info("Auto-detecting shared metric path(s).")
         metric_paths = self._detect_common_metric_paths()
@@ -229,25 +242,17 @@ class DataGetter:
         return metric_paths
 
     def _detect_common_metric_paths(self, skip_time_series: bool = True) -> list[str]:
-        results = Parallel(n_jobs=self.n_jobs, backend="threading")(
-            delayed(self._extract_task_paths)(item, skip_time_series)
-            for item in self.tasks.items()
-        )
-
         path_sets = []
-        invalid_ids = []
 
-        for t_id, paths, err in results:
-            if err is not None:
+        for t_id, t_data in list(self.tasks.items()):
+            paths = self._extract_task_paths(t_id, t_data, skip_time_series)
+            if paths is None:
                 self.log.warning(
                     f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
                 )
-                invalid_ids.append(t_id)
+                self.tasks.pop(t_id, None)
                 continue
             path_sets.append(paths)
-
-        for t_id in invalid_ids:
-            self.tasks.pop(t_id, None)
 
         if not path_sets:
             self.log.error("The given list of tasks do not have any metrics.")
@@ -255,18 +260,18 @@ class DataGetter:
 
         return sorted(path_sets[0].intersection(*path_sets[1:]))
 
-    def _extract_task_paths(self, item, skip_time_series: bool = True):
-        t_id, t_data = item
+    def _extract_task_paths(
+        self, t_id: str, t_data: dict, skip_time_series: bool = True
+    ) -> set[str] | None:
         if not t_data:
-            return t_id, None, "no metrics"
+            return None
 
-        paths = set()
-        for title, series_dict in t_data.items():
-            if skip_time_series and "time" in title.lower():
-                continue
-            for series in series_dict:
-                paths.add(f"{title}/{series}/y")
-        return t_id, paths, None
+        return {
+            f"{title}/{series}/y"
+            for title, series_dict in t_data.items()
+            if not (skip_time_series and "time" in title.lower())
+            for series in series_dict
+        }
 
     def _merge_metrics_series(self, metric_paths: list[str]) -> list[str]:
 

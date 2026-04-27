@@ -12,7 +12,7 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
-from helpers.data_getter import DataGetter, SummaryType
+from helpers.data_getter import DataGetter, SummaryType, N_JOBS
 
 
 def _add_task_tags(t_id: str, tags: list[str]) -> None:
@@ -50,7 +50,6 @@ class StatisticsSeries:
 
 FIELD_MAP = {"mean": "mean", "std": "std", "min": "minimum", "max": "maximum"}
 DEFAULT_SUMMARY_TASK_NAME = "SUMMARY"
-N_JOBS = -1  # use all available cores/threads
 
 
 class Summarizer:
@@ -58,7 +57,7 @@ class Summarizer:
         self,
         tasks_data: DataGetter,
         summary_task_name: str = DEFAULT_SUMMARY_TASK_NAME,
-        summary_task_tags: list[str] = ["summary"],
+        summary_task_tags: list[str] = None,
         summary_types: list[SummaryType] = [
             SummaryType.MEAN_STD,
             SummaryType.MEAN_MINMAX,
@@ -89,7 +88,7 @@ class Summarizer:
         self.i_max_samples = tasks_data.max_samples
 
         self.summary_task_name = summary_task_name
-        self.summary_task_tags = summary_task_tags
+        self.summary_task_tags = summary_task_tags or ["summary"]
         self.summary_task_type = TaskTypes.application
         self.summary_types = set(summary_types)
 
@@ -157,7 +156,7 @@ class Summarizer:
         self.log.info(f"Merged metrics paths into {len(metrics)} top-level metrics.")
 
         def _process_one_merged(
-            top_key: str, stats: set[str]
+            top_key: str, stats: set[str], tasks_cache: dict[str, Task]
         ) -> tuple[str, StatisticsSeries]:
             n_tasks = len(self.tasks)
             result = StatisticsSeries(name=top_key, series=[None] * n_tasks)
@@ -167,7 +166,7 @@ class Summarizer:
                 m_stats = {
                     FIELD_MAP[stat]: t_data[top_key][stat]["y"] for stat in stats
                 }
-                task = Task.get_task(task_id=t_id)
+                task = tasks_cache[t_id]
                 series_name: str = task.name
 
                 if series_name == DEFAULT_SUMMARY_TASK_NAME:
@@ -187,9 +186,15 @@ class Summarizer:
 
             return top_key, result
 
+        self.log.info("Caching tasks from ClearML for parallel processing.")
+        tasks_cache = {}
+        for t_id, _ in self.tasks.items():
+            tasks_cache[t_id] = Task.get_task(task_id=t_id)
+
+        self.log.info("Proceeding to parallel statistical summarization.")
         with logging_redirect_tqdm():
             results = Parallel(n_jobs=self.n_jobs, backend="threading")(
-                delayed(_process_one_merged)(top_key, stats)
+                delayed(_process_one_merged)(top_key, stats, tasks_cache)
                 for top_key, stats in tqdm(
                     metrics.items(), desc="Metric", leave=False, position=0
                 )
