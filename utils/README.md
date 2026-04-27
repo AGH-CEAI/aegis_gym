@@ -1,4 +1,4 @@
-# Utility scfipts
+# Utility scripts
 
 [Back to main README](../README.md)
 
@@ -40,7 +40,7 @@ Clone task multiple times into a selected queue.
 ---
 
 ### [`clearml_exp_plotter.py`](./clearml_exp_plotter.py)
-Summarize summarization of the ClearML experiments!
+Aggregate summaries of multiple ClearML experiments into comparison plots!
 
 #### Usage
 
@@ -70,7 +70,7 @@ uv run --script ./clearml_summarizer.py -h
 Upload URDF model, required by simulators, into ClearML.
 
 #### Uploading
-1. Generate standalone URDF model with [aegis_ros/aegis_descrption]() launch command:
+1. Generate standalone URDF model with [aegis_ros/aegis_description](https://github.com/AGH-CEAI/aegis_ros/tree/humble-devel/aegis_description) launch command:
 ```bash
 ros2 launch aegis_description generate_standalone_urdf.launch.py disable_cell:=true
 ```
@@ -90,7 +90,7 @@ python3 utils/upload_urdf_to_clearml.py ~/ceai_ws/aegis_urdf --name AegisURDFMod
 In the robot's config set the `urdf_model_id` param to the ClearML's dataset ID.
 
 > [!IMPORTANT]
-> In case of failure to obtain the model, the code will try to load URDF model from `~/ceai_ws/aegid_urdf` directory.
+> In case of failure to obtain the model, the code will try to load URDF model from `~/ceai_ws/aegis_urdf` directory.
 
 ---
 
