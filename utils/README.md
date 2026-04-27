@@ -34,7 +34,7 @@ where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PR
 
 ---
 
-### [`clearml_enquee_tasks.py`](./clearml_enquee_tasks.py)
+### [`clearml_enqueue_tasks.py`](./clearml_enqueue_tasks.py)
 Clone task multiple times into a selected queue.
 
 ---
