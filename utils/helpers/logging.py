@@ -1,7 +1,8 @@
 import functools
 import logging
-import warnings
 from time import perf_counter
+
+import matplotlib
 
 
 def timed(func):
@@ -16,12 +17,15 @@ def timed(func):
     return wrapper
 
 
-def ignore_joblib_loky_semaphores_warnings() -> None:
-    warnings.filterwarnings(
-        "ignore",
-        message="resource_tracker: There appear to be",
-        category=UserWarning,
+def setup_logging() -> None:
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(CustomFormatter())
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[handler],
     )
+    matplotlib.use("Agg")  # non-interactive backend, safe in any env
 
 
 class CustomFormatter(logging.Formatter):

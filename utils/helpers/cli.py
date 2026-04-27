@@ -26,9 +26,30 @@ where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PR
 
 import argparse
 
+from helpers.data_getter import SummaryType
+
+
+def summary_type_parser(summary_type_strs: list[str]) -> list[SummaryType]:
+    """Convert CLI args to SummaryType enum list"""
+    types = []
+    for s in summary_type_strs:
+        # Handle comma-separated values in single arg
+        for arg in s.split(","):
+            arg = arg.strip().upper()
+            try:
+                types.append(SummaryType[arg])
+            except KeyError:
+                raise ValueError(
+                    f"Invalid summary type: '{arg}'. "
+                    f"Valid options: {', '.join(t.name for t in SummaryType)}"
+                )
+    return types
+
 
 def build_parser(
-    tags_required: bool, default_summary_task_name: str
+    tags_required: bool,
+    default_summary_task_name: str,
+    default_summary_types: list[str],
 ) -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -56,8 +77,8 @@ def build_parser(
     )
     p.add_argument(
         "--summary-task-name",
-        default="EXPERIMENTS_SUMMARY",
-        help="Name for the created summary task (default: `EXPERIMENTS_SUMMARY`).",
+        default=default_summary_task_name,
+        help=f"Name for the created summary task (default: `{default_summary_task_name}`).",
     )
     p.add_argument(
         "--max-samples",
@@ -78,20 +99,19 @@ def build_parser(
         default=False,
         help="Enable automatic remove of all `summary:XXX` tags from selected tasks.",
     )
+
+    valid_types = ", ".join(t.name.lower() for t in SummaryType)
+    p.add_argument(
+        "--summary-types",
+        nargs="+",
+        type=summary_type_parser,
+        default=default_summary_types,
+        metavar="TYPE",
+        help=(
+            f"Summary statistics to compute. Valid: {valid_types}. "
+            "Supports comma-separated (e.g., `--summary-types mean,mean_std`) "
+            "or multiple args (e.g., `--summary-types mean --summary-types mean_std`). "
+            f"Defaults to [`MEAN`] for a exp-summary and [`MEAN_STD`, `MEAN_MINMAX`] for a summary`."
+        ),
+    )
     return p
-
-
-def setup_logging() -> None:
-    pass
-
-
-def print_banner(text: str) -> None:
-    pass
-
-
-def common_parser_args(p: argparse.ArgumentParser) -> None:
-    pass  # adds --metrics, --max-samples, --plots-backend, --cleanup-previous-tags
-
-
-def timed(main_fn):
-    pass  # decorator for the elapsed print

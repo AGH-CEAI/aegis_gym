@@ -11,32 +11,17 @@
 # ]
 # ///
 
-import logging
 from typing import Optional
-
-import matplotlib
 
 from helpers.cli import build_parser
 from helpers.data_getter import DataGetter, SummaryType, NoTasksError, NoMetricsError
 from helpers.summarizer import Summarizer
-from helpers.logging import (
-    CustomFormatter,
-    timed,
-    ignore_joblib_loky_semaphores_warnings,
-)
-
-handler = logging.StreamHandler()
-handler.setLevel(logging.INFO)
-handler.setFormatter(CustomFormatter())
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[handler],
-)
-matplotlib.use("Agg")  # non-interactive backend, safe in any env
+from helpers.logging import timed, setup_logging
 
 
 @timed
 def main(argv: Optional[list[str]] = None) -> None:
+    setup_logging()
     print(
         "#######################################################\n"
         "#      ▄▖▜       ▖  ▖▖   ▄▖      ▄▖▜   ▗ ▗            #\n"
@@ -49,7 +34,9 @@ def main(argv: Optional[list[str]] = None) -> None:
     )
 
     args = build_parser(
-        tags_required=False, default_summary_task_name="EXPERIMENTS_SUMMARY"
+        tags_required=False,
+        default_summary_task_name="EXPERIMENTS_SUMMARY",
+        default_summary_types=[SummaryType.MEAN],
     ).parse_args(argv)
     try:
         data = DataGetter(
@@ -70,7 +57,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         plots_backend=args.plots_backend,
         summary_task_tags=[TAG_EXP_PLOTTER],
         experiments_summary_mode=True,
-        summary_types=[SummaryType.MEAN],
+        summary_types=args.summary_types,
     )
     summarizer.summarize(
         tag_for_tasks=TAG_EXP_PLOTTER,
@@ -80,5 +67,4 @@ def main(argv: Optional[list[str]] = None) -> None:
 
 
 if __name__ == "__main__":
-    ignore_joblib_loky_semaphores_warnings()
     main()

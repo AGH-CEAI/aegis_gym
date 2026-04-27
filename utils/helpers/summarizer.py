@@ -19,14 +19,14 @@ def _add_task_tags(t_id: str, tags: list[str]) -> None:
     Task.get_task(task_id=t_id).add_tags(tags)
 
 
-def _cleanup_task_tags(t_id: str) -> tuple[int, int]:
+def _cleanup_task_tags(t_id: str, t_tag: str) -> tuple[int, int]:
     """Returns (tasks_cleaned, tags_removed) counts."""
     t = Task.get_task(task_id=t_id)
     current_tags = list(t.get_tags() or [])
-    filtered_tags = [tag for tag in current_tags if not tag.startswith("summary:")]
+    filtered_tags = [tag for tag in current_tags if not tag.startswith(f"{t_tag}:")]
 
     if filtered_tags != current_tags:
-        removed = [tag for tag in current_tags if tag.startswith("summary:")]
+        removed = [tag for tag in current_tags if tag.startswith(f"{t_tag}:")]
         t.set_tags(filtered_tags)
         return 1, len(removed)
     return 0, 0
@@ -50,6 +50,7 @@ class StatisticsSeries:
 
 FIELD_MAP = {"mean": "mean", "std": "std", "min": "minimum", "max": "maximum"}
 DEFAULT_SUMMARY_TASK_NAME = "SUMMARY"
+DEFAULT_SUMMARY_TAG_NAME = DEFAULT_SUMMARY_TASK_NAME.lower()
 
 
 class Summarizer:
@@ -88,7 +89,7 @@ class Summarizer:
         self.i_max_samples = tasks_data.max_samples
 
         self.summary_task_name = summary_task_name
-        self.summary_task_tags = summary_task_tags or ["summary"]
+        self.summary_task_tags = summary_task_tags or [DEFAULT_SUMMARY_TAG_NAME]
         self.summary_task_type = TaskTypes.application
         self.summary_types = set(summary_types)
 
@@ -97,6 +98,7 @@ class Summarizer:
         self.plot_color_band = "#6BAED6"
         self.plot_fig_size = (9, 4)
 
+        self.log.info(f"Summary type(s): {[str(x) for x in self.summary_types]}")
         self.log.info(f"Using `{self.plots_backend}` for plots backend.")
 
     def _get_x_axis(self) -> Optional[list[float]]:
@@ -244,7 +246,7 @@ class Summarizer:
 
         # Reassemble in order — joblib preserves order, but we need to merge by top_key
         metrics_stats: dict[str, StatisticsSeries] = {}
-        for top_key, stat, data in results:
+        for top_key, _stat, data in results:
             if data is None:
                 continue
             metrics_stats.setdefault(
@@ -258,7 +260,7 @@ class Summarizer:
     def summarize(
         self,
         add_tag_to_tasks: bool = True,
-        tag_for_tasks: str = "summary",
+        tag_for_tasks: str = DEFAULT_SUMMARY_TAG_NAME,
         cleanup_previous_tags: bool = True,
     ) -> None:
         summary_task = Task.init(
@@ -276,7 +278,7 @@ class Summarizer:
         )
 
         if cleanup_previous_tags:
-            self._cleanup_previous_tags()
+            self._cleanup_previous_tags(tag=tag_for_tasks)
 
         if add_tag_to_tasks:
             tags = [f"{tag_for_tasks}:{summary_task.task_id}"]
@@ -308,13 +310,13 @@ class Summarizer:
             f"Finished summarization of {len(self.tasks)} tasks with {len(self.metric_paths)} metrics."
         )
 
-    def _cleanup_previous_tags(self) -> None:
+    def _cleanup_previous_tags(self, tag: str) -> None:
         self.log.info("Removing previous summary tags from task(s).")
 
         with logging_redirect_tqdm():
             with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
                 results = parallel(
-                    delayed(_cleanup_task_tags)(t_id)
+                    delayed(_cleanup_task_tags)(t_id, tag)
                     for t_id in tqdm(
                         self.tasks.keys(), desc="Task", leave=False, position=0
                     )
