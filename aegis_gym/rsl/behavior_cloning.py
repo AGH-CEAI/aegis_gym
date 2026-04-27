@@ -14,13 +14,13 @@ from clearml import Task
 from rsl_rl.utils.logger import Logger
 
 from bc_encoders import (
-    VisionEncoder,
+    BaseVisionEncoder,
     SharedCNNEncoder,
     PerCameraCNNEncoder,
     AutoencoderCNNEncoder,
 )
 from bc_fusions import (
-    FusionModule,
+    BaseFusionModule,
     LinearFusion,
     VectorAttentionFusion,
     SpatialAttentionFusion,
@@ -551,7 +551,7 @@ class Policy(nn.Module):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
-    def _build_vision_encoder(self, config: dict) -> "VisionEncoder":
+    def _build_vision_encoder(self, config: dict) -> "BaseVisionEncoder":
 
         vision_cfg = config["vision_encoder"]
         if self.fusion_type == "attention_spatial":
@@ -583,7 +583,7 @@ class Policy(nn.Module):
             case _:
                 raise ValueError(f"Unknown vision encoder type: {self.encoder_type}")
 
-    def _build_fusion(self, config: dict) -> "FusionModule":
+    def _build_fusion(self, config: dict) -> "BaseFusionModule":
         c, h, w = self.vision_encoder.infer_output_shape(
             image_height=config.get("image_height", 64),
             image_width=config.get("image_width", 64),

@@ -4,7 +4,7 @@ import torch as th
 import torch.nn as nn
 
 
-class VisionEncoder(nn.Module):
+class BaseVisionEncoder(nn.Module):
     def __init__(self, num_cameras: int):
         super().__init__()
         self.num_cameras = num_cameras
@@ -28,7 +28,7 @@ class VisionEncoder(nn.Module):
         raise NotImplementedError
 
 
-class SharedCNNEncoder(VisionEncoder):
+class SharedCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoder = cnn_builder()
@@ -46,7 +46,7 @@ class SharedCNNEncoder(VisionEncoder):
         return tuple(features)
 
 
-class PerCameraCNNEncoder(VisionEncoder):
+class PerCameraCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
@@ -65,7 +65,7 @@ class PerCameraCNNEncoder(VisionEncoder):
 
 
 # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
-class AutoencoderCNNEncoder(VisionEncoder):
+class AutoencoderCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
 

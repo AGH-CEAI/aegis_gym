@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class FusionModule(nn.Module):
+class BaseFusionModule(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -14,7 +14,7 @@ class FusionModule(nn.Module):
         raise NotImplementedError
 
 
-class LinearFusion(FusionModule):
+class LinearFusion(BaseFusionModule):
     def __init__(
         self,
         vision_dim: int = 512,
@@ -63,7 +63,7 @@ class LinearFusion(FusionModule):
             return tuple(feat_vecs)
 
 
-class VectorAttentionFusion(FusionModule):
+class VectorAttentionFusion(BaseFusionModule):
     def __init__(
         self,
         vision_dim: int = 512,
@@ -113,7 +113,7 @@ class VectorAttentionFusion(FusionModule):
         return tuple(self._to_feature_vector(f) for f in features)
 
 
-class SpatialAttentionFusion(FusionModule):
+class SpatialAttentionFusion(BaseFusionModule):
     def __init__(
         self,
         vision_dim: int = 256,
