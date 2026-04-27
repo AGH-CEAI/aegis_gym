@@ -48,6 +48,8 @@ class Manipulator:
                 "cam_tool_right",
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
+                "robotiq_hande_left_finger",
+                "robotiq_hande_right_finger",
             ],
         )
         self._robot_entity: gs.Entity = scene.add_entity(material=material, morph=morph)

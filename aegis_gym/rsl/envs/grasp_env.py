@@ -138,6 +138,23 @@ class GraspEnv(VecEnv):
             device=gs.device,
         )
 
+        # == add contact force sensor to gripper finger ===
+        self.force_sensors = {}
+        
+        # left_finger = self.robot._robot_entity.get_link("robotiq_hande_left_finger")
+        # right_finger = self.robot._robot_entity.get_link("robotiq_hande_right_finger")
+        for name in ["robotiq_hande_left_finger", "robotiq_hande_right_finger"]:
+            link = self.robot._robot_entity.get_link(name)
+            self.force_sensors[name] = self.scene.add_sensor(
+                gs.sensors.ContactForce(
+                    entity_idx=self.robot._robot_entity.idx,
+                    link_idx_local=link.idx_local,
+                    min_force=0.0,
+                    max_force=float("inf"),
+                    draw_debug=True,
+                )
+            )
+
         # == add table ==
         if self.show_cell:
             self.table = self.scene.add_entity(
@@ -629,4 +646,61 @@ class GraspEnv(VecEnv):
         # data["ee/orientation/pitch"] = float(pitch)
         # data["ee/orientation/yaw"] = float(yaw)
 
+        ee_force, ee_force_mag = self.get_ee_force()
+        ee_force = ee_force[0]
+        ee_force_mag = ee_force_mag[0]
+        data["ee_force/x"] = float(ee_force[0])
+        data["ee_force/y"] = float(ee_force[1])
+        data["ee_force/z"] = float(ee_force[2])
+        data["ee_force/magnitude"] = float(ee_force_mag)
+
         self._pj.send(data)
+
+
+    # demo - to test force sensor
+
+    def get_ee_force(self):
+        left = self.force_sensors["robotiq_hande_left_finger"].read()
+        right = self.force_sensors["robotiq_hande_right_finger"].read()
+
+        ee_force = left + right
+        ee_force_mag = th.norm(ee_force, dim=1)
+
+        return ee_force, ee_force_mag
+
+    def push_block_demo(self):
+        for _ in range(100):
+            self.scene.step()
+
+        obj_pos = self.object.get_pos()
+        ee_pose = self.robot.ee_pose.clone()
+
+        # 1. move near the block
+        start = ee_pose.clone()
+        start[:, 0] = obj_pos[:, 0] - 0.12
+        start[:, 1] = obj_pos[:, 1]
+        start[:, 2] = obj_pos[:, 2] + 0.02
+
+        for _ in range(200):
+            self.robot.go_to_goal(start, open_gripper=True)
+            self.scene.step()
+
+        # 2. slowly push in +X using velocity control
+        action = th.zeros((self.num_envs, 6), device=self.device)
+        action[:, 0] = 0.03   # x velocity, m/s-ish
+
+        for _ in range(300):
+            self.robot.apply_action(action, open_gripper=True)
+            self.scene.step()
+
+            self._log_state_to_plot_juggler()
+
+            # force, force_mag = self.get_ee_force()
+            # print(f"Contact force: {force}")
+            # print(f"Contact force magnitude: {force_mag}")
+
+        # 3. stop
+        stop = th.zeros((self.num_envs, 6), device=self.device)
+        for _ in range(100):
+            self.robot.apply_action(stop, open_gripper=True)
+            self.scene.step()

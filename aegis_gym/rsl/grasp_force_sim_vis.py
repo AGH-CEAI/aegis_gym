@@ -98,61 +98,10 @@ def main():
         print("[GraspTrain] > Env is not configured. Exiting...")
         return
 
-    # === calibration movement ===
-    if args.calibration_move or args.calibration_move_cart:
-        cart_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        joints_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        steps = args.calibration_steps
 
-        if args.calibration_move:
-            n_j = len(args.calibration_move)
-            joints_diff[:n_j] = args.calibration_move
-            print(
-                f"[GraspTrain] >>> Starting relative joints movement of {joints_diff}"
-            )
-            joints_diff = th.tensor(joints_diff, device=device)
-            joints_diff[:6] *= th.pi / 180.0
-            joints_diff.unsqueeze(dim=0)
-            env.calib_run(joints_diff=joints_diff, steps=steps)
-
-        if args.calibration_move_cart:
-            n_j = len(args.calibration_move_cart)
-            cart_diff[:n_j] = args.calibration_move_cart
-            print(
-                f"[GraspTrain] >>> Starting relative cartesian movement of {cart_diff}"
-            )
-            cart_diff = th.tensor([cart_diff], device=device)
-            cart_diff.unsqueeze(dim=0)
-            env.calib_run(cart_diff=cart_diff, steps=steps)
-
-        print("[GraspTrain] >>> Finished relative joints movement.")
-        exit()
-
-    # === runner ===
-    match args.stage:
-        case "bc":
-            print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
-            teacher_policy = load_rl_policy(
-                env=env,
-                rl_cfg=rl_train_cfg,
-                device=device,
-                exp_name=args.exp_name,
-                log_dir=log_dir,
-                clearml_task_id=args.load_rl_task_id,
-                clearml_model_id=args.load_rl_model_id,
-                clearml_artifact_name="model",
-            )
-            bc_train_cfg["teacher_policy"] = teacher_policy
-            runner = BehaviorCloning(
-                env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
-            )
-            runner.learn(num_learning_iterations=args.max_iterations)
-        case "rl":
-            print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
-            runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
-            runner.learn(
-                num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
-            )
+    # testing force sensor - make colision with the block
+    env.push_block_demo()
+    print("[GraspForceSimVis] >>> Finished movement.")
 
 
 
