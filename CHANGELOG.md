@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 ### Removed
 ### Fixed
+
+- [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed wrong model path for teacher in BC training
+- [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed ClearML task overwriting on repeated runs.
+- [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed BC evaluation not logging to ClearML.
+
 ### Security
 
 ## [v202603091815]
