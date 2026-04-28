@@ -55,11 +55,13 @@ def main():
     rl_train_cfg.update(logger_cfg)
     bc_train_cfg.update(logger_cfg)
 
-    # === log dir ===
-    log_dir = Path("logs") / f"{args.exp_name + '_' + args.stage}"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    # === log dirs ===
+    log_dir_rl = Path("logs") / f"{args.exp_name}_rl"
+    log_dir_bc = Path("logs") / f"{args.exp_name}_bc"
+    active_log_dir = log_dir_rl if args.stage == "rl" else log_dir_bc
+    active_log_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(log_dir / "cfgs.pkl", "wb") as f:
+    with open(active_log_dir / "cfgs.pkl", "wb") as f:
         pickle.dump((env_cfg, robot_cfg, rl_train_cfg, bc_train_cfg), f)
 
     # === env ===
@@ -137,7 +139,7 @@ def main():
                 rl_cfg=rl_train_cfg,
                 device=device,
                 exp_name=args.exp_name,
-                log_dir=log_dir,
+                log_dir=log_dir_rl,
                 clearml_task_id=args.load_rl_task_id,
                 clearml_model_id=args.load_rl_model_id,
                 clearml_artifact_name="model",
@@ -145,12 +147,12 @@ def main():
             )
             bc_train_cfg["teacher_policy"] = teacher_policy
             runner = BehaviorCloning(
-                env, bc_train_cfg, teacher_policy, log_dir=log_dir, device=device
+                env, bc_train_cfg, teacher_policy, log_dir=log_dir_bc, device=device
             )
             runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
-            runner = OnPolicyRunner(env, rl_train_cfg, log_dir, device=device)
+            runner = OnPolicyRunner(env, rl_train_cfg, log_dir_rl, device=device)
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
             )
