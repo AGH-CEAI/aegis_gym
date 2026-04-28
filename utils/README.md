@@ -32,6 +32,18 @@ PROJECTS/.../
 ```
 where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PROJECT/EXPERIMENT_X` project name path, and the `EXPERIMENTS_SUMMARY` is the result of the `clearml_exp_plotter.py` run in the `YOUR_PROJECT` project name path.
 
+#### Example usage
+```bash
+# 1. Summarize experiments
+./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net64_temper_actor --tags net64 hyperopt
+./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net128_temper_actor --tags net128 hyperopt
+./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net256_temper_actor --tags net256 hyperopt
+./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net512_temper_actor --tags net512 hyperopt
+
+# 2. Aggregate experiment summaries
+./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim -h
+```
+
 ---
 
 ### [`clearml_enqueue_tasks.py`](./clearml_enqueue_tasks.py)
