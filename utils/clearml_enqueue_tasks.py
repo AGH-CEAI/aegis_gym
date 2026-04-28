@@ -44,7 +44,6 @@ def main():
             "If you REALLY want to eqnue that much, please add the `--allow-large-batch` flag."
         )
         time.sleep(1)
-        log.info("Exiting.")
         return
 
     log.info(
