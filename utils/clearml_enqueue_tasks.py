@@ -7,7 +7,7 @@
 # ///
 
 """
-Enquee a batch of tasks to a given ClearML queue.
+Enqueue a batch of tasks to a given ClearML queue.
 """
 
 import argparse
@@ -19,7 +19,7 @@ from clearml.automation import ClearmlJob
 TASKS_NUM_SAFEGUARD_LIMIT = 100
 
 
-def enquee_tasks(
+def enqueue_tasks(
     base_task_id: str,
     tasks_num: int,
     queue_name: str,
@@ -57,7 +57,7 @@ def main():
     """
     Command-line interface for enqueuing tasks to a ClearML queue.
 
-    Usage: python enquee_tasks.py <base_task_id> <tasks_num> <queue_name> [--tags TAG1 TAG2] [--parameters JSON_STRING]
+    Usage: python enqueue_tasks.py <base_task_id> <tasks_num> <queue_name> [--tags TAG1 TAG2] [--parameters JSON_STRING]
     """
 
     parser = argparse.ArgumentParser(
@@ -93,7 +93,7 @@ def main():
         )
         return
 
-    enquee_tasks(
+    enqueue_tasks(
         base_task_id=args.base_task_id,
         tasks_num=args.tasks_num,
         queue_name=args.queue_name,
