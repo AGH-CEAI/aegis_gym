@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Added attention-based fusion modules.
 - [PR-80](https://github.com/AGH-CEAI/aegis_gym/pull/80) - Added support for autoencoder.
 - [PR-83](https://github.com/AGH-CEAI/aegis_gym/pull/83) - Added lighting.
 - [PR-75](https://github.com/AGH-CEAI/aegis_gym/pull/75) - Added ability to Load trained models from ClearML via new CLI arguments: `--load-rl-task-id` or `--load-rl-model-id`.
@@ -16,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Set rasterizer and cell visualization as defaults.
+- [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Moved pooling and flattening from vision encoders to fusion modules; encoders return feature maps.
 - [PR-85](https://github.com/AGH-CEAI/aegis_gym/pull/85) - Made teacher action mixing optional.
 - [PR-83](https://github.com/AGH-CEAI/aegis_gym/pull/83) - Changed table color.
 - [PR-76](https://github.com/AGH-CEAI/aegis_gym/pull/76) - Increased genesis logging level from "warning" to "info".

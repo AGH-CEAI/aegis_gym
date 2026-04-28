@@ -78,11 +78,12 @@ def get_bc_cfg() -> dict:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
-            "type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
+            "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
+            "fusion_type": "linear",  # linear, attention_vector, attention_spatial
             "vision_encoder": {
                 "conv_layers": [
                     {
-                        "in_channels": 3,  # 3 channel for rgb image
+                        "in_channels": 3,
                         "out_channels": 8,
                         "kernel_size": 3,
                         "stride": 1,
@@ -105,6 +106,49 @@ def get_bc_cfg() -> dict:
                 ],
                 "pooling": "adaptive_avg",  # adaptive_avg, linear
                 "pool_size": 4,
+            },
+            "vision_encoder_spatial": {
+                "conv_layers": [
+                    {
+                        "in_channels": 3,
+                        "out_channels": 8,
+                        "kernel_size": 3,
+                        "stride": 1,
+                        "padding": 1,
+                    },
+                    {
+                        "in_channels": 8,
+                        "out_channels": 16,
+                        "kernel_size": 3,
+                        "stride": 2,
+                        "padding": 1,
+                    },
+                    {
+                        "in_channels": 16,
+                        "out_channels": 32,
+                        "kernel_size": 3,
+                        "stride": 2,
+                        "padding": 1,
+                    },
+                    {
+                        "in_channels": 32,
+                        "out_channels": 64,
+                        "kernel_size": 3,
+                        "stride": 2,
+                        "padding": 1,
+                    },
+                ],
+            },
+            "linear_fusion": {
+                "fusion_output_dim": 512,
+            },
+            "attention_vector_fusion": {
+                "fusion_output_dim": 512,
+                "num_heads": 4,
+            },
+            "attention_spatial_fusion": {
+                "fusion_output_dim": 256,
+                "num_heads": 4,
             },
             "action_head": {
                 "state_obs_dim": 7,  # end-effector pose as additional state observation
@@ -144,9 +188,9 @@ def get_task_cfgs():
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
-        "use_rasterizer": False,
+        "use_rasterizer": True,
         "visualize_camera": False,
-        "visualize_cell": False,
+        "visualize_cell": True,
         "camera_setup": "default",  # options: default, scene_dual
         "reward_scales": {
             "keypoints": 1.0,

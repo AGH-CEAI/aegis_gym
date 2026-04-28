@@ -3,7 +3,7 @@ import time
 from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 import torch as th
@@ -12,6 +12,19 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from clearml import Task
 from rsl_rl.utils.logger import Logger
+
+from bc_encoders import (
+    BaseVisionEncoder,
+    SharedCNNEncoder,
+    PerCameraCNNEncoder,
+    AutoencoderCNNEncoder,
+)
+from bc_fusions import (
+    BaseFusionModule,
+    LinearFusion,
+    VectorAttentionFusion,
+    SpatialAttentionFusion,
+)
 
 
 class BehaviorCloning:
@@ -27,7 +40,7 @@ class BehaviorCloning:
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
         self._use_teacher_mixing = self._cfg.get("use_teacher_mixing", False)
-        encoder_type = self._cfg["policy"]["type"]
+        encoder_type = self._cfg["policy"]["encoder_type"]
         self._enable_recon = encoder_type == "autoencoder"
         self._save_recons = self._cfg.get("save_recons", False)
         self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
@@ -60,6 +73,9 @@ class BehaviorCloning:
             raise ValueError(f"Unknown camera_setup: {env.camera_setup}")
 
         cfg["policy"]["num_cameras"] = num_cameras
+        cfg["policy"]["image_height"] = env.image_height
+        cfg["policy"]["image_width"] = env.image_width
+        cfg["policy"]["device"] = self._device
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 
@@ -482,31 +498,34 @@ class Policy(nn.Module):
     def __init__(self, config: dict, action_dim: int):
         super().__init__()
         self.num_cameras = config["num_cameras"]
+        self.encoder_type = config["encoder_type"]
+        self.fusion_type = config["fusion_type"]
+
+        print(f"Encoder type: {self.encoder_type}")
+        print(f"Fusion type: {self.fusion_type}")
 
         self.vision_encoder = self._build_vision_encoder(config)
+        self.feature_fusion = self._build_fusion(config)
 
-        vision_dim = self.vision_encoder.output_dim
+        vision_obs_dim = self.feature_fusion.output_dim
+        state_obs_dim = config["action_head"]["state_obs_dim"]
 
-        self.feature_fusion = nn.Sequential(
-            nn.Linear(vision_dim * self.num_cameras, vision_dim),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-        )
+        action_input_dim = vision_obs_dim + state_obs_dim
+        pose_input_dim = self.feature_fusion.pose_input_dim
 
-        action_cfg = config["action_head"]
-        self.state_obs_dim = action_cfg.get("state_obs_dim")
-        mlp_input_dim = vision_dim
-        if self.state_obs_dim is not None:
-            mlp_input_dim += self.state_obs_dim
+        print(f"Vision obs dim: {vision_obs_dim}")
+        print(f"State obs dim: {state_obs_dim}")
+        print(f"Action head input dim: {action_input_dim}")
+        print(f"Pose head input dim: {pose_input_dim}")
 
         self.action_head = self._build_mlp(
-            input_dim=mlp_input_dim,
-            hidden_dims=action_cfg["hidden_dims"],
+            input_dim=action_input_dim,
+            hidden_dims=config["action_head"]["hidden_dims"],
             output_dim=action_dim,
         )
 
         self.pose_head = self._build_mlp(
-            input_dim=vision_dim,
+            input_dim=pose_input_dim,
             hidden_dims=config["pose_head"]["hidden_dims"],
             output_dim=7,
         )
@@ -515,14 +534,14 @@ class Policy(nn.Module):
         self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
     ) -> th.Tensor:
         features = self.vision_encoder(rgb_obs)
-        fused = self.feature_fusion(th.cat(features, dim=-1))
-        if state_obs is not None and self.state_obs_dim is not None:
-            fused = th.cat([fused, state_obs], dim=-1)
+        fused = self.feature_fusion(features)
+        fused = th.cat([fused, state_obs], dim=-1)
         return self.action_head(fused)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         features = self.vision_encoder(rgb_obs)
-        return tuple(self.pose_head(f) for f in features)
+        pose_feats = self.feature_fusion.prepare_pose_features(features)
+        return tuple(self.pose_head(f) for f in pose_feats)
 
     def get_encoder(self):
         return self.vision_encoder
@@ -532,15 +551,17 @@ class Policy(nn.Module):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
-    def _build_vision_encoder(self, config: dict) -> "VisionEncoder":
-        encoder_type = config["type"]
+    def _build_vision_encoder(self, config: dict) -> "BaseVisionEncoder":
+
         vision_cfg = config["vision_encoder"]
+        if self.fusion_type == "attention_spatial":
+            vision_cfg = config["vision_encoder_spatial"]
 
         def cnn_builder() -> nn.Sequential:
-            return self._build_cnn(vision_cfg, encoder_type)
+            return self._build_cnn(vision_cfg)
 
         # TODO(issue#73): Extract vision encoder construction into a separate function
-        match encoder_type:
+        match self.encoder_type:
             case "shared_cnn":
                 return SharedCNNEncoder(
                     self.num_cameras,
@@ -560,10 +581,48 @@ class Policy(nn.Module):
                     vision_cfg=vision_cfg,
                 )
             case _:
-                raise ValueError(f"Unknown vision encoder type: {encoder_type}")
+                raise ValueError(f"Unknown vision encoder type: {self.encoder_type}")
+
+    def _build_fusion(self, config: dict) -> "BaseFusionModule":
+        c, h, w = self.vision_encoder.infer_output_shape(
+            image_height=config.get("image_height", 64),
+            image_width=config.get("image_width", 64),
+            device=config.get("device", "cpu"),
+        )
+
+        match self.fusion_type:
+            case "linear":
+                fusion_cfg = config["linear_fusion"]
+                return LinearFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
+                    num_cameras=self.num_cameras,
+                    in_channels=c,
+                    image_height=h,
+                    image_width=w,
+                )
+            case "attention_vector":
+                fusion_cfg = config["attention_vector_fusion"]
+                return VectorAttentionFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
+                    num_cameras=self.num_cameras,
+                    in_channels=c,
+                    num_heads=fusion_cfg.get("num_heads", 4),
+                )
+            case "attention_spatial":
+                fusion_cfg = config["attention_spatial_fusion"]
+                return SpatialAttentionFusion(
+                    vision_dim=fusion_cfg.get("fusion_output_dim", 256),
+                    num_cameras=self.num_cameras,
+                    in_channels=c,
+                    image_height=h,
+                    image_width=w,
+                    num_heads=fusion_cfg.get("num_heads", 4),
+                )
+            case _:
+                raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
 
     @staticmethod
-    def _build_cnn(config: dict, encoder_type: str) -> nn.Sequential:
+    def _build_cnn(config: dict) -> nn.Sequential:
         layers = []
         for c in config["conv_layers"]:
             layers.append(
@@ -577,20 +636,6 @@ class Policy(nn.Module):
             )
             layers.append(nn.BatchNorm2d(c["out_channels"]))
             layers.append(nn.ReLU())
-
-        if encoder_type == "autoencoder":
-            return nn.Sequential(*layers)
-
-        if config.get("pooling") == "adaptive_avg":
-            layers.append(
-                nn.AdaptiveAvgPool2d((config["pool_size"], config["pool_size"]))
-            )
-        # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
-        elif config.get("pooling") == "linear":
-            layers.append(nn.Flatten())
-            layers.append(nn.Linear(32 * 16 * 16, 32 * 4 * 4))
-            layers.append(nn.ReLU())
-
         return nn.Sequential(*layers)
 
     @staticmethod
@@ -605,122 +650,3 @@ class Policy(nn.Module):
             input_dim = h
         layers.append(nn.Linear(input_dim, output_dim))
         return nn.Sequential(*layers)
-
-
-class VisionEncoder(nn.Module):
-    def __init__(self, num_cameras: int):
-        super().__init__()
-        self.num_cameras = num_cameras
-        self.output_dim = None
-
-    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        raise NotImplementedError
-
-
-class SharedCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
-        super().__init__(num_cameras)
-        self.encoder = cnn_builder()
-
-        last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
-        pool_size = vision_cfg["pool_size"]
-
-        self.output_dim = last_channels * pool_size * pool_size
-
-    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
-    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoder(cam_rgb).flatten(start_dim=1)
-            features.append(feat)
-        return tuple(features)
-
-
-class PerCameraCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
-        super().__init__(num_cameras)
-        self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
-
-        last_channels = vision_cfg["conv_layers"][-1]["out_channels"]
-        pool_size = vision_cfg["pool_size"]
-
-        self.output_dim = last_channels * pool_size * pool_size
-
-    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
-    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoders[i](cam_rgb).flatten(start_dim=1)
-            features.append(feat)
-        return tuple(features)
-
-
-# TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
-class AutoencoderCNNEncoder(VisionEncoder):
-    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
-        super().__init__(num_cameras)
-
-        self.encoder = cnn_builder()
-        self.decoder = self.build_decoder()
-
-        self.feature_channels = vision_cfg["conv_layers"][-1]["out_channels"]
-        self.feature_size = 16
-
-        self.flatten_dim = self.feature_channels * self.feature_size * self.feature_size
-        self.latent_dim = 512
-
-        self.to_latent = nn.Linear(self.flatten_dim, self.latent_dim)
-        self.from_latent = nn.Linear(self.latent_dim, self.flatten_dim)
-
-        self.output_dim = self.latent_dim
-
-    def build_decoder(self):
-        return nn.Sequential(
-            nn.ConvTranspose2d(
-                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            nn.ConvTranspose2d(
-                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            nn.Conv2d(8, 3, kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = [None] * self.num_cameras
-
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-
-            fmap = self.encoder(cam_rgb)
-            flat = fmap.flatten(start_dim=1)
-
-            latent = self.to_latent(flat)
-
-            features[i] = latent
-
-        return tuple(features)
-
-    def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        recons = [None] * self.num_cameras
-
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-
-            fmap = self.encoder(cam_rgb)
-            flat = fmap.flatten(start_dim=1)
-
-            latent = self.to_latent(flat)
-
-            flat_recon = self.from_latent(latent)
-            fmap_recon = flat_recon.view(
-                -1, self.feature_channels, self.feature_size, self.feature_size
-            )
-
-            recons[i] = self.decoder(fmap_recon)
-
-        return tuple(recons)
