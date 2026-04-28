@@ -17,12 +17,12 @@ class BaseFusionModule(nn.Module):
 class LinearFusion(BaseFusionModule):
     def __init__(
         self,
-        vision_dim: int = 512,
-        num_cameras: int = 3,
-        in_channels: int = 32,
-        image_height: int = 64,
-        image_width: int = 64,
-        pool_size: int = 4,
+        vision_dim: int,  # 512
+        num_cameras: int,  # 3
+        in_channels: int,  # 32
+        image_height: int,  # 64
+        image_width: int,  # 64
+        pool_size: int,  # 4
     ):
         super().__init__()
         self.pool_size = pool_size
@@ -65,11 +65,11 @@ class LinearFusion(BaseFusionModule):
 class VectorAttentionFusion(BaseFusionModule):
     def __init__(
         self,
-        vision_dim: int = 512,
-        num_cameras: int = 3,
-        in_channels: int = 32,
-        num_heads: int = 4,
-        pool_size: int = 4,
+        vision_dim: int,  # 512
+        num_cameras: int,  # 3
+        in_channels: int,  # 32
+        num_heads: int,  # 4
+        pool_size: int,  # 4
     ):
         super().__init__()
         self.pool_size = pool_size
@@ -115,12 +115,12 @@ class VectorAttentionFusion(BaseFusionModule):
 class SpatialAttentionFusion(BaseFusionModule):
     def __init__(
         self,
-        vision_dim: int = 256,
-        num_cameras: int = 3,
-        in_channels: int = 64,
-        image_height: int = 8,
-        image_width: int = 8,
-        num_heads: int = 4,
+        vision_dim: int,  # 256
+        num_cameras: int,  # 3
+        in_channels: int,  # 64
+        image_height: int,  # 8
+        image_width: int,  # 8
+        num_heads: int,  # 4
     ):
         super().__init__()
         num_patches = image_height * image_width
