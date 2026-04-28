@@ -8,10 +8,12 @@ import matplotlib
 def timed(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        log = logging.getLogger(f"{__name__}_timed")
+
         start = perf_counter()
         result = func(*args, **kwargs)
         elapsed = perf_counter() - start
-        print(f">>> {func.__name__}() took {elapsed:.4f} s")
+        log.info(f">>> {func.__name__}() took {elapsed:.4f} s")
         return result
 
     return wrapper

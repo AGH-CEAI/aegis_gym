@@ -20,7 +20,6 @@ from helpers.logging import timed, setup_logging
 
 @timed
 def main(argv: Optional[list[str]] = None) -> None:
-    setup_logging()
     print(
         "#######################################################\n"
         "#      ▄▖▜       ▖  ▖▖   ▄▖      ▄▖▜   ▗ ▗            #\n"
@@ -31,6 +30,7 @@ def main(argv: Optional[list[str]] = None) -> None:
         "# ........... Maciej Aleksandrowicz 2026 ............ #\n"
         "#######################################################"
     )
+    setup_logging()
 
     args = build_parser(
         tags_required=False,
