@@ -180,7 +180,7 @@ class DataGetter:
         self.log.warning(
             f"No tasks found for tags {self.tags_filter} (AND) - nothing to summarise."
         )
-        return None
+        return []
 
     def _get_recursive_project_names(self, root_project: str) -> list[str]:
         """Return the root project plus all sub-projects under it."""
@@ -258,7 +258,7 @@ class DataGetter:
 
     def _extract_task_paths(
         self, t_id: str, t_data: dict, skip_time_series: bool = True
-    ) -> set[str] | None:
+    ) -> Optional[set[str]]:
         if not t_data:
             return None
 
