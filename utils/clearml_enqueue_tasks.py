@@ -16,6 +16,8 @@ from typing import Iterable, Any
 from clearml import Task
 from clearml.automation import ClearmlJob
 
+TASKS_NUM_SAFEGUARD_LIMIT = 100
+
 
 def enquee_tasks(
     base_task_id: str,
@@ -51,30 +53,45 @@ def enquee_tasks(
         job.launch(queue_name=queue_name)
 
 
-if __name__ == "__main__":
+def main():
     """
     Command-line interface for enqueuing tasks to a ClearML queue.
 
     Usage: python enquee_tasks.py <base_task_id> <tasks_num> <queue_name> [--tags TAG1 TAG2] [--parameters JSON_STRING]
     """
+
     parser = argparse.ArgumentParser(
         description="Enqueue a batch of tasks to a given ClearML queue."
     )
     parser.add_argument(
-        "base_task_id", help="The ID of the base task to clone for each job."
+        "--base-task-id", help="The ID of the base task to clone for each job."
     )
-    parser.add_argument("tasks_num", type=int, help="The number of tasks to enqueue.")
+    parser.add_argument("--tasks-num", type=int, help="The number of tasks to enqueue.")
     parser.add_argument(
-        "queue_name", help="The name of the ClearML queue to enqueue the tasks to."
+        "--queue-name", help="The name of the ClearML queue to enqueue the tasks to."
     )
     parser.add_argument("--tags", nargs="*", help="Optional tags to add to each task.")
     parser.add_argument(
         "--parameters", help="Optional parameter overrides as a JSON string."
     )
+    parser.add_argument(
+        "--allow-large-batch",
+        action="store_true",
+        default=False,
+        help="Disable safeguard mechanism for sending a large batch of runs.",
+    )
 
     args = parser.parse_args()
 
     parameters = json.loads(args.parameters) if args.parameters else {}
+
+    if not args.tasks_num < TASKS_NUM_SAFEGUARD_LIMIT:
+        print(
+            f">>> WARNING <<< \nYou are trying to enqueue {args.tasks_num} tasks. "
+            f"The safeguard limit is {TASKS_NUM_SAFEGUARD_LIMIT} tasks. "
+            "If you REALLY want to eqnue that much, please add the `--allow-large-batch` flag."
+        )
+        return
 
     enquee_tasks(
         base_task_id=args.base_task_id,
@@ -83,3 +100,7 @@ if __name__ == "__main__":
         tags=args.tags,
         parameters=parameters,
     )
+
+
+if __name__ == "__main__":
+    main()
