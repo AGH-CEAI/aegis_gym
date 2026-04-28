@@ -9,7 +9,7 @@
 #   "plotly",
 # ]
 # ///
-
+import logging
 from typing import Optional
 
 from helpers.cli import build_parser
@@ -47,6 +47,8 @@ def main(argv: Optional[list[str]] = None) -> None:
             merge_summaries_metrics=True,
         )
     except (NoTasksError, NoMetricsError):
+        log = logging.getLogger(__name__)
+        log.info("No tasks to process (check previous logs for more info). Exiting.")
         return
 
     TAG_EXP_PLOTTER = "exp-summary"
