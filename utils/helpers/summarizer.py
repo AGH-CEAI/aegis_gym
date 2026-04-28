@@ -286,10 +286,12 @@ class Summarizer:
         summary_task.set_parameter("summarize/max_samples", self.i_max_samples)
         summary_task.set_parameter("summarize/n_source_tasks", len(self.tasks))
 
+        caught_exception = False
         try:
             self._summarize(summary_task)
         except Exception as e:
             self.log.exception(f"Caught an exception: {e}")
+            caught_exception = True
         finally:
             self.log.info("Closing the summary task.")
             summary_task.close()
@@ -297,6 +299,9 @@ class Summarizer:
         self.log.info(
             f"Finished summarization of {len(self.tasks)} tasks with {len(self.metric_paths)} metrics."
         )
+
+        if caught_exception:
+            self.log.exception("There was an exception. Check the previous logs.")
 
     def _cleanup_previous_tags(self, tag: str) -> None:
         self.log.info("Removing previous summary tags from task(s).")
