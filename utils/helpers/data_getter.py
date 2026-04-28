@@ -102,8 +102,8 @@ class DataGetter:
         same_n_iterations: bool = True,
     ) -> dict[str, dict]:
         tasks = {}
-        tasks_raw = self._get_cleraml_tasks()
-        if tasks_raw is None:
+        tasks_raw = self._get_clearml_tasks()
+        if not tasks_raw:
             return tasks
 
         self.log.info("Validating tasks metrics.")
@@ -150,7 +150,7 @@ class DataGetter:
                 task_id=t.task_id, last_iteration=None, data=None, error=str(e)
             )
 
-    def _get_cleraml_tasks(self) -> list[Task]:
+    def _get_clearml_tasks(self) -> list[Task]:
         self.log.info(
             f"Querying tasks with tags {self.tags_raw} (AND) in project '{self.project_name}' (Recursive: {self.recursive_projects})."
         )
