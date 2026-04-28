@@ -81,7 +81,7 @@ class DataGetter:
         if metrics_paths is None:
             metrics_paths = self._get_common_metrics()
         else:
-            self._select_metrics(metrics_paths)
+            self._filter_tasks_and_select_metrics(metrics_paths)
         self.metrics_paths = metrics_paths
 
         self.assert_data_existence()
@@ -218,7 +218,7 @@ class DataGetter:
 
     def _get_common_metrics(self) -> list[str]:
         self.log.info("Auto-detecting shared metric path(s).")
-        metric_paths = self._detect_common_metric_paths()
+        metric_paths = self._filter_tasks_and_get_common_metric_paths()
         if not metric_paths:
             self.log.error(
                 "No scalar metrics are shared by all selected tasks. Returning empty list."
@@ -228,7 +228,9 @@ class DataGetter:
             self.log.info(
                 f"Found {len(metric_paths)} metric path(s). Merging already processed metrics via title suffixes."
             )
-            metric_paths = self._merge_metrics_series(metric_paths)
+            metric_paths = self._filter_tasks_and_get_merged_metrics_series(
+                metric_paths
+            )
 
         projects_str = "\n\t".join(metric_paths)
         self.log.info(
@@ -237,18 +239,25 @@ class DataGetter:
 
         return metric_paths
 
-    def _detect_common_metric_paths(self, skip_time_series: bool = True) -> list[str]:
+    # TODO(issue#91) Refactor function creep
+    def _filter_tasks_and_get_common_metric_paths(
+        self, skip_time_series: bool = True
+    ) -> list[str]:
         path_sets = []
 
-        for t_id, t_data in list(self.tasks.items()):
+        to_remove = set()
+        for t_id, t_data in self.tasks.items():
             paths = self._extract_task_paths(t_id, t_data, skip_time_series)
             if paths is None:
                 self.log.warning(
                     f"Task {t_id} reported no scalar metrics. Omitting it from analysis."
                 )
-                self.tasks.pop(t_id, None)
+                to_remove.add(t_id)
                 continue
             path_sets.append(paths)
+
+        for t_id in to_remove:
+            self.tasks.pop(t_id)
 
         if not path_sets:
             self.log.error("The given list of tasks do not have any metrics.")
@@ -269,7 +278,10 @@ class DataGetter:
             for series in series_dict
         }
 
-    def _merge_metrics_series(self, metric_paths: list[str]) -> list[str]:
+    # TODO(issue#91) Refactor function creep
+    def _filter_tasks_and_get_merged_metrics_series(
+        self, metric_paths: list[str]
+    ) -> list[str]:
 
         results: set[str] = set()
 
@@ -315,7 +327,8 @@ class DataGetter:
                 return s.removesuffix(suffix)
         return s
 
-    def _select_metrics(self, metric_paths: list[str]):
+    # TODO(issue#91) Refactor function creep
+    def _filter_tasks_and_select_metrics(self, metric_paths: list[str]):
         for path_str in metric_paths:
             path_parts = self._normalize_metric_path(path_str)
 
