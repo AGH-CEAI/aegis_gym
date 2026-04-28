@@ -12,6 +12,8 @@ class BaseVisionEncoder(nn.Module):
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         raise NotImplementedError
 
+    # TODO(issue#89): Integrate jaxtyping for tensor shape annotations
+    # TODO(issue#90): Explore PyTorch meta device for shape inference
     def infer_output_shape(
         self,
         image_height: int = 64,
@@ -96,6 +98,7 @@ class AutoencoderCNNEncoder(BaseVisionEncoder):
             features.append(latent.unsqueeze(-1).unsqueeze(-1))  # (B, 512, 1, 1)
         return tuple(features)
 
+    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         recons = []
         for i in range(self.num_cameras):
