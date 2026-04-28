@@ -47,7 +47,7 @@ Aggregate summaries of multiple ClearML experiments into comparison plots!
 To use it properly, you need to run the `clearml_summarizer.py` first.
 
 ```bash
-uv run --script ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJECT_PATH
+uv run --script ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJECT/PATH
 uv run --script ./clearml_exp_plotter.py -h
 ```
 
