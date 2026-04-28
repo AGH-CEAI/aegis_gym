@@ -98,6 +98,7 @@ class AutoencoderCNNEncoder(BaseVisionEncoder):
             features.append(latent.unsqueeze(-1).unsqueeze(-1))  # (B, 512, 1, 1)
         return tuple(features)
 
+    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         recons = []
         for i in range(self.num_cameras):

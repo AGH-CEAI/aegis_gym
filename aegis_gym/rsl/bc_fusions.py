@@ -142,6 +142,7 @@ class SpatialAttentionFusion(BaseFusionModule):
         self.output_dim = vision_dim
         self.pose_input_dim = in_channels
 
+    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def forward(self, features: tuple) -> th.Tensor:
         B = features[0].shape[0]
         patch_tokens_per_cam = []
