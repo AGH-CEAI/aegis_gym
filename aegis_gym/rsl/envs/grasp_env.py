@@ -140,7 +140,7 @@ class GraspEnv(VecEnv):
 
         # == add contact force sensor to gripper finger ===
         self.force_sensors = {}
-        
+
         # left_finger = self.robot._robot_entity.get_link("robotiq_hande_left_finger")
         # right_finger = self.robot._robot_entity.get_link("robotiq_hande_right_finger")
         for name in ["robotiq_hande_left_finger", "robotiq_hande_right_finger"]:
@@ -656,7 +656,6 @@ class GraspEnv(VecEnv):
 
         self._pj.send(data)
 
-
     # demo - to test force sensor
 
     def get_ee_force(self):
@@ -687,7 +686,7 @@ class GraspEnv(VecEnv):
 
         # 2. slowly push in +X using velocity control
         action = th.zeros((self.num_envs, 6), device=self.device)
-        action[:, 0] = 0.03   # x velocity, m/s-ish
+        action[:, 0] = 0.03  # x velocity, m/s-ish
 
         for _ in range(300):
             self.robot.apply_action(action, open_gripper=True)

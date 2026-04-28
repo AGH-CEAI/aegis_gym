@@ -6,11 +6,8 @@ from typing import Optional
 
 import genesis as gs
 import torch as th
-from rsl_rl.runners import OnPolicyRunner
 
-from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
-from utils import load_rl_policy
 
 
 def str_to_list(arg: Optional[str]) -> list[float]:
@@ -98,11 +95,9 @@ def main():
         print("[GraspTrain] > Env is not configured. Exiting...")
         return
 
-
-    # testing force sensor - make colision with the block
+    # testing force sensor - make collision with the block
     env.push_block_demo()
     print("[GraspForceSimVis] >>> Finished movement.")
-
 
 
 if __name__ == "__main__":

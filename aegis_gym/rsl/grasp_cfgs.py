@@ -138,8 +138,8 @@ def get_task_cfgs():
         },
         "table_size": [0.55, 0.84, 0.82],
         "workbench_size": [0.64, 1.0, 0.806],
-        "box_collision": True, #False,  #TODO: changed
-        "box_fixed": True, #True,      #TODO: changed
+        "box_collision": True,  # False,  #TODO: changed
+        "box_fixed": True,  # True,      #TODO: changed
         "image_resolution": (64, 64),
         "use_rasterizer": False,
         "visualize_camera": False,
