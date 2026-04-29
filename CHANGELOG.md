@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-92](https://github.com/AGH-CEAI/aegis_gym/pull/92) - Added multi-checkpoint evaluation.
 - [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Added attention-based fusion modules.
 - [PR-80](https://github.com/AGH-CEAI/aegis_gym/pull/80) - Added support for autoencoder.
 - [PR-83](https://github.com/AGH-CEAI/aegis_gym/pull/83) - Added lighting.
