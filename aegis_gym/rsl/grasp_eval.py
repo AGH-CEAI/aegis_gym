@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+from typing import Any, Callable
 import time
 
 import torch as th
@@ -10,7 +11,7 @@ from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 
-def log_metrics(task, metrics, step: int = 0):
+def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
     info_str = (
         f"Success rate: {metrics['success_rate']:.2f}\n"
         f"Mean reward: {metrics['mean_reward']:.6f}\n"
@@ -33,8 +34,14 @@ def log_metrics(task, metrics, step: int = 0):
 
 
 def run_single_eval(
-    env, policy, stage, max_steps, device, obs, record_render: bool = False
-):
+    env: Any,
+    policy: Callable,
+    stage: str,
+    max_steps: int,
+    device: th.device,
+    obs: Any,
+    record_render: bool = False,
+) -> dict[str, float]:
     total_rewards = th.zeros(env.num_envs, device=device)
     episode_lengths = th.zeros(env.num_envs, device=device)
 
