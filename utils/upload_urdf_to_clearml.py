@@ -1,4 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "clearml",
+# ]
+# ///
 """
 Upload robot simulator assets to ClearML Dataset.
 Handles URDF + STL/DAE models as a versioned dataset.
