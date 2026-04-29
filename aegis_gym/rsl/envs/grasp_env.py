@@ -341,6 +341,46 @@ class GraspEnv(VecEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
+    def generate_box_poses(self, seed: int = 42) -> tuple[th.Tensor, th.Tensor]:
+        rng = th.Generator(device=self.device)
+        rng.manual_seed(seed)
+
+        random_x = (
+            th.rand(self.num_envs, device=self.device, generator=rng) * 0.22 + 0.36
+        )
+        random_y = (
+            th.rand(self.num_envs, device=self.device, generator=rng) - 0.5
+        ) * 0.4
+        random_z = th.ones(self.num_envs, device=self.device) * (
+            self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
+        )
+        random_yaw = (
+            th.rand(self.num_envs, device=self.device, generator=rng) * 2 * math.pi
+            - math.pi
+        ) * 0.25
+
+        q_downward = th.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).repeat(
+            self.num_envs, 1
+        )
+        q_yaw = th.stack(
+            [
+                th.cos(random_yaw / 2),
+                th.zeros(self.num_envs, device=self.device),
+                th.zeros(self.num_envs, device=self.device),
+                th.sin(random_yaw / 2),
+            ],
+            dim=-1,
+        )
+        box_quat = transform_quat_by_quat(q_yaw, q_downward)
+        box_pos = th.stack([random_x, random_y, random_z], dim=-1)
+
+        return box_pos, box_quat
+
+    def apply_box_poses(self, box_pos: th.Tensor, box_quat: th.Tensor) -> None:
+        self.object.set_pos(box_pos)
+        self.object.set_quat(box_quat)
+        self.goal_pose[:] = th.cat([box_pos, box_quat], dim=-1)
+
     def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
