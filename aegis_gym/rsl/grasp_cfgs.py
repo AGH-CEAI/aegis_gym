@@ -184,7 +184,7 @@ def get_task_cfgs():
             "symmetrical": [0.0283, 0.0283, 0.1005],
         },
         "table_size": [0.55, 0.84, 0.82],
-        "workbench_size": [0.64, 1.0, 0.806],
+        "workbench_size": [0.64, 1.0, 0.821],
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
