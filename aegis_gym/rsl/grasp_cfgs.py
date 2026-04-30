@@ -1,5 +1,16 @@
+def _get_clearml_task():
+    """Get the current ClearML task if available, otherwise return None."""
+    try:
+        from clearml import Task
+
+        task = Task.current_task()
+        return task
+    except Exception:
+        return None
+
+
 def get_logger_cfg() -> dict:
-    return {
+    cfg = {
         # Logger
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
@@ -7,10 +18,16 @@ def get_logger_cfg() -> dict:
         "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
     }
 
+    task = _get_clearml_task()
+    if task is not None:
+        cfg = task.connect_configuration(cfg, name="logger_cfg")
+
+    return cfg
+
 
 def get_rl_cfg() -> dict:
     # stage 1: privileged reinforcement learning
-    return {
+    cfg = {
         "class_name": "OnPolicyRunner",
         # General
         "num_steps_per_env": 24,  # Number of steps per environment per iteration
@@ -63,10 +80,16 @@ def get_rl_cfg() -> dict:
         },
     }
 
+    task = _get_clearml_task()
+    if task is not None:
+        cfg = task.connect_configuration(cfg, name="rl_cfg")
+
+    return cfg
+
 
 def get_bc_cfg() -> dict:
     # stage 2: vision-based behavior cloning
-    return {
+    cfg = {
         # basic training parameters
         "num_steps_per_env": 24,
         "learning_rate": 0.001,
@@ -166,6 +189,12 @@ def get_bc_cfg() -> dict:
         "algorithm": {"rnd_cfg": None},
     }
 
+    task = _get_clearml_task()
+    if task is not None:
+        cfg = task.connect_configuration(cfg, name="bc_cfg")
+
+    return cfg
+
 
 def get_task_cfgs():
     env_cfg = {
@@ -213,4 +242,10 @@ def get_task_cfgs():
             "no_cell": "718ea536c68c4aaba79d1515ced27eeb",
         },
     }
+
+    task = _get_clearml_task()
+    if task is not None:
+        env_cfg = task.connect_configuration(env_cfg, name="env_cfg")
+        robot_cfg = task.connect_configuration(robot_cfg, name="robot_cfg")
+
     return env_cfg, robot_cfg
