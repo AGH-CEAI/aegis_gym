@@ -105,7 +105,7 @@ def get_bc_cfg() -> dict:
                     },
                 ],
                 "pooling": "adaptive_avg",  # adaptive_avg, linear
-                "pool_size": 4,
+    
             },
             "vision_encoder_spatial": {
                 "conv_layers": [
@@ -140,6 +140,7 @@ def get_bc_cfg() -> dict:
                 ],
             },
             "linear_fusion": {
+                "pool_size": 4,
                 "fusion_output_dim": 512,
             },
             "attention_vector_fusion": {

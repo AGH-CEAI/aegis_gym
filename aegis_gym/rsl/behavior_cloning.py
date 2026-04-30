@@ -591,6 +591,7 @@ class Policy(nn.Module):
                     in_channels=c,
                     image_height=h,
                     image_width=w,
+                    pool_size=fusion_cfg.get("pool_size")
                 )
             case "attention_vector":
                 fusion_cfg = config["attention_vector_fusion"]
