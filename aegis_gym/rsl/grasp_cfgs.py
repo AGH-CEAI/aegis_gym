@@ -207,8 +207,9 @@ def get_task_cfgs():
         "default_gripper_dof": [0.025, 0.025],
         "ik_method": "dls_ikv",
         "urdf_model_id": {
-            "cell": "4ae9243a9e294db998d3d6e0b5a0539b",
-            "no_cell": "3b30eed8cea6423a99d9bad3343740ed",
+            "cell": "c44c56e7671d4004b120b0341fb727a4",
+            "cell_collision": "0424f220ddc54091ae3b56b29854532f",
+            "no_cell": "718ea536c68c4aaba79d1515ced27eeb",
         },
     }
     return env_cfg, robot_cfg
