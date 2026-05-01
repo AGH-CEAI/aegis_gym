@@ -31,6 +31,7 @@ dependencies = [
     { name = "tensorboard" },
     { name = "torch" },
     { name = "torchvision" },
+    { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
@@ -62,6 +63,7 @@ requires-dist = [
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.8.0,<2.9.0" },
     { name = "torchvision", specifier = ">=0.23.0,<0.24.0" },
+    { name = "tqdm", specifier = ">=4.66.4" },
 ]
 provides-extras = ["sim-genesis", "test"]
 

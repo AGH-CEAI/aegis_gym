@@ -1,10 +1,11 @@
 import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeAlias
 
 import torch as th
 from clearml import Task
+from tqdm import tqdm
 
 
 from behavior_cloning import BehaviorCloning
@@ -17,7 +18,7 @@ try:
 except ImportError:
     GraspEnvROS = None
 
-GraspEnvironemnt = GraspEnv | GraspEnvROS
+GraspEnvironemnt = TypeAlias[GraspEnv | GraspEnvROS]
 
 def main():
     # Set PyTorch default dtype to float32 for better performance
@@ -32,7 +33,6 @@ def main():
     )
     cfg = setup_config(args, task)
     cfg.set_device(th.device("cuda" if th.cuda.is_available() else "cpu"))
-    device = cfg.get_device()
     sweep = is_checkpoints_sweep_required(args)
 
     env = create_env(args, cfg)
@@ -40,33 +40,26 @@ def main():
         print("[GraspEval] > Env is not configured. Exiting...")
         return
 
-    policy = load_policy(env, args, cfg)
     if env is None:
         print("[GraspEval] > Failed to load policy. Exiting...")
         return
 
-    obs, _ = env.reset()
-    episode_len_s = cfg.env_cfg["episode_length_s"]
-    max_steps = int(episode_len_s / cfg.env_cfg["policy_dt"])
+    env.reset()
     
+    episode_len_s = cfg.env_cfg["episode_length_s"]
+    max_steps = cfg.env_cfg["max_steps"]
     print(
         f"[GraspEval] The episode length is defined as {episode_len_s} s, which corresponds to {max_steps} steps"
     )
     print("[GraspEval] Setup done")
 
-    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     with th.no_grad():
         start_cameras_recording(env, args, cfg)
 
-        record_render = args.control == "sim" and args.record
-        train_cfg = rl_train_cfg if args.stage == Stage.RL else bc_train_cfg
-
         if not sweep:
-            eval_policy_single(
-                env, train_cfg, args, log_dir, task, max_steps, record_render, device
-            )
+            eval_policy_single(env, args, cfg, task)
         else:
-            eval_policy_sweep(env, train_cfg, args, log_dir, task, max_steps, device)
+            eval_policy_sweep(env, args, cfg, task)
         
         stop_cameras_recording(env, args, cfg)
 
@@ -139,7 +132,18 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
             "There is no mapping for loading configs from pickle. Try loading it from ClearML."
         )
 
-    return GraspConfig.create_with_clearml(task)
+    cfg = GraspConfig.create_with_clearml(task)
+
+    # TODO dynamic config variables should be grouped into other dict/object
+    stage_type = args.stage
+    log_dir = Path("logs") / f"{args.exp_name}_{stage_type}_eval"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    cfg.logger_cfg["local_log_dir"] = str(log_dir)
+    
+    episode_len_s = cfg.env_cfg["episode_length_s"]
+    cfg.env_cfg["max_steps"] = int(episode_len_s / cfg.env_cfg["policy_dt"])
+
+    return cfg
 
 def is_checkpoints_sweep_required(args: Namespace) -> bool:
     sweep = (args.stage == Stage.BC) and (
@@ -228,6 +232,7 @@ def start_cameras_recording(
         return
     camera_setup = cfg.env_cfg["camera_setup"]
 
+    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     match camera_setup:
         case "default":
             env.record_cam.start_recording()
@@ -311,34 +316,20 @@ def log_metrics(task: Task, metrics: dict) -> None:
 
 def eval_policy_single(
     env: Any,
-    train_cfg: dict,
-    args: argparse.Namespace,
-    log_dir: Path,
+    args: Namespace,
+    cfg: GraspConfig,
     task: Task,
     max_steps: int,
     record_render: bool,
-    device: th.device,
 ) -> None:
+    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    device = cfg.get_device()
+    max_steps = cfg.env_cfg["max_steps"]
+    
+    record_render = args.control == "sim" and args.record
+    
     # TODO(issue#101): Design arguments and config manager for policy loading
-    if args.stage == Stage.RL:
-        policy = load_rl_policy(
-            env=env,
-            rl_cfg=train_cfg,
-            device=device,
-            log_dir=log_dir,
-            clearml_task_id=args.load_rl_task_id,
-            clearml_model_id=args.load_rl_model_id,
-        )
-    else:
-        policy = load_bc_policy(
-            env=env,
-            bc_cfg=train_cfg,
-            device=device,
-            log_dir=log_dir,
-            clearml_task_id=args.load_bc_task_id,
-            clearml_model_id=args.load_bc_model_id,
-        )
-        policy.eval()
+    policy = load_policy(env, args, cfg)
     obs, _ = env.reset()
     metrics = run_eval(
         env, policy, args.stage, max_steps, obs, device, record_render=record_render
@@ -348,13 +339,14 @@ def eval_policy_single(
 
 def eval_policy_sweep(
     env: Any,
-    train_cfg: dict,
-    args: argparse.Namespace,
-    log_dir: Path,
+    cfg: GraspConfig,
+    args: Namespace,
     task: Task,
-    max_steps: int,
-    device: th.device,
 ) -> None:
+    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    device = cfg.get_device()
+    max_steps = cfg.env_cfg["max_steps"]
+    
     checkpoints = get_bc_checkpoints(
         log_dir=log_dir,
         clearml_task_id=args.load_bc_task_id,
@@ -369,7 +361,7 @@ def eval_policy_sweep(
     print(f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s)")
 
     bc_runner = BehaviorCloning(
-        env, cfg=train_cfg, teacher=None, log_dir=log_dir, device=device
+        env, cfg=cfg.bc_cfg, teacher=None, log_dir=log_dir, device=device
     )
     object_pose = env.generate_object_poses(seed=args.seed)
 
@@ -406,7 +398,7 @@ def run_eval(
     start_time = time.perf_counter()
     total_inference_time = 0.0
 
-    for _ in range(max_steps):
+    for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
         match stage:
             case Stage.RL:
                 actions = policy(obs)
