@@ -1,16 +1,69 @@
-def _get_clearml_task():
-    """Get the current ClearML task if available, otherwise return None."""
-    try:
-        from clearml import Task
+import pickle
+from dataclasses import dataclass, fields
+from typing import ClassVar
+from pathlib import Path
 
-        task = Task.current_task()
-        return task
-    except Exception:
-        return None
+import torch as th
+from clearml import Task
+
+
+@dataclass(slots=True, frozen=True)
+class GraspConfig:
+    logger_cfg: dict
+    rl_cfg: dict
+    bc_cfg: dict
+    env_cfg: dict
+    robot_cfg: dict
+
+    _device: ClassVar["th.device"] = None
+    _instance: ClassVar["GraspConfig | None"] = None
+
+    @classmethod
+    def set_device(cls, device: "th.device") -> None:
+        cls._device = device
+
+    @classmethod
+    def get_device(cls) -> "th.device":
+        return cls._device
+
+    @classmethod
+    def get_instance(cls) -> "GraspConfig":
+        if cls._instance is None:
+            raise RuntimeError("GraspConfig has not been created.")
+        return cls._instance
+
+    @classmethod
+    def create(cls, device: any = "cpu") -> "GraspConfig":
+        cls._instance = cls(
+            logger_cfg=get_logger_cfg(),
+            rl_cfg=get_rl_cfg(),
+            bc_cfg=get_bc_cfg(),
+            env_cfg=get_env_cfg(),
+            robot_cfg=get_robot_cfg(),
+        )
+        return cls._instance
+
+    @classmethod
+    def create_with_clearml(cls, task: Task) -> "GraspConfig":
+        instance = cls.create()
+        cls._instance = cls(
+            **{
+                field.name: task.connect_configuration(
+                    getattr(instance, field.name), name=field.name
+                )
+                for field in fields(instance)
+            }
+        )
+        return cls._instance
+
+    def to_pickle(self, path: Path) -> None:
+        data = {field.name: getattr(self, field.name) for field in fields(self)}
+        with path.open("wb") as f:
+            pickle.dump(data, f)
 
 
 def get_logger_cfg() -> dict:
-    cfg = {
+    return {
         # Logger
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
@@ -18,16 +71,9 @@ def get_logger_cfg() -> dict:
         "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
     }
 
-    task = _get_clearml_task()
-    if task is not None:
-        cfg = task.connect_configuration(cfg, name="logger_cfg")
-
-    return cfg
-
 
 def get_rl_cfg() -> dict:
-    # stage 1: privileged reinforcement learning
-    cfg = {
+    return {
         "class_name": "OnPolicyRunner",
         # General
         "num_steps_per_env": 24,  # Number of steps per environment per iteration
@@ -80,16 +126,9 @@ def get_rl_cfg() -> dict:
         },
     }
 
-    task = _get_clearml_task()
-    if task is not None:
-        cfg = task.connect_configuration(cfg, name="rl_cfg")
-
-    return cfg
-
 
 def get_bc_cfg() -> dict:
-    # stage 2: vision-based behavior cloning
-    cfg = {
+    return {
         # basic training parameters
         "num_steps_per_env": 24,
         "learning_rate": 0.001,
@@ -189,15 +228,15 @@ def get_bc_cfg() -> dict:
         "algorithm": {"rnd_cfg": None},
     }
 
-    task = _get_clearml_task()
-    if task is not None:
-        cfg = task.connect_configuration(cfg, name="bc_cfg")
 
-    return cfg
+def get_task_cfgs() -> tuple[dict, dict]:
+    env_cfg = get_env_cfg()
+    robot_cfg = get_robot_cfg()
+    return env_cfg, robot_cfg
 
 
-def get_task_cfgs():
-    env_cfg = {
+def get_env_cfg() -> dict:
+    return {
         "num_envs": 10,
         "num_obs": 14,
         "num_actions": 6,
@@ -226,8 +265,10 @@ def get_task_cfgs():
             "keypoints": 1.0,
         },
     }
-    # robot specific
-    robot_cfg = {
+
+
+def get_robot_cfg() -> dict:
+    return {
         "ee_link_name": "robotiq_hande_end",
         "gripper_link_names": [
             "robotiq_hande_left_finger",
@@ -242,10 +283,3 @@ def get_task_cfgs():
             "no_cell": "718ea536c68c4aaba79d1515ced27eeb",
         },
     }
-
-    task = _get_clearml_task()
-    if task is not None:
-        env_cfg = task.connect_configuration(env_cfg, name="env_cfg")
-        robot_cfg = task.connect_configuration(robot_cfg, name="robot_cfg")
-
-    return env_cfg, robot_cfg
