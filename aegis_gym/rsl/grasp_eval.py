@@ -115,9 +115,9 @@ def parse_arguments() -> Namespace:
     default_project_name = get_logger_cfg()["clearml_project"]
 
     p = ArgumentParser()
-    p.add_argument("-e", "--exp_name", type=str, default="grasp")
+    p.add_argument("-e", "--exp-name", type=str, default="grasp")
     p.add_argument("-v", "--vis", action="store_true", default=False)
-    p.add_argument("-B", "--num_envs", type=int, default=100)
+    p.add_argument("-B", "--num-envs", type=int, default=100)
     p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument(
