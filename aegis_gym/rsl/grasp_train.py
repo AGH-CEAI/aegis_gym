@@ -9,10 +9,17 @@ from rsl_rl.runners import OnPolicyRunner
 from clearml import Task
 
 from behavior_cloning import BehaviorCloning
-from grasp_cfgs import GraspConfig
+from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy
 
-GraspEnvironemnt = "GraspEnv" | "GraspEnvROS"
+from envs.grasp_env import GraspEnv
+
+try:
+    from envs.grasp_env_ros import GraspEnvROS
+except ImportError:
+    GraspEnvROS = None
+
+GraspEnvironemnt = GraspEnv | GraspEnvROS
 
 
 def main():
@@ -22,7 +29,7 @@ def main():
     args = parse_arguments()
     # The ClearML task must exists for connecting configuration
     task = Task.init(
-        project_name=f"{args.project_name}-{args.stage}-{args.control}",
+        project_name=f"{args.project_name}_{args.stage}-{args.control}",
         task_name=f"{args.exp_name}_{args.stage}",
         reuse_last_task_id=True,
     )
@@ -50,11 +57,14 @@ def parse_arguments() -> Namespace:
             return None
         return ast.literal_eval(arg)
 
+    # TODO resolve the precedence of default values
+    default_project_name = get_logger_cfg()["clearml_project"]
+
     p = ArgumentParser()
     p.add_argument("-e", "--exp_name", type=str, default="grasp")
     p.add_argument("-v", "--vis", action="store_true", default=False)
     p.add_argument("-B", "--num_envs", type=int, default=4096)
-    p.add_argument("--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp")
+    p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=300)
     p.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
@@ -92,7 +102,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     train_type = args.stage  # "rl" or "bc"
     log_dir = Path("logs") / f"{args.exp_name}_{train_type}"
     log_dir.mkdir(parents=True, exist_ok=True)
-    cfg.logger_cfg["local_log_dir"] = log_dir
+    cfg.logger_cfg["local_log_dir"] = str(log_dir)
 
     return cfg
 
@@ -101,8 +111,6 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
     device = cfg.get_device()
     env = None
     if args.control == "sim":
-        from envs.grasp_env import GraspEnv
-
         gs.init(logging_level="info", precision="32")
         env = GraspEnv(
             env_cfg=cfg.env_cfg,
@@ -111,13 +119,9 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
             enable_plot_juggler=args.plotjuggler,
         )
     if args.control == "ros":
-        try:
-            from envs.grasp_env_ros import GraspEnvROS
-        except ImportError as e:
-            print(
-                f"[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. Error:\n{e}\n>>>> Exiting"
-            )
-            return
+        if GraspEnvROS is None:
+            print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
+            exit()
         cfg.env_cfg["num_envs"] = 1
         env = GraspEnvROS(
             env_cfg=cfg.env_cfg,
@@ -159,7 +163,8 @@ def calibration_movment(
 
 def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> None:
     device = cfg.get_device()
-    log_dir = cfg.logger_cfg["local_log_dir"]
+    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    cfg_pickle_path = Path(cfg.logger_cfg["local_log_dir"]) / "cfgs.pkl"
     match args.stage:
         case "bc":
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
@@ -175,7 +180,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
                 enable_logging=False,
             )
             cfg.bc_cfg["teacher_policy"] = teacher_policy
-            cfg.to_pickle(cfg.logger_cfg["local_log_dir"] / "cfgs.pkl")
+            cfg.to_pickle(cfg_pickle_path)
             print("[GraspTrain] > Saved config as a pickle.")
 
             runner = BehaviorCloning(
@@ -184,7 +189,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
             runner.learn(num_learning_iterations=args.max_iterations)
         case "rl":
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
-            cfg.to_pickle(cfg.logger_cfg["local_log_dir"] / "cfgs.pkl")
+            cfg.to_pickle(cfg_pickle_path)
             print("[GraspTrain] > Saved config as a pickle.")
 
             runner = OnPolicyRunner(env, cfg.rl_cfg, log_dir, device=device)
