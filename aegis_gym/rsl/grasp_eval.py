@@ -1,6 +1,7 @@
+import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-import time
+from typing import Callable
 
 import torch as th
 from clearml import Task
@@ -195,7 +196,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
 
 def load_policy(
     env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig
-) -> callable | None:
+) -> Callable | None:
     device = cfg.get_device()
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     policy = None
