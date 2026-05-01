@@ -69,6 +69,7 @@ def get_logger_cfg() -> dict:
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
         "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
         "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
+        "clearml_log_cfg_as_hyperparams": False,
     }
 
 
