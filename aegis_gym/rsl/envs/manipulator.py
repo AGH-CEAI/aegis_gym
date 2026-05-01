@@ -64,7 +64,9 @@ class Manipulator:
 
         if self._urdf_model_id is not None:
             try:
-                dataset = Dataset.get(dataset_id=self._urdf_model_id)
+                dataset = Dataset.get(
+                    dataset_id=self._urdf_model_id, alias="urdf_model"
+                )
                 local_path = Path(dataset.get_local_copy())
             except ValueError:
                 warnings.warn(
