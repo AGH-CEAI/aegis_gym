@@ -5,6 +5,7 @@ from typing import Callable
 
 import torch as th
 from clearml import Task
+from tqdm import tqdm
 
 from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy
@@ -63,7 +64,7 @@ def main():
         total_inference_time = 0.0
 
         print("[GraspEval] Starting evaluation")
-        for _ in range(max_steps):
+        for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
             if args.stage == "rl":
                 actions = policy(obs)
             else:
@@ -93,6 +94,7 @@ def main():
         fps = 1.0 / mean_inference_time
 
         success_rate = env.grasp_and_lift_demo()
+        print("[GraspEval] Finished evaluation")
 
         metrics = {
             "success_rate": success_rate,
@@ -155,7 +157,14 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
             "There is no mapping for loading configs from pickle. Try loading it from ClearML."
         )
 
-    return GraspConfig.create_with_clearml(task)
+    cfg = GraspConfig.create_with_clearml(task)
+
+    train_type = args.stage  # "rl" or "bc"
+    log_dir = Path("logs") / f"{args.exp_name}_{train_type}_eval"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    cfg.logger_cfg["local_log_dir"] = str(log_dir)
+
+    return cfg
 
 
 def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
