@@ -104,8 +104,6 @@ def get_bc_cfg() -> dict:
                         "padding": 1,
                     },
                 ],
-                "pooling": "adaptive_avg",  # adaptive_avg, linear
-                "pool_size": 4,
             },
             "vision_encoder_spatial": {
                 "conv_layers": [
@@ -141,10 +139,12 @@ def get_bc_cfg() -> dict:
             },
             "linear_fusion": {
                 "fusion_output_dim": 512,
+                "pool_size": 4,
             },
             "attention_vector_fusion": {
                 "fusion_output_dim": 512,
                 "num_heads": 4,
+                "pool_size": 4,
             },
             "attention_spatial_fusion": {
                 "fusion_output_dim": 256,
@@ -183,8 +183,9 @@ def get_task_cfgs():
             "default": [0.03, 0.08, 0.06],
             "symmetrical": [0.0283, 0.0283, 0.1005],
         },
-        "table_size": [0.55, 0.84, 0.82],
-        "workbench_size": [0.64, 1.0, 0.806],
+        "table_size": [0.55, 0.84, 0.818],
+        # TODO(issue#98): Move URDF-depended values to the CLearML dataset
+        "workbench_size": [0.64, 1.0, 0.821],
         "box_collision": False,
         "box_fixed": True,
         "image_resolution": (64, 64),
@@ -207,8 +208,9 @@ def get_task_cfgs():
         "default_gripper_dof": [0.025, 0.025],
         "ik_method": "dls_ikv",
         "urdf_model_id": {
-            "cell": "4ae9243a9e294db998d3d6e0b5a0539b",
-            "no_cell": "3b30eed8cea6423a99d9bad3343740ed",
+            "cell": "c44c56e7671d4004b120b0341fb727a4",
+            "cell_collision": "0424f220ddc54091ae3b56b29854532f",
+            "no_cell": "718ea536c68c4aaba79d1515ced27eeb",
         },
     }
     return env_cfg, robot_cfg
