@@ -11,81 +11,6 @@ from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 
-def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
-    info_str = (
-        f"Success rate: {metrics['success_rate']:.2f}\n"
-        f"Mean reward: {metrics['mean_reward']:.6f}\n"
-        f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
-        f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
-        f"FPS: {metrics['policy_fps']:.2f}"
-    )
-    print(info_str)
-
-    logger = task.get_logger()
-    logger.report_scalar("Eval/success_rate", "series", metrics["success_rate"], step)
-    logger.report_scalar("Eval/mean_reward", "series", metrics["mean_reward"], step)
-    logger.report_scalar(
-        "Eval/mean_episode_length", "series", metrics["mean_episode_length"], step
-    )
-    logger.report_scalar(
-        "Perf/mean_inference_time_s", "series", metrics["mean_inference_time_s"], step
-    )
-    logger.report_scalar("Perf/fps", "series", metrics["policy_fps"], step)
-
-
-def run_single_eval(
-    env: Any,
-    policy: Callable,
-    stage: str,
-    max_steps: int,
-    device: th.device,
-    obs: Any,
-    record_render: bool = False,
-) -> dict[str, float]:
-    total_rewards = th.zeros(env.num_envs, device=device)
-    episode_lengths = th.zeros(env.num_envs, device=device)
-
-    start_time = time.perf_counter()
-    total_inference_time = 0.0
-
-    for _ in range(max_steps):
-        if stage == "rl":
-            actions = policy(obs)
-        else:
-            rgb_obs = env.get_observations_vis(normalize=True).float()
-            ee_pose = env.robot.ee_pose.float()
-            actions = policy(rgb_obs, ee_pose)
-
-            # Collect frame for video recording
-            if record_render:
-                env.record_cam.render()
-
-        obs, rews, dones, infos = env.step(actions)
-
-        total_rewards += rews
-        episode_lengths += 1
-
-    print("[GraspEval] Finished model inference, proceeding to procedural grasp demo")
-
-    end_time = time.perf_counter()
-    total_inference_time += end_time - start_time
-
-    mean_reward = total_rewards.mean().item()
-    mean_episode_length = episode_lengths.mean().item()
-    mean_inference_time = total_inference_time / max_steps
-    fps = 1.0 / mean_inference_time
-
-    success_rate = env.grasp_and_lift_demo()
-
-    return {
-        "success_rate": success_rate,
-        "mean_reward": mean_reward,
-        "mean_episode_length": mean_episode_length,
-        "mean_inference_time_s": mean_inference_time,
-        "policy_fps": fps,
-    }
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="grasp")
@@ -244,81 +169,14 @@ def main():
             print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
 
         record_render = args.control == "sim" and args.record
+        train_cfg = rl_train_cfg if args.stage == "rl" else bc_train_cfg
 
         if not sweep:
-            if args.stage == "rl":
-                policy = load_rl_policy(
-                    env=env,
-                    rl_cfg=rl_train_cfg,
-                    device=device,
-                    log_dir=log_dir,
-                    clearml_task_id=args.load_rl_task_id,
-                    clearml_model_id=args.load_rl_model_id,
-                )
-            else:
-                policy = load_bc_policy(
-                    env=env,
-                    bc_cfg=bc_train_cfg,
-                    device=device,
-                    log_dir=log_dir,
-                    clearml_task_id=args.load_bc_task_id,
-                    clearml_model_id=args.load_bc_model_id,
-                )
-                policy.eval()
-
-            obs, _ = env.reset()
-            metrics = run_single_eval(
-                env,
-                policy,
-                args.stage,
-                max_steps,
-                device,
-                obs,
-                record_render=record_render,
+            eval_policy_single(
+                env, train_cfg, args, log_dir, task, max_steps, record_render, device
             )
-            log_metrics(task, metrics)
         else:
-            checkpoints = get_bc_checkpoints(
-                log_dir=log_dir,
-                clearml_task_id=args.load_bc_task_id,
-                clearml_model_id=args.load_bc_model_id,
-            )
-            if args.eval_every is not None:
-                checkpoints = [
-                    (it, p) for it, p in checkpoints if it % args.eval_every == 0
-                ]
-                if not checkpoints:
-                    raise ValueError(
-                        f"[GraspEval] No checkpoints match every {args.eval_every}"
-                    )
-            print(f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s)")
-
-            bc_runner = BehaviorCloning(
-                env, cfg=bc_train_cfg, teacher=None, log_dir=log_dir, device=device
-            )
-            object_pos, object_quat = env.generate_object_poses(seed=args.seed)
-
-            for iteration, ckpt_path in checkpoints:
-                print(f"\n[GraspEval] === Checkpoint iter {iteration:04d} ===")
-                bc_runner.load(str(ckpt_path))
-                policy = bc_runner._policy
-                policy.eval()
-
-                obs, _ = env.reset()
-                env.apply_object_poses(object_pos, object_quat)
-                env.scene.step()
-                obs = env.get_observations()
-
-                metrics = run_single_eval(
-                    env,
-                    policy,
-                    args.stage,
-                    max_steps,
-                    device,
-                    obs,
-                    record_render=False,
-                )
-                log_metrics(task, metrics, step=iteration)
+            eval_policy_sweep(env, train_cfg, args, log_dir, task, max_steps, device)
 
         if args.control == "sim":
             if args.record:
@@ -353,6 +211,161 @@ def main():
                         save_to_filename="scene_right_cam.mp4",
                         fps=env_cfg["max_visualize_FPS"],
                     )
+
+
+def eval_policy_single(
+    env: Any,
+    train_cfg: dict,
+    args: argparse.Namespace,
+    log_dir: Path,
+    task: Task,
+    max_steps: int,
+    record_render: bool,
+    device: th.device,
+) -> None:
+    if args.stage == "rl":
+        policy = load_rl_policy(
+            env=env,
+            rl_cfg=train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_rl_task_id,
+            clearml_model_id=args.load_rl_model_id,
+        )
+    else:
+        policy = load_bc_policy(
+            env=env,
+            bc_cfg=train_cfg,
+            device=device,
+            log_dir=log_dir,
+            clearml_task_id=args.load_bc_task_id,
+            clearml_model_id=args.load_bc_model_id,
+        )
+        policy.eval()
+    obs, _ = env.reset()
+    metrics = run_eval(
+        env, policy, args.stage, max_steps, obs, device, record_render=record_render
+    )
+    log_metrics(task, metrics)
+
+
+def eval_policy_sweep(
+    env: Any,
+    train_cfg: dict,
+    args: argparse.Namespace,
+    log_dir: Path,
+    task: Task,
+    max_steps: int,
+    device: th.device,
+) -> None:
+    checkpoints = get_bc_checkpoints(
+        log_dir=log_dir,
+        clearml_task_id=args.load_bc_task_id,
+        clearml_model_id=args.load_bc_model_id,
+    )
+    if args.eval_every is not None:
+        checkpoints = [(it, p) for it, p in checkpoints if it % args.eval_every == 0]
+        if not checkpoints:
+            raise ValueError(
+                f"[GraspEval] No checkpoints match every {args.eval_every}"
+            )
+    print(f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s)")
+
+    bc_runner = BehaviorCloning(
+        env, cfg=train_cfg, teacher=None, log_dir=log_dir, device=device
+    )
+    object_pos, object_quat = env.generate_object_poses(seed=args.seed)
+
+    for iteration, ckpt_path in checkpoints:
+        print(f"\n[GraspEval] === Checkpoint iter {iteration:04d} ===")
+        bc_runner.load(str(ckpt_path))
+        policy = bc_runner._policy
+        policy.eval()
+
+        obs, _ = env.reset()
+        env.apply_object_poses(object_pos, object_quat)
+        env.scene.step()
+        obs = env.get_observations()
+
+        metrics = run_eval(
+            env, policy, args.stage, max_steps, obs, device, record_render=False
+        )
+        log_metrics(task, metrics, step=iteration)
+
+
+def run_eval(
+    env: Any,
+    policy: Callable,
+    stage: str,
+    max_steps: int,
+    obs: Any,
+    device: th.device,
+    record_render: bool = False,
+) -> dict[str, float]:
+    total_rewards = th.zeros(env.num_envs, device=device)
+    episode_lengths = th.zeros(env.num_envs, device=device)
+
+    start_time = time.perf_counter()
+    total_inference_time = 0.0
+
+    for _ in range(max_steps):
+        if stage == "rl":
+            actions = policy(obs)
+        else:
+            rgb_obs = env.get_observations_vis(normalize=True).float()
+            ee_pose = env.robot.ee_pose.float()
+            actions = policy(rgb_obs, ee_pose)
+
+            # Collect frame for video recording
+            if record_render:
+                env.record_cam.render()
+
+        obs, rews, dones, infos = env.step(actions)
+
+        total_rewards += rews
+        episode_lengths += 1
+
+    print("[GraspEval] Finished model inference, proceeding to procedural grasp demo")
+
+    end_time = time.perf_counter()
+    total_inference_time += end_time - start_time
+
+    mean_reward = total_rewards.mean().item()
+    mean_episode_length = episode_lengths.mean().item()
+    mean_inference_time = total_inference_time / max_steps
+    fps = 1.0 / mean_inference_time
+
+    success_rate = env.grasp_and_lift_demo()
+
+    return {
+        "success_rate": success_rate,
+        "mean_reward": mean_reward,
+        "mean_episode_length": mean_episode_length,
+        "mean_inference_time_s": mean_inference_time,
+        "policy_fps": fps,
+    }
+
+
+def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
+    info_str = (
+        f"Success rate: {metrics['success_rate']:.2f}\n"
+        f"Mean reward: {metrics['mean_reward']:.6f}\n"
+        f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
+        f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
+        f"FPS: {metrics['policy_fps']:.2f}"
+    )
+    print(info_str)
+
+    logger = task.get_logger()
+    logger.report_scalar("Eval/success_rate", "series", metrics["success_rate"], step)
+    logger.report_scalar("Eval/mean_reward", "series", metrics["mean_reward"], step)
+    logger.report_scalar(
+        "Eval/mean_episode_length", "series", metrics["mean_episode_length"], step
+    )
+    logger.report_scalar(
+        "Perf/mean_inference_time_s", "series", metrics["mean_inference_time_s"], step
+    )
+    logger.report_scalar("Perf/fps", "series", metrics["policy_fps"], step)
 
 
 if __name__ == "__main__":
