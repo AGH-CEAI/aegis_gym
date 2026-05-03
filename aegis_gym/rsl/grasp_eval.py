@@ -143,6 +143,10 @@ def main():
     sweep = (args.stage == "bc") and (
         args.all_checkpoints or args.eval_every is not None
     )
+    if args.stage == "rl" and (args.all_checkpoints or args.eval_every is not None):
+        print(
+            "[GraspEval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
+        )
     if sweep and args.record:
         print("[GraspEval] WARNING: record is ignored during multi-checkpoint sweep")
         args.record = False
@@ -289,8 +293,10 @@ def main():
                     )
             print(f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s)")
 
-            bc_runner = BehaviorCloning(env, bc_train_cfg, None, log_dir, device=device)
-            box_pos, box_quat = env.generate_box_poses(seed=args.seed)
+            bc_runner = BehaviorCloning(
+                env, cfg=bc_train_cfg, teacher=None, log_dir=log_dir, device=device
+            )
+            object_pos, object_quat = env.generate_object_poses(seed=args.seed)
 
             for iteration, ckpt_path in checkpoints:
                 print(f"\n[GraspEval] === Checkpoint iter {iteration:04d} ===")
@@ -299,7 +305,7 @@ def main():
                 policy.eval()
 
                 obs, _ = env.reset()
-                env.apply_box_poses(box_pos, box_quat)
+                env.apply_object_poses(object_pos, object_quat)
                 env.scene.step()
                 obs = env.get_observations()
 
