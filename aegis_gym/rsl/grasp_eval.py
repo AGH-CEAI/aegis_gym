@@ -265,7 +265,7 @@ def eval_policy_sweep(
         clearml_model_id=args.load_bc_model_id,
     )
     if args.eval_every is not None:
-        checkpoints = [(it, p) for it, p in checkpoints if it % args.eval_every == 0]
+        checkpoints = [ckpt for ckpt in checkpoints if ckpt.step % args.eval_every == 0]
         if not checkpoints:
             raise ValueError(
                 f"[GraspEval] No checkpoints match every {args.eval_every}"

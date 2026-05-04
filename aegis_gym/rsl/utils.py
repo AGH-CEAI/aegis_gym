@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+from strenum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -181,7 +181,7 @@ def get_bc_checkpoints(
     log_dir: Optional[Path] = None,
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
-    clearml_artifact_name: str = "checkpoint",
+    clearml_artifact_name: str = "model",
 ) -> list[Checkpoint]:
     """
     Returns sorted list of all BC checkpoints.
