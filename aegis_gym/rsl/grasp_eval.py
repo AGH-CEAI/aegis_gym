@@ -223,6 +223,7 @@ def eval_policy_single(
     record_render: bool,
     device: th.device,
 ) -> None:
+    # TODO(issue#101): Design arguments and config manager for policy loading
     if args.stage == Stage.RL:
         policy = load_rl_policy(
             env=env,
@@ -293,6 +294,7 @@ def eval_policy_sweep(
         log_metrics(task, metrics, step=ckpt.step)
 
 
+# TODO(issue#100): Unify policy model types under a common base class or type alias
 def run_eval(
     env: Any,
     policy: Callable,
