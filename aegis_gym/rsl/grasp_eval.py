@@ -8,7 +8,7 @@ from clearml import Task
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import get_task_cfgs, get_rl_cfg, get_bc_cfg, get_logger_cfg
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage
 
 
 def main():
@@ -64,11 +64,12 @@ def main():
         help="Seed for box poses across checkpoints",
     )
     args = parser.parse_args()
+    args.stage = Stage(args.stage)
 
-    sweep = (args.stage == "bc") and (
+    sweep = (args.stage == Stage.BC) and (
         args.all_checkpoints or args.eval_every is not None
     )
-    if args.stage == "rl" and (args.all_checkpoints or args.eval_every is not None):
+    if args.stage == Stage.RL and (args.all_checkpoints or args.eval_every is not None):
         print(
             "[GraspEval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
@@ -99,7 +100,7 @@ def main():
         print("[GraspEval] Loaded configs from pickle")
     else:
         env_cfg, robot_cfg = get_task_cfgs()
-        if args.stage == "rl":
+        if args.stage == Stage.RL:
             rl_train_cfg = get_rl_cfg()
         else:
             bc_train_cfg = get_bc_cfg()
@@ -169,7 +170,7 @@ def main():
             print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
 
         record_render = args.control == "sim" and args.record
-        train_cfg = rl_train_cfg if args.stage == "rl" else bc_train_cfg
+        train_cfg = rl_train_cfg if args.stage == Stage.RL else bc_train_cfg
 
         if not sweep:
             eval_policy_single(
@@ -223,7 +224,7 @@ def eval_policy_single(
     record_render: bool,
     device: th.device,
 ) -> None:
-    if args.stage == "rl":
+    if args.stage == Stage.RL:
         policy = load_rl_policy(
             env=env,
             rl_cfg=train_cfg,
@@ -276,9 +277,9 @@ def eval_policy_sweep(
     )
     object_pos, object_quat = env.generate_object_poses(seed=args.seed)
 
-    for iteration, ckpt_path in checkpoints:
-        print(f"\n[GraspEval] === Checkpoint iter {iteration:04d} ===")
-        bc_runner.load(str(ckpt_path))
+    for ckpt in checkpoints:
+        print(f"\n[GraspEval] === Checkpoint iter {ckpt.step:04d} ===")
+        bc_runner.load(str(ckpt.path))
         policy = bc_runner._policy
         policy.eval()
 
@@ -290,13 +291,13 @@ def eval_policy_sweep(
         metrics = run_eval(
             env, policy, args.stage, max_steps, obs, device, record_render=False
         )
-        log_metrics(task, metrics, step=iteration)
+        log_metrics(task, metrics, step=ckpt.step)
 
 
 def run_eval(
     env: Any,
     policy: Callable,
-    stage: str,
+    stage: Stage,
     max_steps: int,
     obs: Any,
     device: th.device,
@@ -309,16 +310,15 @@ def run_eval(
     total_inference_time = 0.0
 
     for _ in range(max_steps):
-        if stage == "rl":
-            actions = policy(obs)
-        else:
-            rgb_obs = env.get_observations_vis(normalize=True).float()
-            ee_pose = env.robot.ee_pose.float()
-            actions = policy(rgb_obs, ee_pose)
-
-            # Collect frame for video recording
-            if record_render:
-                env.record_cam.render()
+        match stage:
+            case Stage.RL:
+                actions = policy(obs)
+            case Stage.BC:
+                rgb_obs = env.get_observations_vis(normalize=True).float()
+                ee_pose = env.robot.ee_pose.float()
+                actions = policy(rgb_obs, ee_pose)
+                if record_render:
+                    env.record_cam.render()
 
         obs, rews, dones, infos = env.step(actions)
 

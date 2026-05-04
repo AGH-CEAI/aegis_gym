@@ -1,4 +1,6 @@
 import re
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -8,6 +10,17 @@ from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
+
+
+class Stage(StrEnum):
+    RL = "rl"
+    BC = "bc"
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class Checkpoint:
+    step: int
+    path: Path
 
 
 def load_rl_policy(
@@ -169,16 +182,16 @@ def get_bc_checkpoints(
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "checkpoint",
-) -> list[tuple[int, Path]]:
+) -> list[Checkpoint]:
     """
-    Returns sorted list of (iteration, path) tuples for all BC checkpoints.
+    Returns sorted list of all BC checkpoints.
     """
     if clearml_model_id is not None:
         print(f"[Policy Loader] Loading from ClearML model {clearml_model_id}")
         clearml_model = Model(model_id=clearml_model_id)
         ckpt = Path(clearml_model.get_weights(raise_on_error=True))
         print(f"[Policy Loader] Resolved ClearML model {clearml_model_id} to {ckpt}")
-        return [(0, ckpt)]
+        return [Checkpoint(0, ckpt)]
 
     if clearml_task_id is not None:
         print(
@@ -187,11 +200,16 @@ def get_bc_checkpoints(
         task = Task.get_task(task_id=clearml_task_id)
         pattern = re.compile(rf"^{re.escape(clearml_artifact_name)}_(\d+)$")
 
-        matched = []
+        matched: set[Checkpoint] = set()
         for name in task.artifacts:
             m = pattern.match(name)
-            if m:
-                matched.append((int(m.group(1)), name))
+            if not m:
+                continue
+            chk_iter = int(m.group(1))
+            local_path = task.artifacts[name].get_local_copy()
+            if local_path is None:
+                raise FileNotFoundError(f"Failed to download artifact '{name}'")
+            matched.add(Checkpoint(chk_iter, Path(local_path)))
 
         if not matched:
             raise FileNotFoundError(
@@ -199,14 +217,11 @@ def get_bc_checkpoints(
                 f"Available artifacts: {list(task.artifacts.keys())}"
             )
 
-        matched.sort(key=lambda x: x[0])
-        results: list[tuple[int, Path]] = []
-        for iteration, name in matched:
-            print(f"[Policy Loader] Found checkpoint: {name} (iter {iteration})")
-            local_path = task.artifacts[name].get_local_copy()
-            if local_path is None:
-                raise FileNotFoundError(f"Failed to download artifact '{name}'")
-            results.append((iteration, Path(local_path)))
+        results = sorted(matched)
+        for ckpt in results:
+            print(
+                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
+            )
         return results
 
     if log_dir is not None:
@@ -216,18 +231,21 @@ def get_bc_checkpoints(
         if not log_dir.exists():
             raise FileNotFoundError(f"Log directory {log_dir} does not exist")
         pattern = re.compile(r"checkpoint_(\d+)\.pt")
-        results = []
-        for f in log_dir.iterdir():
-            m = pattern.match(f.name)
-            if m:
-                results.append((int(m.group(1)), f))
-        if not results:
+        matched: set[Checkpoint] = set()
+        for file_path in log_dir.iterdir():
+            m = pattern.match(file_path.name)
+            if not m:
+                continue
+            matched.add(Checkpoint(int(m.group(1)), file_path))
+        if not matched:
             raise FileNotFoundError(
                 f"No BC checkpoint files matching 'checkpoint_<N>.pt' found in {log_dir}"
             )
-        results.sort(key=lambda x: x[0])
-        for iteration, path in results:
-            print(f"[Policy Loader] Found checkpoint: {path.name} (iter {iteration})")
+        results = sorted(matched)
+        for ckpt in results:
+            print(
+                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
+            )
         return results
 
     raise ValueError("Cannot resolve a checkpoint")
