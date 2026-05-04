@@ -275,7 +275,7 @@ def eval_policy_sweep(
     bc_runner = BehaviorCloning(
         env, cfg=train_cfg, teacher=None, log_dir=log_dir, device=device
     )
-    object_pos, object_quat = env.generate_object_poses(seed=args.seed)
+    object_pose = env.generate_object_poses(seed=args.seed)
 
     for ckpt in checkpoints:
         print(f"\n[GraspEval] === Checkpoint iter {ckpt.step:04d} ===")
@@ -284,7 +284,7 @@ def eval_policy_sweep(
         policy.eval()
 
         obs, _ = env.reset()
-        env.apply_object_poses(object_pos, object_quat)
+        env.apply_object_poses(object_pose)
         env.scene.step()
         obs = env.get_observations()
 

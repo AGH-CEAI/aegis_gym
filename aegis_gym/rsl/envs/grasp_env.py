@@ -341,7 +341,7 @@ class GraspEnv(VecEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def generate_object_poses(self, seed: int) -> tuple[th.Tensor, th.Tensor]:
+    def generate_object_poses(self, seed: int) -> th.Tensor:
         rng = th.Generator(device=self.device)
         rng.manual_seed(seed)
 
@@ -374,12 +374,13 @@ class GraspEnv(VecEnv):
         object_quat = transform_quat_by_quat(q_yaw, q_downward)
         object_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
-        return object_pos, object_quat
+        return th.cat([object_pos, object_quat], dim=-1)
 
-    def apply_object_poses(self, object_pos: th.Tensor, object_quat: th.Tensor) -> None:
+    def apply_object_poses(self, pose: th.Tensor) -> None:
+        object_pos, object_quat = pose[:, :3], pose[:, 3:]
         self.object.set_pos(object_pos)
         self.object.set_quat(object_quat)
-        self.goal_pose[:] = th.cat([object_pos, object_quat], dim=-1)
+        self.goal_pose[:] = pose
 
     def reset(self) -> tuple[TensorDict, dict]:
         self.reset_buf[:] = True
