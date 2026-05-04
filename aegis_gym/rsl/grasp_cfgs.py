@@ -160,7 +160,6 @@ def get_bc_cfg() -> dict:
         },
         # training settings
         "buffer_size": 1000,
-        "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
         "algorithm": {"rnd_cfg": None},

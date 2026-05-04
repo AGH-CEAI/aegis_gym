@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-97](https://github.com/AGH-CEAI/aegis_gym/pull/97) - Changed BC logging to every iteration (removed `log_freq` parameter from bc_config).
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed URDF IDs.
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed table height and object color.
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed workbench height and scene camera offset matrix to support updated robot model.
