@@ -19,9 +19,9 @@ def main():
     parser.add_argument("--plotjuggler", action="store_true", default=False)
     parser.add_argument(
         "--stage",
-        type=str,
-        default="rl",
-        choices=["rl", "bc"],
+        type=Stage,
+        default=Stage.RL,
+        choices=list(Stage),
         help="Model type: 'rl' for reinforcement learning, 'bc' for behavior cloning",
     )
     parser.add_argument(
@@ -64,7 +64,6 @@ def main():
         help="Seed for box poses across checkpoints",
     )
     args = parser.parse_args()
-    args.stage = Stage(args.stage)
 
     sweep = (args.stage == Stage.BC) and (
         args.all_checkpoints or args.eval_every is not None
