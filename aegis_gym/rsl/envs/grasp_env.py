@@ -165,7 +165,7 @@ class GraspEnv(VecEnv):
             # material=gs.materials.Rigid(gravity_compensation=1),
             surface=gs.surfaces.Rough(
                 diffuse_texture=gs.textures.ColorTexture(
-                    color=(1.0, 0.0, 0.0),
+                    color=(0.8, 0.0, 0.0),
                 ),
             ),
         )
