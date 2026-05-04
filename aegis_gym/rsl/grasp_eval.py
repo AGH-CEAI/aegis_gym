@@ -13,12 +13,14 @@ from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage
 
 from envs.grasp_env import GraspEnv
+
 try:
     from envs.grasp_env_ros import GraspEnvROS
 except ImportError:
     GraspEnvROS = None
 
 GraspEnvironemnt = TypeAlias[GraspEnv | GraspEnvROS]
+
 
 def main():
     # Set PyTorch default dtype to float32 for better performance
@@ -40,12 +42,6 @@ def main():
         print("[GraspEval] > Env is not configured. Exiting...")
         return
 
-    if env is None:
-        print("[GraspEval] > Failed to load policy. Exiting...")
-        return
-
-    env.reset()
-    
     episode_len_s = cfg.env_cfg["episode_length_s"]
     max_steps = cfg.env_cfg["max_steps"]
     print(
@@ -56,11 +52,11 @@ def main():
     with th.no_grad():
         start_cameras_recording(env, args, cfg)
 
-        if not sweep:
-            eval_policy_single(env, args, cfg, task)
-        else:
+        if sweep:
             eval_policy_sweep(env, args, cfg, task)
-        
+        else:
+            eval_policy_single(env, args, cfg, task)
+
         stop_cameras_recording(env, args, cfg)
 
     print("[GraspEval] Finished evaluation script")
@@ -122,7 +118,7 @@ def parse_arguments() -> Namespace:
         default=42,
         help="Seed for box poses across checkpoints",
     )
-    
+
     return p.parse_args()
 
 
@@ -139,17 +135,20 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     log_dir = Path("logs") / f"{args.exp_name}_{stage_type}_eval"
     log_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
-    
+
     episode_len_s = cfg.env_cfg["episode_length_s"]
     cfg.env_cfg["max_steps"] = int(episode_len_s / cfg.env_cfg["policy_dt"])
 
     return cfg
 
+
 def is_checkpoints_sweep_required(args: Namespace) -> bool:
     sweep = (args.stage == Stage.BC) and (
-        args.all_checkpoints or args.eval_every is not None
+        args.bc_all_checkpoints or args.bc_eval_every is not None
     )
-    if args.stage == Stage.RL and (args.all_checkpoints or args.eval_every is not None):
+    if args.stage == Stage.RL and (
+        args.bc_all_checkpoints or args.bc_eval_every is not None
+    ):
         print(
             "[GraspEval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
@@ -157,6 +156,7 @@ def is_checkpoints_sweep_required(args: Namespace) -> bool:
         print("[GraspEval] WARNING: record is ignored during multi-checkpoint sweep")
         args.record = False
     return sweep
+
 
 def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
     device = cfg.get_device()
@@ -293,41 +293,16 @@ def stop_cameras_recording(
             )
 
 
-def log_metrics(task: Task, metrics: dict) -> None:
-    print(
-        f"Success rate: {metrics['success_rate']:.2f}\n"
-        f"Mean reward: {metrics['mean_reward']:.6f}\n"
-        f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
-        f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
-        f"FPS: {metrics['policy_fps']:.2f}"
-    )
-
-    logger = task.get_logger()
-    logger.report_scalar("Evaluation", "success_rate", metrics["success_rate"], 0)
-    logger.report_scalar("Evaluation", "mean_reward", metrics["mean_reward"], 0)
-    logger.report_scalar(
-        "Evaluation", "mean_episode_length", metrics["mean_episode_length"], 0
-    )
-    logger.report_scalar(
-        "Performance", "mean_inference_time_s", metrics["mean_inference_time_s"], 0
-    )
-    logger.report_scalar("Performance", "policy_fps", metrics["policy_fps"], 0)
-
-
 def eval_policy_single(
     env: Any,
     args: Namespace,
     cfg: GraspConfig,
     task: Task,
-    max_steps: int,
-    record_render: bool,
 ) -> None:
-    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    record_render = args.control == "sim" and args.record
     device = cfg.get_device()
     max_steps = cfg.env_cfg["max_steps"]
-    
-    record_render = args.control == "sim" and args.record
-    
+
     # TODO(issue#101): Design arguments and config manager for policy loading
     policy = load_policy(env, args, cfg)
     obs, _ = env.reset()
@@ -346,19 +321,23 @@ def eval_policy_sweep(
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     device = cfg.get_device()
     max_steps = cfg.env_cfg["max_steps"]
-    
+
     checkpoints = get_bc_checkpoints(
         log_dir=log_dir,
         clearml_task_id=args.load_bc_task_id,
         clearml_model_id=args.load_bc_model_id,
     )
-    if args.eval_every is not None:
-        checkpoints = [ckpt for ckpt in checkpoints if ckpt.step % args.eval_every == 0]
+    if args.bc_eval_every is not None:
+        checkpoints = [
+            ckpt for ckpt in checkpoints if ckpt.step % args.bc_eval_every == 0
+        ]
         if not checkpoints:
             raise ValueError(
-                f"[GraspEval] No checkpoints match every {args.eval_every}"
+                f"[GraspEval] No checkpoints match every {args.bc_eval_every}"
             )
-    print(f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s)")
+    print(
+        f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s): {[ckpt.step for ckpt in checkpoints]}"
+    )
 
     bc_runner = BehaviorCloning(
         env, cfg=cfg.bc_cfg, teacher=None, log_dir=log_dir, device=device
