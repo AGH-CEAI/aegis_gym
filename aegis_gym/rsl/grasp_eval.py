@@ -205,7 +205,7 @@ def main():
             total_rewards += rews
             episode_lengths += 1
         print(
-            "[GraspEval] Finished model inference, proceeding to procedural grasp demo"
+            f"[GraspEval] Finished model inference on {env_cfg['num_envs']} environments, proceeding to procedural grasp demo"
         )
 
         end_time = time.perf_counter()

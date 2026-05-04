@@ -591,6 +591,7 @@ class Policy(nn.Module):
                     in_channels=c,
                     image_height=h,
                     image_width=w,
+                    pool_size=fusion_cfg.get("pool_size", 4),
                 )
             case "attention_vector":
                 fusion_cfg = config["attention_vector_fusion"]
@@ -599,6 +600,7 @@ class Policy(nn.Module):
                     num_cameras=self.num_cameras,
                     in_channels=c,
                     num_heads=fusion_cfg.get("num_heads", 4),
+                    pool_size=fusion_cfg.get("pool_size", 4),
                 )
             case "attention_spatial":
                 fusion_cfg = config["attention_spatial_fusion"]
