@@ -50,7 +50,7 @@ def get_rl_cfg() -> dict:
             "symmetry_cfg": None,
         },
         "reset_last_layer_weights": {
-            "interval": 50,  # Set above 0 to enable
+            "interval": 0,  # Set above 0 to enable
             "part": "both",  # `actor`, `critic` or `both`
         },
         "init_member_classes": {},
@@ -168,7 +168,7 @@ def get_bc_cfg() -> dict:
         "save_freq": 50,
         "eval_freq": 50,
         "reset_last_layer_weights": {
-            "interval": 50,  # Set above 0 to enable
+            "interval": 0,  # Set above 0 to enable
             "part": "all",  # `action`, `pose` or `all`
         },
         "algorithm": {

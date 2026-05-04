@@ -2,7 +2,7 @@ import os
 import time
 from collections import deque
 
-# TODO update python ersion
+# TODO(issue#102) update Python to newer version
 from strenum import StrEnum
 from collections.abc import Iterator
 from pathlib import Path
@@ -226,7 +226,7 @@ class BehaviorCloning:
                 if self.logger is not None:
                     self.logger.save_model(ckpt_path, it + 1)
 
-            # The last layer reset should be done AFTER saving checkpoint
+            # The last layer reset should be done AFTER saving a checkpoint
             self._maybe_reset_last_layer_weights(it)
 
     def _compute_pose_loss(
