@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed URDF IDs.
+- [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed table height and object color.
+- [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed workbench height and scene camera offset matrix to support updated robot model.
 - [PR-82](https://github.com/AGH-CEAI/aegis_gym/pull/82) - Using `uv run --script` to run utility scripts (updated `upload_urdf_to_clearml.py`).
 - [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Set rasterizer and cell visualization as defaults.
 - [PR-86](https://github.com/AGH-CEAI/aegis_gym/pull/86) - Moved pooling and flattening from vision encoders to fusion modules; encoders return feature maps.
@@ -32,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 ### Fixed
 
+- [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Fixed missing pool size in config and arguments.
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed wrong model path for teacher in BC training
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed ClearML task overwriting on repeated runs.
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed BC evaluation not logging to ClearML.

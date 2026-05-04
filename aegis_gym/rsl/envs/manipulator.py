@@ -23,6 +23,7 @@ class Manipulator:
         self._num_envs = num_envs
         self._args = args
 
+        # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
             self._urdf_model_id = args["urdf_model_id"]["cell"]
         else:

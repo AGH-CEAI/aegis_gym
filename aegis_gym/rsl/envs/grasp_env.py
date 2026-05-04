@@ -127,7 +127,7 @@ class GraspEnv(VecEnv):
         )
 
         # == add ground ==
-        plane_z = -0.82 if self.show_cell else 0.0
+        plane_z = -self.workbench_size[2] if self.show_cell else 0.0
         self.scene.add_entity(gs.morphs.Plane(pos=(0, 0, plane_z)))
 
         # == add robot ==
@@ -165,7 +165,7 @@ class GraspEnv(VecEnv):
             # material=gs.materials.Rigid(gravity_compensation=1),
             surface=gs.surfaces.Rough(
                 diffuse_texture=gs.textures.ColorTexture(
-                    color=(1.0, 0.0, 0.0),
+                    color=(0.8, 0.0, 0.0),
                 ),
             ),
         )
@@ -173,7 +173,7 @@ class GraspEnv(VecEnv):
         # == add cameras ==
         match self.camera_setup:
             case "default":
-                self._add_camera(name="scene_cam", fov=40)
+                self._add_camera(name="scene_cam", fov=38)
                 self._add_camera(name="tool_left_cam", fov=30)
                 self._add_camera(name="tool_right_cam", fov=30)
             case "scene_dual":
@@ -227,8 +227,8 @@ class GraspEnv(VecEnv):
         scene_offset_T = np.array(
             [
                 [0.0, 0.0, -1.0, 0.0],
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, -1.0, 0.0, 0.0],
+                [-1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ],
             dtype=np.float32,
