@@ -1,4 +1,6 @@
 import re
+from dataclasses import dataclass
+from strenum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -8,6 +10,17 @@ from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
+
+
+class Stage(StrEnum):
+    RL = "rl"
+    BC = "bc"
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class Checkpoint:
+    step: int
+    path: Path
 
 
 def load_rl_policy(
@@ -107,18 +120,20 @@ def resolve_checkpoint(
     return ckpt
 
 
-def get_latest_clearml_checkpoint(task_id: str, artifact_prefix: str) -> str:
+def get_latest_clearml_checkpoint(
+    clearml_task_id: str, clearml_artifact_name: str
+) -> str:
     """
     List all artifacts matching a prefix pattern (e.g. 'model_100',
     'model_checkpoint_200') and return the local path of the most recent one.
     """
     print(
-        f"[Policy Loader] Loading the latest checkpoint from ClearML task id: {task_id}"
+        f"[Policy Loader] Loading the latest checkpoint from ClearML task ID: {clearml_task_id}"
     )
-    task = Task.get_task(task_id=task_id)
+    task = Task.get_task(task_id=clearml_task_id)
 
     # Filter artifacts whose name matches the pattern: prefix_<number>
-    pattern = re.compile(rf"^{re.escape(artifact_prefix)}_(\d+)$")
+    pattern = re.compile(rf"^{re.escape(clearml_artifact_name)}_(\d+)$")
 
     matched = []
     for name in task.artifacts:
@@ -129,7 +144,7 @@ def get_latest_clearml_checkpoint(task_id: str, artifact_prefix: str) -> str:
 
     if not matched:
         raise FileNotFoundError(
-            f"No artifacts matching '{artifact_prefix}_<N>' found in task {task_id}. "
+            f"No artifacts matching '{clearml_artifact_name}_<N>' found in task {clearml_task_id}. "
             f"Available artifacts: {list(task.artifacts.keys())}"
         )
 
@@ -160,3 +175,77 @@ def resolve_latest_local_checkpoint(log_dir: Path, r_pattern: str) -> Path:
 
     *_, last_ckpt = natsorted(checkpoint_files)
     return last_ckpt
+
+
+def get_bc_checkpoints(
+    log_dir: Optional[Path] = None,
+    clearml_task_id: Optional[str] = None,
+    clearml_model_id: Optional[str] = None,
+    clearml_artifact_name: str = "model",
+) -> list[Checkpoint]:
+    """
+    Returns sorted list of all BC checkpoints.
+    """
+    if clearml_model_id is not None:
+        print(f"[Policy Loader] Loading from ClearML model {clearml_model_id}")
+        clearml_model = Model(model_id=clearml_model_id)
+        ckpt = Path(clearml_model.get_weights(raise_on_error=True))
+        print(f"[Policy Loader] Resolved ClearML model {clearml_model_id} to {ckpt}")
+        return [Checkpoint(0, ckpt)]
+
+    if clearml_task_id is not None:
+        print(
+            f"[Policy Loader] Loading all BC checkpoints from ClearML task ID: {clearml_task_id}"
+        )
+        task = Task.get_task(task_id=clearml_task_id)
+        pattern = re.compile(rf"^{re.escape(clearml_artifact_name)}_(\d+)$")
+
+        matched: set[Checkpoint] = set()
+        for name in task.artifacts:
+            m = pattern.match(name)
+            if not m:
+                continue
+            chk_iter = int(m.group(1))
+            local_path = task.artifacts[name].get_local_copy()
+            if local_path is None:
+                raise FileNotFoundError(f"Failed to download artifact '{name}'")
+            matched.add(Checkpoint(chk_iter, Path(local_path)))
+
+        if not matched:
+            raise FileNotFoundError(
+                f"No artifacts matching '{clearml_artifact_name}_<N>' found in task {clearml_task_id} "
+                f"Available artifacts: {list(task.artifacts.keys())}"
+            )
+
+        results = sorted(matched)
+        for ckpt in results:
+            print(
+                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
+            )
+        return results
+
+    if log_dir is not None:
+        print(
+            f"[Policy Loader] Loading all BC checkpoints from local filesystem: {log_dir}"
+        )
+        if not log_dir.exists():
+            raise FileNotFoundError(f"Log directory {log_dir} does not exist")
+        pattern = re.compile(r"checkpoint_(\d+)\.pt")
+        matched: set[Checkpoint] = set()
+        for file_path in log_dir.iterdir():
+            m = pattern.match(file_path.name)
+            if not m:
+                continue
+            matched.add(Checkpoint(int(m.group(1)), file_path))
+        if not matched:
+            raise FileNotFoundError(
+                f"No BC checkpoint files matching 'checkpoint_<N>.pt' found in {log_dir}"
+            )
+        results = sorted(matched)
+        for ckpt in results:
+            print(
+                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
+            )
+        return results
+
+    raise ValueError("Cannot resolve a checkpoint")

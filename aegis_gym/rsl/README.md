@@ -33,6 +33,18 @@ python3 grasp_eval.py --stage=bc
 ```bash
 python3 grasp_eval.py --stage=bc --record
 ```
+- Evaluate all BC checkpoints saved during training (multi-checkpoint sweep):
+```bash
+python3 grasp_eval.py --stage=bc --all-checkpoints
+```
+- Evaluate every N-th BC checkpoint:
+```bash
+python3 grasp_eval.py --stage=bc --eval-every=100
+```
+- Set a custom seed for deterministic object poses across checkpoints:
+```bash
+python3 grasp_eval.py --stage=bc --eval-every=100 --seed=42
+```
 
 ## Camera Setups
 The environment supports configurable camera layouts, allowing different perception setups to be selected at initialization time.
