@@ -13,10 +13,11 @@ import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
 from bc_encoders import (
-    BaseVisionEncoder,
-    SharedCNNEncoder,
-    PerCameraCNNEncoder,
     AutoencoderCNNEncoder,
+    BaseVisionEncoder,
+    ConcatenatedCNNEncoder,
+    PerCameraCNNEncoder,
+    SharedCNNEncoder,
 )
 from bc_fusions import (
     BaseFusionModule,
@@ -553,27 +554,20 @@ class Policy(nn.Module):
             return self._build_cnn(vision_cfg)
 
         # TODO(issue#73): Extract vision encoder construction into a separate function
-        match self.encoder_type:
-            case "shared_cnn":
-                return SharedCNNEncoder(
-                    self.num_cameras,
-                    cnn_builder=cnn_builder,
-                    vision_cfg=vision_cfg,
-                )
-            case "per_camera_cnn":
-                return PerCameraCNNEncoder(
-                    self.num_cameras,
-                    cnn_builder=cnn_builder,
-                    vision_cfg=vision_cfg,
-                )
-            case "autoencoder":
-                return AutoencoderCNNEncoder(
-                    self.num_cameras,
-                    cnn_builder=cnn_builder,
-                    vision_cfg=vision_cfg,
-                )
-            case _:
-                raise ValueError(f"Unknown vision encoder type: {self.encoder_type}")
+        encoder_classes: dict[str, BaseVisionEncoder] = {
+            "concatenated_cnn": ConcatenatedCNNEncoder,
+            "shared_cnn": SharedCNNEncoder,
+            "per_camera_cnn": PerCameraCNNEncoder,
+            "autoencoder": AutoencoderCNNEncoder,
+        }
+        try:
+            encoder_classes[self.encoder_type](
+                num_cameras=self.num_cameras,
+                cnn_builder=cnn_builder,
+                vision_cfg=vision_cfg,
+            )
+        except IndexError:
+            raise ValueError(f"Unknown vision encoder type: {self.encoder_type}")
 
     def _build_fusion(self, config: dict) -> "BaseFusionModule":
         c, h, w = self.vision_encoder.infer_output_shape(
