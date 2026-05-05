@@ -28,6 +28,7 @@ class BaseVisionEncoder(nn.Module):
         return c, h, w
 
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
+        # Method for calculating the output shape
         raise NotImplementedError
 
 
@@ -55,6 +56,7 @@ class PerCameraCNNEncoder(BaseVisionEncoder):
         self.encoders = nn.ModuleList([cnn_builder() for _ in range(num_cameras)])
 
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
+        # All encoders share the same architecture, so any one can be used for shape inference
         return self.encoders[0](x)
 
     # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
