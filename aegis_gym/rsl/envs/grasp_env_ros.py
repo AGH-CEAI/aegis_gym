@@ -277,7 +277,7 @@ class GraspEnvROS(VecEnv):
             rgb = self.robot.get_camera_frame(cam_name)
             # rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
 
         return th.cat(rgb_list, dim=1)

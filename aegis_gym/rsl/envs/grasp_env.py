@@ -517,8 +517,8 @@ class GraspEnv(VecEnv):
 
         # normalize if requested
         if normalize:
-            rgb_left = th.clamp(rgb_left, min=0.0, max=255.0) / 255.0
-            rgb_right = th.clamp(rgb_right, min=0.0, max=255.0) / 255.0
+            rgb_left = th.clamp(rgb_left, min=0.0, max=255.0).div_(255.0)
+            rgb_right = th.clamp(rgb_right, min=0.0, max=255.0).div_(255.0)
 
         # concatenate left and right rgb images along channel dimension
         stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
@@ -534,7 +534,7 @@ class GraspEnv(VecEnv):
             )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
 
         return th.cat(rgb_list, dim=1)
