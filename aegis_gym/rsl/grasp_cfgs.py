@@ -23,6 +23,7 @@ def get_rl_cfg() -> dict:
         },  # Maps observation groups to sets. See `vec_env.py` for more information
         # Logging parameters
         "save_interval": 100,  # Check for potential saves every `save_interval` iterations
+        "best_model_skip_iters": 100,  # Ignore first N iterations when tracking best model
         "experiment_name": None,
         "run_name": "",
         "algorithm": {
