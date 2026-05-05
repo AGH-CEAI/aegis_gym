@@ -171,46 +171,45 @@ def main():
         record_render = args.control == "sim" and args.record
         train_cfg = rl_train_cfg if args.stage == Stage.RL else bc_train_cfg
 
-        if not sweep:
+        if sweep:
+            eval_policy_sweep(env, train_cfg, args, log_dir, task, max_steps, device)
+        else:
             eval_policy_single(
                 env, train_cfg, args, log_dir, task, max_steps, record_render, device
             )
-        else:
-            eval_policy_sweep(env, train_cfg, args, log_dir, task, max_steps, device)
 
-        if args.control == "sim":
-            if args.record:
-                print("[GraspEval] Stopping video recording...")
-                if env_cfg["camera_setup"] == "default":
-                    env.record_cam.stop_recording(
-                        save_to_filename=args.video_path,
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                    env._cameras["scene_cam"].stop_recording(
-                        save_to_filename="scene_cam.mp4",
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                    env._cameras["tool_left_cam"].stop_recording(
-                        save_to_filename="tool_left_cam.mp4",
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                    env._cameras["tool_right_cam"].stop_recording(
-                        save_to_filename="tool_right_cam.mp4",
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                elif env_cfg["camera_setup"] == "scene_dual":
-                    env.record_cam.stop_recording(
-                        save_to_filename=args.video_path,
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                    env._cameras["scene_right_cam"].stop_recording(
-                        save_to_filename="scene_left_cam.mp4",
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
-                    env._cameras["scene_left_cam"].stop_recording(
-                        save_to_filename="scene_right_cam.mp4",
-                        fps=env_cfg["max_visualize_FPS"],
-                    )
+        if args.control == "sim" and args.record:
+            print("[GraspEval] Stopping video recording...")
+            if env_cfg["camera_setup"] == "default":
+                env.record_cam.stop_recording(
+                    save_to_filename=args.video_path,
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+                env._cameras["scene_cam"].stop_recording(
+                    save_to_filename="scene_cam.mp4",
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+                env._cameras["tool_left_cam"].stop_recording(
+                    save_to_filename="tool_left_cam.mp4",
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+                env._cameras["tool_right_cam"].stop_recording(
+                    save_to_filename="tool_right_cam.mp4",
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+            elif env_cfg["camera_setup"] == "scene_dual":
+                env.record_cam.stop_recording(
+                    save_to_filename=args.video_path,
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+                env._cameras["scene_right_cam"].stop_recording(
+                    save_to_filename="scene_left_cam.mp4",
+                    fps=env_cfg["max_visualize_FPS"],
+                )
+                env._cameras["scene_left_cam"].stop_recording(
+                    save_to_filename="scene_right_cam.mp4",
+                    fps=env_cfg["max_visualize_FPS"],
+                )
 
 
 def eval_policy_single(
