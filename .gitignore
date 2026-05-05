@@ -3,6 +3,7 @@ logs/
 build/
 bin/
 install/
+tmp*/
 __pycache__
 
 
