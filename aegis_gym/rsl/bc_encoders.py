@@ -54,14 +54,21 @@ class SharedCNNEncoder(BaseVisionEncoder):
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
         return self.encoder(x)
 
-    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoder(cam_rgb)
-            features.append(feat)
-        return tuple(features)
+        B = rgb_obs.shape[0]
+
+        # (B, num_cameras*3, H, W) -> (B, num_cameras, 3, H, W)
+        x = rgb_obs.view(B, self.num_cameras, 3, *rgb_obs.shape[2:])
+
+        # (B, num_cameras, 3, H, W) -> (B*num_cameras, 3, H, W)
+        x = x.flatten(0, 1)
+
+        # single batched forward pass
+        feats = self.encoder(x)  # (B*num_cameras, feat_dim, ...)
+
+        # (B*num_cameras, ...) -> (B, num_cameras, ...) -> tuple of (B, ...) per camera
+        feats = feats.unflatten(0, (B, self.num_cameras))
+        return tuple(feats.unbind(dim=1))
 
 
 class PerCameraCNNEncoder(BaseVisionEncoder):
