@@ -1,6 +1,9 @@
 import os
 import time
 from collections import deque
+
+# TODO(issue#102) update Python to newer version
+from strenum import StrEnum
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Optional
@@ -29,6 +32,29 @@ from bc_fusions import (
 class BehaviorCloning:
     """Multi-task behavior cloning with action prediction and object pose estimation"""
 
+    class ResetLastLayerTarget(StrEnum):
+        ACTION = "action"
+        POSE = "pose"
+        ALL = "all"
+
+        @classmethod
+        def from_value(cls, value: str) -> "BehaviorCloning.ResetLastLayerTarget":
+            if value == "both":
+                return cls.ALL
+            try:
+                return cls(value)
+            except ValueError as exc:
+                raise ValueError(
+                    "reset_last_layer_weights.part must be 'action', 'pose', or 'all'"
+                ) from exc
+
+        def get_heads(self) -> tuple[str, ...]:
+            if self is BehaviorCloning.ResetLastLayerTarget.ACTION:
+                return ("action_head",)
+            if self is BehaviorCloning.ResetLastLayerTarget.POSE:
+                return ("pose_head",)
+            return ("action_head", "pose_head")
+
     def __init__(
         self, env, cfg: dict, teacher: nn.Module, log_dir: Path, device: str = "cpu"
     ):
@@ -43,6 +69,9 @@ class BehaviorCloning:
         self._enable_recon = encoder_type == "autoencoder"
         self._save_recons = self._cfg.get("save_recons", False)
         self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
+        self._reset_last_layer_cfg = self._resolve_reset_last_layer_cfg(
+            self._cfg.get("reset_last_layer_weights", None)
+        )
 
         self.logger = None
         if log_dir is not None:
@@ -189,6 +218,9 @@ class BehaviorCloning:
                 if self.logger is not None:
                     self.logger.save_model(ckpt_path, it + 1)
 
+            # The last layer reset should be done AFTER saving a checkpoint
+            self._maybe_reset_last_layer_weights(it)
+
     def _compute_pose_loss(
         self, pred_poses: th.Tensor, target_poses: th.Tensor
     ) -> th.Tensor:
@@ -311,6 +343,38 @@ class BehaviorCloning:
             # TODO(issue#81): Save reconstructed images in ClearML
             vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
             vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
+
+    def _resolve_reset_last_layer_cfg(self, cfg: dict | None) -> dict:
+        if cfg is None or cfg is False:
+            return {"enabled": False, "part": "both", "interval": None}
+
+        if not isinstance(cfg, dict):
+            raise ValueError("reset_last_layer_weights must be a dict or False")
+
+        part = cfg.get("part", "all")
+        target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
+
+        interval = cfg.get("interval", None)
+        if interval is None or interval <= 0:
+            return {"enabled": False, "target": target, "interval": None}
+        if not isinstance(interval, int):
+            raise ValueError("reset_last_layer_weights.interval must be an integer")
+
+        return {"enabled": True, "target": target, "interval": interval}
+
+    def _maybe_reset_last_layer_weights(self, it: int) -> None:
+        if not self._reset_last_layer_cfg["enabled"]:
+            return
+
+        interval = self._reset_last_layer_cfg["interval"]
+        target = self._reset_last_layer_cfg["target"]
+        if interval is None:
+            return
+
+        if (it + 1) % interval == 0:
+            if not hasattr(self._policy, "reset_last_layer_weights"):
+                raise AttributeError("Policy does not support reset_last_layer_weights")
+            self._policy.reset_last_layer_weights(target.value)
 
     def _log_metrics(
         self,
@@ -636,3 +700,31 @@ class Policy(nn.Module):
             input_dim = h
         layers.append(nn.Linear(input_dim, output_dim))
         return nn.Sequential(*layers)
+
+    def reset_last_layer_weights(self, part: str = "all") -> None:
+        if isinstance(part, BehaviorCloning.ResetLastLayerTarget):
+            target = part
+        else:
+            target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
+
+        if target in {
+            BehaviorCloning.ResetLastLayerTarget.ACTION,
+            BehaviorCloning.ResetLastLayerTarget.ALL,
+        }:
+            self._reset_last_layer_weights_sequential(self.action_head)
+
+        if target in {
+            BehaviorCloning.ResetLastLayerTarget.POSE,
+            BehaviorCloning.ResetLastLayerTarget.ALL,
+        }:
+            self._reset_last_layer_weights_sequential(self.pose_head)
+
+    @staticmethod
+    def _reset_last_layer_weights_sequential(module: nn.Sequential) -> None:
+        for layer in reversed(module):
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight)
+                if layer.bias is not None:
+                    nn.init.zeros_(layer.bias)
+                return
+        raise RuntimeError("No Linear layer found to reset in the given module.")
