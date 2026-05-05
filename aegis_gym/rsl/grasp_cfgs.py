@@ -60,8 +60,8 @@ def get_rl_cfg() -> dict:
             "actor_obs_normalization": False,
             "critic_obs_normalization": False,
             "init_noise_std": 1.0,
-            "actor_hidden_dims": [256, 256, 128],
-            "critic_hidden_dims": [256, 256, 128],
+            "actor_hidden_dims": [128, 128, 64],
+            "critic_hidden_dims": [128, 128, 64],
             "noise_std_type": "scalar",  # 'scalar' or 'log'
             "state_dependent_std": False,
         },
