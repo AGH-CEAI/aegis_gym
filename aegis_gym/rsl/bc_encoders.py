@@ -18,9 +18,10 @@ class BaseVisionEncoder(nn.Module):
         self,
         image_height: int = 64,
         image_width: int = 64,
+        channels: int = 3,
         device: str = "cpu",
     ) -> tuple[int, int, int]:
-        dummy = th.zeros((1, 3, image_height, image_width), device=device)
+        dummy = th.zeros((1, channels, image_height, image_width), device=device)
         with th.no_grad():
             out = self._single_forward(dummy)  # (1, C, H, W)
         _, c, h, w = out.shape
