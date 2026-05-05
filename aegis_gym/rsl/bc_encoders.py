@@ -32,6 +32,20 @@ class BaseVisionEncoder(nn.Module):
         raise NotImplementedError
 
 
+class ConcatenatedCNNEncoder(BaseVisionEncoder):
+    def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
+        super().__init__(num_cameras)
+        self.encoder = cnn_builder()
+
+    def _single_forward(self, x: th.Tensor) -> th.Tensor:
+        return self.encoder(x)
+
+    def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
+        # rgb_obs is already (B, num_cameras*3, H, W) — pass directly
+        feat = self.encoder(rgb_obs)
+        return (feat,)  # single tensor wrapped in tuple for API consistency
+
+
 class SharedCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
