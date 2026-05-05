@@ -49,6 +49,10 @@ def get_rl_cfg() -> dict:
             # Symmetry augmentation
             "symmetry_cfg": None,
         },
+        "reset_last_layer_weights": {
+            "interval": 0,  # Set above 0 to enable
+            "part": "both",  # `actor`, `critic` or `both`
+        },
         "init_member_classes": {},
         "policy": {
             "class_name": "ActorCritic",
@@ -163,7 +167,13 @@ def get_bc_cfg() -> dict:
         "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
-        "algorithm": {"rnd_cfg": None},
+        "reset_last_layer_weights": {
+            "interval": 0,  # Set above 0 to enable
+            "part": "all",  # `action`, `pose` or `all`
+        },
+        "algorithm": {
+            "rnd_cfg": None,
+        },
     }
 
 
