@@ -54,6 +54,7 @@ def main():
         "Proceeding to enquee:\n"
         f"\n> Base task: \t{base_task.task_id}"
         f"\n> B. task name: {base_task.name}"
+        f"\n> Project path: {base_task.get_project_name()}"
         f"\n> Batch size: \t{args.tasks_num}"
         f"\n> Queue name: \t{args.queue_name}"
         f"\n> Tags: \t{args.tags}"
