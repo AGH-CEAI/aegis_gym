@@ -49,6 +49,10 @@ def get_rl_cfg() -> dict:
             # Symmetry augmentation
             "symmetry_cfg": None,
         },
+        "reset_last_layer_weights": {
+            "interval": 0,  # Set above 0 to enable
+            "part": "both",  # `actor`, `critic` or `both`
+        },
         "init_member_classes": {},
         "policy": {
             "class_name": "ActorCritic",
@@ -56,8 +60,8 @@ def get_rl_cfg() -> dict:
             "actor_obs_normalization": False,
             "critic_obs_normalization": False,
             "init_noise_std": 1.0,
-            "actor_hidden_dims": [256, 256, 128],
-            "critic_hidden_dims": [256, 256, 128],
+            "actor_hidden_dims": [128, 128, 64],
+            "critic_hidden_dims": [128, 128, 64],
             "noise_std_type": "scalar",  # 'scalar' or 'log'
             "state_dependent_std": False,
         },
@@ -163,7 +167,13 @@ def get_bc_cfg() -> dict:
         "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
-        "algorithm": {"rnd_cfg": None},
+        "reset_last_layer_weights": {
+            "interval": 0,  # Set above 0 to enable
+            "part": "all",  # `action`, `pose` or `all`
+        },
+        "algorithm": {
+            "rnd_cfg": None,
+        },
     }
 
 
