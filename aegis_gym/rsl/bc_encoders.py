@@ -86,7 +86,6 @@ class PerCameraCNNEncoder(BaseVisionEncoder):
         return tuple(enc(cam) for enc, cam in zip(self.encoders, cam_inputs))
 
 
-# TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
 class AutoencoderCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
