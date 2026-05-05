@@ -73,14 +73,10 @@ class PerCameraCNNEncoder(BaseVisionEncoder):
         # All encoders share the same architecture, so any one can be used for shape inference
         return self.encoders[0](x)
 
-    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            feat = self.encoders[i](cam_rgb)
-            features.append(feat)
-        return tuple(features)
+        # splits evenly along channel dim
+        cam_inputs = rgb_obs.chunk(self.num_cameras, dim=1)
+        return tuple(enc(cam) for enc, cam in zip(self.encoders, cam_inputs))
 
 
 # TODO(issue#79): Remove hardcoded dimensions related to autoencoder and make them configurable
