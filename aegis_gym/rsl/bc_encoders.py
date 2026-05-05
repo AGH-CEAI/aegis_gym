@@ -100,9 +100,8 @@ class AutoencoderCNNEncoder(BaseVisionEncoder):
 
         self.to_latent = nn.Linear(self.flatten_dim, self.latent_dim)
         self.from_latent = nn.Linear(self.latent_dim, self.flatten_dim)
-        self.feature_channels = self.feature_channels
         self.feature_size = self.feature_size
-        self.decoder = self._build_decoder()
+        self.decoder = self._build_decoder(vision_cfg["conv_layers"])
 
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
         fmap = self.encoder(x)  # (1, 32, 16, 16)
@@ -110,43 +109,60 @@ class AutoencoderCNNEncoder(BaseVisionEncoder):
         return latent.unsqueeze(-1).unsqueeze(-1)  # (1, 512, 1, 1)
 
     def forward(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        features = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            fmap = self.encoder(cam_rgb)  # (B, 32, 16, 16)
-            latent = self.to_latent(fmap.flatten(start_dim=1))  # (B, 512)
-            features.append(latent.unsqueeze(-1).unsqueeze(-1))  # (B, 512, 1, 1)
-        return tuple(features)
+        B = rgb_obs.shape[0]
+        x = rgb_obs.view(B, self.num_cameras, 3, *rgb_obs.shape[2:]).flatten(0, 1)
+        latent = self._encode(x)
+        latent = latent.unsqueeze(-1).unsqueeze(-1)  # (B*num_cameras, 512, 1, 1)
+        return tuple(latent.unflatten(0, (B, self.num_cameras)).unbind(dim=1))
 
-    # TODO(issue#71): Investigate indexing and micro-optimizations in vision encoder forward pass
     def reconstruct(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
-        recons = []
-        for i in range(self.num_cameras):
-            cam_rgb = rgb_obs[:, i * 3 : (i + 1) * 3]
-            fmap = self.encoder(cam_rgb)  # (B, 32, 16, 16)
-            flat = fmap.flatten(start_dim=1)
-            latent = self.to_latent(flat)  # (B, 512)
-            flat_recon = self.from_latent(latent)  # (B, 8192)
-            fmap_recon = flat_recon.view(
-                -1, self.feature_channels, self.feature_size, self.feature_size
-            )  # (B, 32, 16, 16)
-            recons.append(self.decoder(fmap_recon))  # (B, 3, 64, 64)
-        return tuple(recons)
+        B = rgb_obs.shape[0]
+        x = rgb_obs.view(B, self.num_cameras, 3, *rgb_obs.shape[2:]).flatten(0, 1)
+        latent = self._encode(x)
+        recons = self._decode(latent)
+        return tuple(recons.unflatten(0, (B, self.num_cameras)).unbind(dim=1))
 
-    def _build_decoder(self) -> nn.Sequential:
-        return nn.Sequential(
-            # (B, 32, 16, 16)
-            nn.ConvTranspose2d(
-                32, 16, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            # (B, 16, 32, 32)
-            nn.ConvTranspose2d(
-                16, 8, kernel_size=3, stride=2, padding=1, output_padding=1
-            ),
-            nn.ReLU(),
-            # (B, 8, 64, 64)
-            nn.Conv2d(8, 3, kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid(),
-            # (B, 3, 64, 64)
+    def _encode(self, x: th.Tensor) -> th.Tensor:
+        """Returns latent for a pre-sliced input."""
+        fmap = self.encoder(x)
+        return self.to_latent(fmap.flatten(1))
+
+    def _decode(self, x_latent: th.Tensor) -> th.Tensor:
+        """Returns reconstruction for a latent input."""
+        flat_recon = self.from_latent(x_latent)
+        fmap_recon = flat_recon.view(
+            -1, self.feature_channels, self.feature_size, self.feature_size
         )
+        return self.decoder(fmap_recon)
+
+    def _build_decoder(self, cfg_conv_layers: list[dict]) -> nn.Sequential:
+        decoder_layers: list[nn.Module] = []
+
+        # The configuration is provided for the encoder, for decoder we need to reverse it
+        for layer in reversed(cfg_conv_layers):
+            in_ch = layer["out_channels"]
+            out_ch = layer["in_channels"]
+            stride = layer["stride"]
+
+            if stride > 1:
+                decoder_layers.append(
+                    nn.ConvTranspose2d(
+                        in_ch,
+                        out_ch,
+                        kernel_size=3,
+                        stride=stride,
+                        padding=1,
+                        output_padding=stride - 1,
+                    )
+                )
+            else:
+                decoder_layers.append(
+                    nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1)
+                )
+
+            decoder_layers.append(nn.ReLU())
+
+        # The decoder layer differs in configuration
+        decoder_layers[-1] = nn.Sigmoid()
+
+        return nn.Sequential(*decoder_layers)
