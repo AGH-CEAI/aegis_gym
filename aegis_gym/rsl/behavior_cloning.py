@@ -247,11 +247,16 @@ class BehaviorCloning:
         if it < skip or mean_reward <= self._best_model_reward:
             return
 
-        path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
-        self.save(path)
-        self.logger.save_model(path, it + 1)
         self._best_model_reward = mean_reward
         self._best_model_iter = it + 1
+
+        path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
+        self.save(path)
+        self.logger.save_model(
+            model_path=path,
+            it=self._best_model_iter,
+            custom_name="model_best",
+        )
 
         print(
             f"New best model!\n Iteration = {self._best_model_iter}\n Mean reward = {mean_reward:.2f}"
