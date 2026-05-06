@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-97](https://github.com/AGH-CEAI/aegis_gym/pull/97) - Changed BC logging to every iteration (removed `log_freq` parameter from bc_config).
 - [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - `utils/clearml_enquee_tasks.py`: Improved information for the user.
 
 ### Deprecated

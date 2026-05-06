@@ -166,7 +166,6 @@ def get_bc_cfg() -> dict:
         },
         # training settings
         "buffer_size": 1000,
-        "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
         "best_model_skip_iters": 100,  # Ignore first N iterations when tracking best model
