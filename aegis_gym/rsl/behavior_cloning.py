@@ -200,22 +200,14 @@ class BehaviorCloning:
             if num_batches == 0:
                 raise ValueError("No batches collected")
 
-            avg_action_loss = total_action_loss / num_batches
-            avg_pose_loss = total_pose_loss / num_batches
-            avg_recon_loss = total_recon_loss / num_batches
-
-            fps = (self._num_steps_per_env * self._env.num_envs) / (forward_time)
-            # Logging
-            if self.logger is not None and (it + 1) % self._cfg["log_freq"] == 0:
-                current_lr = self._optimizer.param_groups[0]["lr"]
-
+            if self.logger is not None:
                 self._log_metrics(
                     it=it,
-                    avg_action_loss=avg_action_loss,
-                    avg_pose_loss=avg_pose_loss,
-                    avg_recon_loss=avg_recon_loss,
-                    current_lr=current_lr,
-                    fps=fps,
+                    avg_action_loss=total_action_loss / num_batches,
+                    avg_pose_loss=total_pose_loss / num_batches,
+                    avg_recon_loss=total_recon_loss / num_batches,
+                    current_lr=self._optimizer.param_groups[0]["lr"],
+                    fps=(self._num_steps_per_env * self._env.num_envs) / (forward_time),
                     forward_time=forward_time,
                     backward_time=backward_time,
                 )
