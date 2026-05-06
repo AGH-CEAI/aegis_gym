@@ -64,6 +64,7 @@ def get_rl_cfg() -> dict:
             "critic_hidden_dims": [128, 128, 64],
             "noise_std_type": "scalar",  # 'scalar' or 'log'
             "state_dependent_std": False,
+            "detach_actor_grad": False,
         },
     }
 
