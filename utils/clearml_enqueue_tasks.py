@@ -3,6 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "clearml",
+#   "tqdm",
 # ]
 # ///
 
@@ -19,6 +20,7 @@ from typing import Iterable, Any
 
 from clearml import Task
 from clearml.automation import ClearmlJob
+from tqdm import tqdm
 
 from helpers.logging import timed, setup_logging
 
@@ -46,18 +48,22 @@ def main():
         time.sleep(1)
         return
 
+    base_task = Task.get_task(task_id=args.base_task_id)
+
     log.info(
         "Proceeding to enquee:\n"
-        f"\tBase task: \t{args.base_task_id}"
-        f"\tNum of tasks: \t{args.tasks_num}"
-        f"\tQueue name: \t{args.queue_name}"
-        f"\tTags: \t{args.tags}"
-        f"\tExtra parameters: \t{parameters}"
+        f"\n> Base task: \t{base_task.task_id}"
+        f"\n> B. task name: {base_task.name}"
+        f"\n> Project path: {base_task.get_project_name()}"
+        f"\n> Batch size: \t{args.tasks_num}"
+        f"\n> Queue name: \t{args.queue_name}"
+        f"\n> Tags: \t{args.tags}"
+        f"\n> Extra params: {parameters}\n"
     )
-    sleep_countdown(5)
+    sleep_countdown(8)
 
     enqueue_tasks(
-        base_task_id=args.base_task_id,
+        base_task=base_task,
         tasks_num=args.tasks_num,
         queue_name=args.queue_name,
         tags=args.tags,
@@ -91,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def enqueue_tasks(
-    base_task_id: str,
+    base_task: Task,
     tasks_num: int,
     queue_name: str,
     tags: Iterable[str] = None,
@@ -114,12 +120,21 @@ def enqueue_tasks(
     tags = tags or []
     parameters = parameters or {}
 
-    base_task = Task.get_task(task_id=base_task_id)
-    for _ in range(tasks_num):
+    TEMPLATE_PREFIX = "TEMPLATE_"
+
+    base_name = base_task.name
+    if base_name.startswith(TEMPLATE_PREFIX):
+        base_name = base_name[len(TEMPLATE_PREFIX) :]
+
+    for cnt in tqdm(range(tasks_num), desc="Scheduling", unit="task"):
+        task_name = f"{base_name}_{cnt}"
         job = ClearmlJob(
             base_task_id=base_task.id,
             parameter_override=parameters,
-            tags=tuple(set(tags)),
+            task_overrides={
+                "name": task_name,
+                "tags": list(set(tags)),
+            },
         )
         job.launch(queue_name=queue_name)
 
@@ -142,5 +157,8 @@ def sleep_countdown(t_sleep: int) -> None:
 if __name__ == "__main__":
     setup_logging()
     log = logging.getLogger(f"{__name__}")
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        pass
     log.info("Exiting")

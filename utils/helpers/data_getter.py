@@ -2,7 +2,7 @@ import functools
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Any
 
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
@@ -27,7 +27,7 @@ class SummaryType(StrEnum):
 class TaskLoadResult:
     task_id: str
     last_iteration: int | None
-    data: any | None
+    data: Any | None
     error: str | None = None
 
     @property
