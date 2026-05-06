@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.
+- [PR-106](https://github.com/AGH-CEAI/aegis_gym/pull/106) - Added rsl-rl option `detach_actor_grad` to stop propagation of policy gradients.
 
 ### Changed
 
