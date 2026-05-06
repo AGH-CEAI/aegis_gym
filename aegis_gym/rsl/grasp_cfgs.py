@@ -23,6 +23,7 @@ def get_rl_cfg() -> dict:
         },  # Maps observation groups to sets. See `vec_env.py` for more information
         # Logging parameters
         "save_interval": 100,  # Check for potential saves every `save_interval` iterations
+        "best_model_skip_iters": 100,  # Ignore first N iterations when tracking best model
         "experiment_name": None,
         "run_name": "",
         "algorithm": {
@@ -168,6 +169,7 @@ def get_bc_cfg() -> dict:
         "log_freq": 10,
         "save_freq": 50,
         "eval_freq": 50,
+        "best_model_skip_iters": 100,  # Ignore first N iterations when tracking best model
         "reset_last_layer_weights": {
             "interval": 0,  # Set above 0 to enable
             "part": "all",  # `action`, `pose` or `all`
