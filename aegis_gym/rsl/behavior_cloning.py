@@ -253,7 +253,7 @@ class BehaviorCloning:
         path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
         self.save(path)
         self.logger.save_model(
-            model_path=path,
+            path=path,
             it=self._best_model_iter,
             custom_name="model_best",
         )
