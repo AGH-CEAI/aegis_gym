@@ -126,6 +126,8 @@ class BehaviorCloning:
         self._cur_reward_sum = th.zeros(
             self._env.num_envs, dtype=th.float, device=self._device
         )
+        self._best_model_reward: float = float("-inf")
+        self._best_model_iter: int = -1
 
         print("\n=== POLICY ===")
         print(self._policy)
@@ -227,8 +229,39 @@ class BehaviorCloning:
                 if self.logger is not None:
                     self.logger.save_model(ckpt_path, it + 1)
 
+            # Save best model based on mean reward
+            if self.logger is not None and len(self._rewbuffer) > 0:
+                self._update_best_model(it, float(np.mean(self._rewbuffer)))
+
             # The last layer reset should be done AFTER saving a checkpoint
             self._maybe_reset_last_layer_weights(it)
+
+        if self.logger is not None and self._best_model_iter >= 0:
+            print(
+                f"\nBest model:\n"
+                f" Iteration = {self._best_model_iter}\n"
+                f" Mean reward = {self._best_model_reward:.2f}\n"
+            )
+
+    def _update_best_model(self, it: int, mean_reward: float) -> None:
+        skip = self._cfg.get("best_model_skip_iters", 0)
+        if it < skip or mean_reward <= self._best_model_reward:
+            return
+
+        self._best_model_reward = mean_reward
+        self._best_model_iter = it + 1
+
+        path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
+        self.save(path)
+        self.logger.save_model(
+            path=path,
+            it=self._best_model_iter,
+            custom_name="model_best",
+        )
+
+        print(
+            f"New best model!\n Iteration = {self._best_model_iter}\n Mean reward = {mean_reward:.2f}"
+        )
 
     def _compute_pose_loss(
         self, pred_poses: th.Tensor, target_poses: th.Tensor
