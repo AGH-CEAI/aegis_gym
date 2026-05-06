@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-94](https://github.com/AGH-CEAI/aegis_gym/pull/94) - Added ClearML config connection to the `grasp_cfg.py` config getters.
+- [PR-104](https://github.com/AGH-CEAI/aegis_gym/pull/104) - Added best model checkpoint saving.
+- [PR-106](https://github.com/AGH-CEAI/aegis_gym/pull/106) - Added rsl-rl option `detach_actor_grad` to stop propagation of policy gradients.
+
+### Changed
+
+- [PR-97](https://github.com/AGH-CEAI/aegis_gym/pull/97) - Changed BC logging to every iteration (removed `log_freq` parameter from bc_config).
+- [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - `utils/clearml_enquee_tasks.py`: Improved information for the user.
+
+### Deprecated
+### Removed
+### Fixed
+
+- [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - Fixed bug with `matplotlib` dependency in  `utils/clearml_enquee_tasks.py`.
+
+### Security
+
+## [v202605061407]
+
+### Added
+
 - [PR-93](https://github.com/AGH-CEAI/aegis_gym/pull/93) - Added feature to reset last layers of RL/BC algorithms.
 - [PR-92](https://github.com/AGH-CEAI/aegis_gym/pull/92) - Added multi-checkpoint evaluation.
 - [PR-82](https://github.com/AGH-CEAI/aegis_gym/pull/82) - Added utility scripts to manage ClearML tasks: `clearml_enquee_tasks.py`, `clearml_exp_plotter.py` & `clearml_summarizer.py`.
@@ -31,18 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-83](https://github.com/AGH-CEAI/aegis_gym/pull/83) - Changed table color.
 - [PR-76](https://github.com/AGH-CEAI/aegis_gym/pull/76) - Increased genesis logging level from "warning" to "info".
 
-
-
-### Deprecated
-### Removed
 ### Fixed
 
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Fixed missing pool size in config and arguments.
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed wrong model path for teacher in BC training
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed ClearML task overwriting on repeated runs.
 - [PR-88](https://github.com/AGH-CEAI/aegis_gym/pull/88) - Fixed BC evaluation not logging to ClearML.
-
-### Security
 
 ## [v202603091815]
 

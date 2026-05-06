@@ -125,6 +125,8 @@ class BehaviorCloning:
         self._cur_reward_sum = th.zeros(
             self._env.num_envs, dtype=th.float, device=self._device
         )
+        self._best_model_reward: float = float("-inf")
+        self._best_model_iter: int = -1
 
         print("\n=== POLICY ===")
         print(self._policy)
@@ -197,22 +199,14 @@ class BehaviorCloning:
             if num_batches == 0:
                 raise ValueError("No batches collected")
 
-            avg_action_loss = total_action_loss / num_batches
-            avg_pose_loss = total_pose_loss / num_batches
-            avg_recon_loss = total_recon_loss / num_batches
-
-            fps = (self._num_steps_per_env * self._env.num_envs) / (forward_time)
-            # Logging
-            if self.logger is not None and (it + 1) % self._cfg["log_freq"] == 0:
-                current_lr = self._optimizer.param_groups[0]["lr"]
-
+            if self.logger is not None:
                 self._log_metrics(
                     it=it,
-                    avg_action_loss=avg_action_loss,
-                    avg_pose_loss=avg_pose_loss,
-                    avg_recon_loss=avg_recon_loss,
-                    current_lr=current_lr,
-                    fps=fps,
+                    avg_action_loss=total_action_loss / num_batches,
+                    avg_pose_loss=total_pose_loss / num_batches,
+                    avg_recon_loss=total_recon_loss / num_batches,
+                    current_lr=self._optimizer.param_groups[0]["lr"],
+                    fps=(self._num_steps_per_env * self._env.num_envs) / (forward_time),
                     forward_time=forward_time,
                     backward_time=backward_time,
                 )
@@ -226,8 +220,39 @@ class BehaviorCloning:
                 if self.logger is not None:
                     self.logger.save_model(ckpt_path, it + 1)
 
+            # Save best model based on mean reward
+            if self.logger is not None and len(self._rewbuffer) > 0:
+                self._update_best_model(it, float(np.mean(self._rewbuffer)))
+
             # The last layer reset should be done AFTER saving a checkpoint
             self._maybe_reset_last_layer_weights(it)
+
+        if self.logger is not None and self._best_model_iter >= 0:
+            print(
+                f"\nBest model:\n"
+                f" Iteration = {self._best_model_iter}\n"
+                f" Mean reward = {self._best_model_reward:.2f}\n"
+            )
+
+    def _update_best_model(self, it: int, mean_reward: float) -> None:
+        skip = self._cfg.get("best_model_skip_iters", 0)
+        if it < skip or mean_reward <= self._best_model_reward:
+            return
+
+        self._best_model_reward = mean_reward
+        self._best_model_iter = it + 1
+
+        path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
+        self.save(path)
+        self.logger.save_model(
+            path=path,
+            it=self._best_model_iter,
+            custom_name="model_best",
+        )
+
+        print(
+            f"New best model!\n Iteration = {self._best_model_iter}\n Mean reward = {mean_reward:.2f}"
+        )
 
     def _compute_pose_loss(
         self, pred_poses: th.Tensor, target_poses: th.Tensor
