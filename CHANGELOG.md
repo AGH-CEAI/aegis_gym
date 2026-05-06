@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.
+
+### Changed
+
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Tensor operation improvements in `grasp_env.py`, `grasp_env_ros.py`, `PerCameraCNNEncoder`, `SharedCNNEncoder` and `AutoencoderCNNEncoder`.
+
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [v202605061407]
+
+### Added
+
 - [PR-104](https://github.com/AGH-CEAI/aegis_gym/pull/104) - Added best model checkpoint saving.
 - [PR-106](https://github.com/AGH-CEAI/aegis_gym/pull/106) - Added rsl-rl option `detach_actor_grad` to stop propagation of policy gradients.
 
@@ -29,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.
 - [PR-93](https://github.com/AGH-CEAI/aegis_gym/pull/93) - Added feature to reset last layers of RL/BC algorithms.
 - [PR-92](https://github.com/AGH-CEAI/aegis_gym/pull/92) - Added multi-checkpoint evaluation.
 - [PR-82](https://github.com/AGH-CEAI/aegis_gym/pull/82) - Added utility scripts to manage ClearML tasks: `clearml_enquee_tasks.py`, `clearml_exp_plotter.py` & `clearml_summarizer.py`.
@@ -41,8 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
-- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Tensor operation improvements in `grasp_env.py`, `grasp_env_ros.py`, `PerCameraCNNEncoder`, `SharedCNNEncoder` and `AutoencoderCNNEncoder`.
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed URDF IDs.
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed table height and object color.
 - [PR-95](https://github.com/AGH-CEAI/aegis_gym/pull/95) - Changed workbench height and scene camera offset matrix to support updated robot model.
