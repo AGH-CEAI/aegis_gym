@@ -34,13 +34,16 @@ where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PR
 
 #### Example usage
 ```bash
-# 1. Summarize experiments
+# 1. Schedule tasks to a given queue
+./clearml_enqueue_tasks.py --base-task-id=BASE-TASK-ID --tasks-num=20 --queue-name=robolab
+
+# 2. Summarize experiments
 ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net64_temper_actor --tags net64 hyperopt
 ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net128_temper_actor --tags net128 hyperopt
 ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net256_temper_actor --tags net256 hyperopt
 ./clearml_summarizer.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim/net512_temper_actor --tags net512 hyperopt
 
-# 2. Aggregate experiment summaries
+# 3. Aggregate experiment summaries
 ./clearml_exp_plotter.py --cleanup-previous-tags --project-name PROJ_EXP1/architecture_rl-sim -h
 ```
 
@@ -48,6 +51,10 @@ where `SUMMARY` is the result of the `clearml_summarizer.py` run in the `YOUR_PR
 
 ### [`clearml_enqueue_tasks.py`](./clearml_enqueue_tasks.py)
 Clone task multiple times into a selected queue.
+
+```bash
+./clearml_enqueue_tasks.py --base-task-id=BASE-TASK-ID --tasks-num=20 --queue-name=geonosis
+```
 
 ---
 

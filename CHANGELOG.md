@@ -12,9 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-106](https://github.com/AGH-CEAI/aegis_gym/pull/106) - Added rsl-rl option `detach_actor_grad` to stop propagation of policy gradients.
 
 ### Changed
+
+- [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - `utils/clearml_enquee_tasks.py`: Improved information for the user.
+
 ### Deprecated
 ### Removed
 ### Fixed
+
+- [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - Fixed bug with `matplotlib` dependency in  `utils/clearml_enquee_tasks.py`.
+
 ### Security
 
 ## [v202605061407]

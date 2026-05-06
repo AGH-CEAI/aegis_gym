@@ -2,7 +2,10 @@ import functools
 import logging
 from time import perf_counter
 
-import matplotlib
+try:
+    import matplotlib
+except ImportError:
+    matplotlib = None
 
 
 def timed(func):
@@ -27,7 +30,8 @@ def setup_logging() -> None:
         level=logging.INFO,
         handlers=[handler],
     )
-    matplotlib.use("Agg")  # non-interactive backend, safe in any env
+    if matplotlib:
+        matplotlib.use("Agg")  # non-interactive backend, safe in any env
 
 
 class CustomFormatter(logging.Formatter):
