@@ -134,6 +134,8 @@ class GraspEnv(VecEnv):
             ),
             vis_options=gs.options.VisOptions(
                 rendered_envs_idx=list(range(self.num_envs)),
+                shadow=True,
+                plane_reflection=False,
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
