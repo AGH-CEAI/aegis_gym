@@ -2,12 +2,20 @@ import math
 import time
 from typing import Literal, Optional
 
+import os
+import tempfile
+from PIL import Image
+import numpy as np
+import cv2
+
 import torch as th
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import transform_by_quat
 
 from .manipulator_ros import ManipulatorROS
+
+GLOBALE_STEP_COUNTER = 0
 
 
 class Object:
@@ -71,9 +79,9 @@ class GraspEnvROS(VecEnv):
 
         # This pose is already in the Genesi's world base
         world_box_pose = th.tensor(
-            [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            # [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+            [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             device=self.device,
         )
         world_box_pose[2] += 0.00  # m
@@ -263,7 +271,13 @@ class GraspEnvROS(VecEnv):
         # TODO implement gRPC image transportation
         raise NotImplementedError
 
-    def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
+    def get_observations_vis(
+        self,
+        normalize: bool = True,
+        save_frames: bool = True,
+        save_dir: Optional[str] = None,
+        show_windows: bool = True,
+    ) -> th.Tensor:
         match self.camera_setup:
             case "default":
                 cams = ["scene", "left", "right"]
@@ -280,7 +294,56 @@ class GraspEnvROS(VecEnv):
                 rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
 
+            # Visualization with OpenCV
+            if show_windows:
+                tensor = rgb
+                # if tensor.ndim == 4:
+                #     tensor = tensor[0]
+                # if tensor.shape[0] == 3:
+                #     tensor = tensor[[2, 1, 0], ...]  # RGB to BGR for OpenCV
+                np_img = tensor.detach().cpu().clamp(0.0, 1.0).mul(255).byte().numpy()
+                if np_img.shape[0] in (1, 3):
+                    np_img = np.transpose(np_img, (1, 2, 0))
+                if np_img.shape[2] == 1:
+                    np_img = np_img[:, :, 0]
+                # Larger preview window (512x512 max, maintains aspect)
+                height, width = np_img.shape[:2]
+                max_side = 512
+                scale = min(max_side / width, max_side / height)
+                new_w, new_h = int(width * scale), int(height * scale)
+                large_img = cv2.resize(
+                    np_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
+                )
+
+                cv2.imshow(f"{cam_name} (large)", large_img)
+                cv2.waitKey(1)
+
+            if save_frames:
+                # Determine save directory
+                if save_dir is None:
+                    save_dir = os.path.join(tempfile.gettempdir(), "aegis_frames")
+                os.makedirs(save_dir, exist_ok=True)
+                tensor = rgb
+                if tensor.ndim == 4:
+                    tensor = tensor[0]
+                if tensor.shape[0] == 3:
+                    tensor = tensor[[2, 1, 0], ...]  # RGB to BGR for OpenCV/PIL
+                np_img = tensor.detach().cpu().clamp(0.0, 1.0).mul(255).byte().numpy()
+                if np_img.shape[0] in (1, 3):
+                    np_img = np.transpose(np_img, (1, 2, 0))
+                if np_img.shape[2] == 1:
+                    np_img = np_img[:, :, 0]
+                global GLOBALE_STEP_COUNTER
+                fname = f"frame_{GLOBALE_STEP_COUNTER:08d}_{cam_name}.png"
+                path = os.path.join(save_dir, fname)
+                Image.fromarray(np_img).save(path)
+                GLOBALE_STEP_COUNTER += 1
         return th.cat(rgb_list, dim=1)
+
+        # TODO: add try catch, if it fails on dimensions probably one of the cameras is not working
+        # TODO we need a thing to selectulvy restart cameras in ROS side (just one selected camera)
+        # TODO: digitaltwin debug - move the robot in real in the same way as in simulator
+        # TODO: cameras preview in opencv (live)
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]

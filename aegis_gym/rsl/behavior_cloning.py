@@ -624,6 +624,8 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(features)
         fused = th.cat([fused, state_obs], dim=-1)
+        print(f">>>> DEBUG: the initial state_obs: {state_obs}")
+        raise RuntimeError("KLE")
         return self.action_head(fused)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
@@ -670,6 +672,9 @@ class Policy(nn.Module):
         c, h, w = self.vision_encoder.infer_output_shape(
             image_height=config.get("image_height", 64),
             image_width=config.get("image_width", 64),
+            # TODO: the network for ROS must be on the GPU (i.e. send only data to gpu)
+            device=config.get("device", "cpu"),
+            # device="cpu",
         )
 
         match self.fusion_type:

@@ -197,16 +197,25 @@ class ManipulatorROS:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
     def get_camera_frame(self, camera_name: str) -> th.Tensor:
-        return self._vision[camera_name].unsqueeze(dim=0)
+        # TODO make a conversion from BGR to RGB in gRPC client
+        return self._vision[camera_name].unsqueeze(dim=0)[
+            :, [2, 1, 0], :, :
+        ]  # BGR -> RGB (permute channels)
 
     def get_camera_scene_frame(self) -> th.Tensor:
-        return self._vision["scene"].unsqueeze(dim=0)
+        return self._vision["scene"].unsqueeze(dim=0)[
+            :, [2, 1, 0], :, :
+        ]  # BGR -> RGB (permute channels)
 
     def get_camera_tool_right_frame(self) -> th.Tensor:
-        return self._vision["right"].unsqueeze(dim=0)
+        return self._vision["right"].unsqueeze(dim=0)[
+            :, [2, 1, 0], :, :
+        ]  # BGR -> RGB (permute channels)
 
     def get_camera_tool_left_frame(self) -> th.Tensor:
-        return self._vision["left"].unsqueeze(dim=0)
+        return self._vision["left"].unsqueeze(dim=0)[
+            :, [2, 1, 0], :, :
+        ]  # BGR -> RGB (permute channels)
 
     def _servo_enable(self) -> None:
         if self._servo_enabled:
