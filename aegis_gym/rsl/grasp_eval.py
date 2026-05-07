@@ -7,7 +7,6 @@ import torch as th
 from clearml import Task
 from tqdm import tqdm
 
-
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage, Control
