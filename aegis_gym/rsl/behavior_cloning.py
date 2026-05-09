@@ -627,7 +627,7 @@ class Policy(nn.Module):
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         if not self.use_pose_head:
-            return ()
+            return tuple()
         features = self.vision_encoder(rgb_obs)
         pose_feats = self.feature_fusion.prepare_pose_features(features)
         return tuple(self.pose_head(f) for f in pose_feats)
