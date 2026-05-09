@@ -86,6 +86,7 @@ def get_bc_cfg() -> dict:
         "policy": {
             "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
             "fusion_type": "linear",  # linear, attention_vector, attention_spatial
+            "use_pose_head": True,
             "vision_encoder": {
                 "conv_layers": [
                     {

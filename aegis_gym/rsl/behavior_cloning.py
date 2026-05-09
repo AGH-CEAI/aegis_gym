@@ -586,6 +586,9 @@ class Policy(nn.Module):
         print(f"Encoder type: {self.encoder_type}")
         print(f"Fusion type: {self.fusion_type}")
 
+        self.use_pose_head = config.get("use_pose_head", True)
+        print("Use pose head:", self.use_pose_head)
+
         self.vision_encoder = self._build_vision_encoder(config)
         self.feature_fusion = self._build_fusion(config)
 
@@ -593,24 +596,27 @@ class Policy(nn.Module):
         state_obs_dim = config["action_head"]["state_obs_dim"]
 
         action_input_dim = vision_obs_dim + state_obs_dim
-        pose_input_dim = self.feature_fusion.pose_input_dim
 
         print(f"Vision obs dim: {vision_obs_dim}")
         print(f"State obs dim: {state_obs_dim}")
-        print(f"Action head input dim: {action_input_dim}")
-        print(f"Pose head input dim: {pose_input_dim}")
 
+        print(f"Action head input dim: {action_input_dim}")
         self.action_head = self._build_mlp(
             input_dim=action_input_dim,
             hidden_dims=config["action_head"]["hidden_dims"],
             output_dim=action_dim,
         )
 
-        self.pose_head = self._build_mlp(
-            input_dim=pose_input_dim,
-            hidden_dims=config["pose_head"]["hidden_dims"],
-            output_dim=7,
-        )
+        if self.use_pose_head:
+            pose_input_dim = self.feature_fusion.pose_input_dim
+            print(f"Pose head input dim: {pose_input_dim}")
+            self.pose_head = self._build_mlp(
+                input_dim=pose_input_dim,
+                hidden_dims=config["pose_head"]["hidden_dims"],
+                output_dim=7,
+            )
+        else:
+            self.pose_head = None
 
     def forward(
         self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
@@ -621,6 +627,8 @@ class Policy(nn.Module):
         return self.action_head(fused)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
+        if not self.use_pose_head:
+            return tuple()
         features = self.vision_encoder(rgb_obs)
         pose_feats = self.feature_fusion.prepare_pose_features(features)
         return tuple(self.pose_head(f) for f in pose_feats)
@@ -740,7 +748,7 @@ class Policy(nn.Module):
         }:
             self._reset_last_layer_weights_sequential(self.action_head)
 
-        if target in {
+        if self.pose_head is not None and target in {
             BehaviorCloning.ResetLastLayerTarget.POSE,
             BehaviorCloning.ResetLastLayerTarget.ALL,
         }:
