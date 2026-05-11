@@ -36,6 +36,35 @@ class ConcatenatedCNNEncoder(BaseVisionEncoder):
     def __init__(self, num_cameras: int, cnn_builder: Callable, vision_cfg: dict):
         super().__init__(num_cameras)
         self.encoder = cnn_builder()
+        self._patch_first_conv(num_cameras)
+
+    def _patch_first_conv(self, num_cameras: int) -> None:
+        """Replace the first Conv2d to accept num_cameras*3 input channels."""
+        for i, layer in enumerate(self.encoder):
+            if isinstance(layer, nn.Conv2d):
+                old = layer
+                new_conv = nn.Conv2d(
+                    in_channels=num_cameras * old.in_channels,
+                    out_channels=old.out_channels,
+                    kernel_size=old.kernel_size,
+                    stride=old.stride,
+                    padding=old.padding,
+                    bias=old.bias is not None,
+                )
+                self.encoder[i] = new_conv
+                return  # only patch the first one
+
+    def infer_output_shape(
+        self, image_height=64, image_width=64, channels=3, device="cpu"
+    ):
+        # override to use the correct number of input channels
+        dummy = th.zeros(
+            (1, self.num_cameras * channels, image_height, image_width), device=device
+        )
+        with th.no_grad():
+            out = self._single_forward(dummy)
+        _, c, h, w = out.shape
+        return c, h, w
 
     def _single_forward(self, x: th.Tensor) -> th.Tensor:
         return self.encoder(x)
