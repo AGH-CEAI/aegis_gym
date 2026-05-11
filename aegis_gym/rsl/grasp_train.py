@@ -57,7 +57,7 @@ def parse_arguments() -> Namespace:
             return None
         return ast.literal_eval(arg)
 
-    # TODO resolve the precedence of default values
+    # TODO(issue#110) resolve the precedence of default values
     default_project_name = get_logger_cfg()["clearml_project"]
 
     p = ArgumentParser()
@@ -91,7 +91,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     overwrite_if_given(cfg.env_cfg["num_envs"], args.num_envs)
     overwrite_if_given(cfg.env_cfg["visualize_camera"], args.visualize_camera)
 
-    # TODO simplify config structure
+    # TODO(issue#111) simplify config structure
     project_suffix = f"_{args.stage}-{args.control}"
     cfg.logger_cfg["wandb_project"] += project_suffix
     cfg.logger_cfg["clearml_project"] += project_suffix
