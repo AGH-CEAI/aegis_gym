@@ -60,6 +60,8 @@ def main():
     )
     sleep_countdown(8)
 
+    log.info("Adding tags to source tasks")
+
     enqueue_eval_tasks(
         eval_template=eval_template,
         source_tasks=source_tasks,
@@ -69,21 +71,20 @@ def main():
     )
     log.info(f"{len(source_tasks)} eval tasks enqueued to {args.queue_name} queue")
 
-
 def get_source_tasks(project_name: str, tags: list[str]) -> list[Task]:
     log = logging.getLogger(f"{__name__}")
 
     task_filter = {
-        "status": ["completed"],
+        "status": ["completed", "published"],
         "type": ["training", "testing", "inference", "application"],
         "system_tags": ["-archived"],
     }
 
     exclude_tags = ["-summary", "-template"]
+    tags_filter = exclude_tags
     if tags:
-        tags_filter = ["__$all"] + list(tags) + exclude_tags
-    else:
-        tags_filter = exclude_tags
+        tags_filter += ["__$all"] + list(tags) 
+
 
     log.info(f"Fetching tasks from '{project_name}' (tags: {list(tags) or 'any'}) ...")
     tasks = Task.get_tasks(
@@ -92,7 +93,7 @@ def get_source_tasks(project_name: str, tags: list[str]) -> list[Task]:
         task_filter=task_filter,
     )
 
-    tasks = [t for t in tasks if not t.name.startswith(TEMPLATE_PREFIX)]
+    # tasks = [t for t in tasks if not t.name.startswith(TEMPLATE_PREFIX)]
     log.info(f"Found {len(tasks)} task(s)")
     return tasks
 
@@ -134,6 +135,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Disable safeguard mechanism for sending a large batch of runs",
     )
+    p.add_argument(
+        "--cleanup-previous-tags",
+        action="store_true",
+        default=False,
+        help="Enable automatic remove of all `eval:XXX` tags from selected tasks.",
+    )
     return p
 
 
@@ -142,9 +149,11 @@ def enqueue_eval_tasks(
     source_tasks: list[Task],
     eval_project: str,
     queue_name: str,
+    cleanup_previous_tags = False,
+    tag_for_source: str = "eval",
     tags: Iterable[str] = None,
 ) -> None:
-    tags = tags or []
+    tags = tags or [tag_for_source]
 
     for train_task in tqdm(source_tasks, desc="Scheduling", unit="task"):
         job = ClearmlJob(
@@ -156,8 +165,23 @@ def enqueue_eval_tasks(
             },
         )
         job.task.move_to_project(new_project_name=eval_project)
+
+        if cleanup_previous_tags:
+            cleanup_task_tags(train_task, tag_for_source)
+        train_task.add_tags([f"{tag_for_source}:{job.task.task_id}"])
         job.launch(queue_name=queue_name)
 
+
+def cleanup_task_tags(t: Task, t_tag: str) -> tuple[int, int]:
+    """Returns (tasks_cleaned, tags_removed) counts."""
+    current_tags = list(t.get_tags() or [])
+    filtered_tags = [tag for tag in current_tags if not tag.startswith(f"{t_tag}:")]
+
+    if filtered_tags != current_tags:
+        removed = [tag for tag in current_tags if tag.startswith(f"{t_tag}:")]
+        t.set_tags(filtered_tags)
+        return 1, len(removed)
+    return 0, 0
 
 def sleep_countdown(t_sleep: int) -> None:
     logger = logging.getLogger()
