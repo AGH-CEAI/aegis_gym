@@ -676,6 +676,18 @@ class Policy(nn.Module):
         match self.fusion_type:
             case "linear":
                 fusion_cfg = config["linear_fusion"]
+
+                # Dry-run the encoder to find how many tensors it actually returns
+                dummy = th.zeros(
+                    1,
+                    config.get("num_cameras", 1) * 3,
+                    config.get("image_height", 64),
+                    config.get("image_width", 64),
+                    device=config.get("device", "cpu"),
+                )
+                with th.no_grad():
+                    num_feature_tensors = len(self.vision_encoder(dummy))
+
                 return LinearFusion(
                     vision_dim=fusion_cfg.get("fusion_output_dim", 512),
                     num_cameras=self.num_cameras,
@@ -683,6 +695,7 @@ class Policy(nn.Module):
                     image_height=h,
                     image_width=w,
                     pool_size=fusion_cfg.get("pool_size", 4),
+                    num_feature_tensors=num_feature_tensors,
                 )
             case "attention_vector":
                 fusion_cfg = config["attention_vector_fusion"]

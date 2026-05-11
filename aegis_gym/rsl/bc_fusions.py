@@ -17,16 +17,20 @@ class BaseFusionModule(nn.Module):
 class LinearFusion(BaseFusionModule):
     def __init__(
         self,
-        vision_dim: int,  # 512
-        num_cameras: int,  # 3
-        in_channels: int,  # 32
-        image_height: int,  # 64
-        image_width: int,  # 64
-        pool_size: int,  # 4
+        vision_dim: int,
+        num_cameras: int,
+        in_channels: int,
+        image_height: int,
+        image_width: int,
+        pool_size: int,
+        num_feature_tensors: int = None,
     ):
         super().__init__()
         self.pool_size = pool_size
         self.is_latent_vector = image_height == 1 and image_width == 1
+
+        # How many tensors the encoder actually returns (may differ from num_cameras)
+        n = num_feature_tensors if num_feature_tensors is not None else num_cameras
 
         feature_dim_cam = in_channels * pool_size * pool_size
         self.pose_proj = None
@@ -35,7 +39,7 @@ class LinearFusion(BaseFusionModule):
             self.pose_proj = nn.Linear(in_channels, vision_dim)
 
         self.net = nn.Sequential(
-            nn.Linear(feature_dim_cam * num_cameras, vision_dim),
+            nn.Linear(feature_dim_cam * n, vision_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
         )
