@@ -1,7 +1,7 @@
 import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Callable, TypeAlias
+from typing import Any, Callable
 
 import torch as th
 from clearml import Task
@@ -19,7 +19,7 @@ try:
 except ImportError:
     GraspEnvROS = None
 
-GraspEnvironemnt = TypeAlias[GraspEnv | GraspEnvROS]
+GraspEnvironemnt = GraspEnv | GraspEnvROS
 
 
 def main():

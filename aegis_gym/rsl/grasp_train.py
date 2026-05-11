@@ -34,7 +34,6 @@ def main():
         reuse_last_task_id=True,
     )
     cfg = setup_config(args, task)
-    print(f"DEBUG ALL CFG:\n{cfg}")
     cfg.set_device(th.device("cuda" if th.cuda.is_available() else "cpu"))
 
     env = create_env(args, cfg)
