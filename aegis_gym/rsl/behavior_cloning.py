@@ -658,7 +658,7 @@ class Policy(nn.Module):
             "autoencoder": AutoencoderCNNEncoder,
         }
         try:
-            encoder_classes[self.encoder_type](
+            return encoder_classes[self.encoder_type](
                 num_cameras=self.num_cameras,
                 cnn_builder=cnn_builder,
                 vision_cfg=vision_cfg,
