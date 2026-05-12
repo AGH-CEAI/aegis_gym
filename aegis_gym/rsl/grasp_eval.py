@@ -55,14 +55,14 @@ def main():
     print("[GraspEval] Setup done")
 
     with th.no_grad():
-        start_cameras_recording(env=env, args=args, cfg=cfg)
+        start_cameras_recording(env, args, cfg)
 
         if sweep:
-            eval_policy_sweep(env=env, args=args, cfg=cfg, task=task)
+            eval_policy_sweep(env, args, cfg, task)
         else:
-            eval_policy_single(env=env, args=args, cfg=cfg, task=task)
+            eval_policy_single(env, args, cfg, task)
 
-        stop_cameras_recording(env=env, args=args, cfg=cfg)
+        stop_cameras_recording(env, args, cfg)
 
     print("[GraspEval] Finished evaluation script")
 
@@ -311,8 +311,8 @@ def stop_cameras_recording(
 
 def eval_policy_single(
     env: Any,
-    cfg: GraspConfig,
     args: Namespace,
+    cfg: GraspConfig,
     task: Task,
 ) -> None:
     record_render = args.control == Control.SIM and args.record
