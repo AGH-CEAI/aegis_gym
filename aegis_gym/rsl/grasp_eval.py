@@ -13,13 +13,9 @@ from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage
 
 from envs.grasp_env import GraspEnv
+from envs.grasp_env_ros import GraspEnvROS
 
-try:
-    from envs.grasp_env_ros import GraspEnvROS
-except ImportError:
-    GraspEnvROS = None
-
-GraspEnvironemnt = GraspEnv | GraspEnvROS
+GraspEnvironment = GraspEnv | GraspEnvROS
 
 
 def main():
@@ -158,7 +154,7 @@ def is_checkpoints_sweep_required(args: Namespace) -> bool:
     return sweep
 
 
-def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
+def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
     device = cfg.get_device()
     env = None
     if args.control == "sim":
@@ -195,13 +191,13 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
 
 
 def load_policy(
-    env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig
+    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> Callable | None:
     device = cfg.get_device()
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     policy = None
 
-    if args.stage == "rl":
+    if args.stage == Stage.RL:
         policy = load_rl_policy(
             env=env,
             rl_cfg=cfg.rl_cfg,
@@ -210,7 +206,7 @@ def load_policy(
             clearml_task_id=args.load_rl_task_id,
             clearml_model_id=args.load_rl_model_id,
         )
-    if args.stage == "bc":
+    if args.stage == Stage.BC:
         policy = load_bc_policy(
             env=env,
             bc_cfg=cfg.bc_cfg,
@@ -224,7 +220,7 @@ def load_policy(
 
 
 def start_cameras_recording(
-    env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig
+    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> None:
     if not args.control == "sim":
         print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
@@ -249,7 +245,7 @@ def start_cameras_recording(
 
 
 def stop_cameras_recording(
-    env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig
+    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> None:
     if not args.control == "sim":
         return
