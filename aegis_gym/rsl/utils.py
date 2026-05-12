@@ -57,6 +57,8 @@ def load_rl_policy(
         print(
             f"[Policy Loader] Overwritten the RL config by the configuration from task: {clearml_task_id}"
         )
+    else:
+        print("[Policy Loader] Keeping the current RL config")
 
     runner = OnPolicyRunner(
         env,
@@ -102,6 +104,8 @@ def load_bc_policy(
         print(
             f"[Policy Loader] Overwritten the BC config by the configuration from task: {clearml_task_id}"
         )
+    else:
+        print("[Policy Loader] Keeping the current BC config")
 
     bc_runner = BehaviorCloning(env, bc_cfg, None, log_dir, device=device)
     bc_runner.load(last_ckpt)
