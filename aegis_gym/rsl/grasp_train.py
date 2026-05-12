@@ -205,4 +205,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Exiting (invoked by user)")

@@ -440,4 +440,7 @@ def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Exiting (invoked by user)")
