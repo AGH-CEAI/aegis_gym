@@ -71,6 +71,7 @@ def main():
     )
     log.info(f"{len(source_tasks)} eval tasks enqueued to {args.queue_name} queue")
 
+
 def get_source_tasks(project_name: str, tags: list[str]) -> list[Task]:
     log = logging.getLogger(f"{__name__}")
 
@@ -81,10 +82,10 @@ def get_source_tasks(project_name: str, tags: list[str]) -> list[Task]:
     }
 
     exclude_tags = ["-summary", "-template"]
-    tags_filter = exclude_tags
+    tags_filter = []
     if tags:
-        tags_filter += ["__$all"] + list(tags) 
-
+        tags_filter += ["__$all"] + list(tags)
+    tags_filter += exclude_tags
 
     log.info(f"Fetching tasks from '{project_name}' (tags: {list(tags) or 'any'}) ...")
     tasks = Task.get_tasks(
@@ -92,8 +93,6 @@ def get_source_tasks(project_name: str, tags: list[str]) -> list[Task]:
         tags=tags_filter,
         task_filter=task_filter,
     )
-
-    # tasks = [t for t in tasks if not t.name.startswith(TEMPLATE_PREFIX)]
     log.info(f"Found {len(tasks)} task(s)")
     return tasks
 
@@ -149,7 +148,7 @@ def enqueue_eval_tasks(
     source_tasks: list[Task],
     eval_project: str,
     queue_name: str,
-    cleanup_previous_tags = False,
+    cleanup_previous_tags=False,
     tag_for_source: str = "eval",
     tags: Iterable[str] = None,
 ) -> None:
@@ -182,6 +181,7 @@ def cleanup_task_tags(t: Task, t_tag: str) -> tuple[int, int]:
         t.set_tags(filtered_tags)
         return 1, len(removed)
     return 0, 0
+
 
 def sleep_countdown(t_sleep: int) -> None:
     logger = logging.getLogger()
