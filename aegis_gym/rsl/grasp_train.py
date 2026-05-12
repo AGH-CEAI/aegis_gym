@@ -208,4 +208,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Exiting (invoked by user)")
+        print("\n\n\n[GraspTrain] > Exiting (invoked by user)")
