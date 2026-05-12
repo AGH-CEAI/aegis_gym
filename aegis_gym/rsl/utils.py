@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import torch as th
-from clearml import Task, Model
+from clearml import Task, Model, InputModel
 from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
@@ -27,6 +27,7 @@ def load_rl_policy(
     env: Any,
     rl_cfg: dict,
     device: th.device,
+    load_cfg_from_clearml: bool = True,
     exp_name: Optional[str] = None,
     log_dir: Optional[Path] = None,
     clearml_task_id: Optional[str] = None,
@@ -44,6 +45,26 @@ def load_rl_policy(
         local_checkpoint_pattern=r"model_\d+\.pt",
     )
     print(f"[Policy Loader] Resolved RL checkpoint path: {last_ckpt}")
+    if load_cfg_from_clearml:
+        if clearml_task_id is None and clearml_model_id is not None:
+            clearml_task_id = InputModel(model_id=clearml_model_id).task
+        if clearml_task_id is None:
+            raise ValueError(
+                "Cannot load RL config from ClearML: provide either clearml_task_id or clearml_model_id"
+            )
+        task = Task.get_task(task_id=clearml_task_id)
+        cfg_from_clearml = task.get_configuration_object_as_dict("rl_cfg")
+        if cfg_from_clearml:
+            rl_cfg = cfg_from_clearml
+            print(
+                f"[Policy Loader] Overwritten the RL config by the configuration from task: {clearml_task_id}"
+            )
+        else:
+            print(
+                f"[Policy Loader] Failed to obtain the RL config from task {clearml_task_id}. Proceeding with the current one"
+            )
+    else:
+        print("[Policy Loader] Keeping the current RL config")
 
     runner = OnPolicyRunner(
         env,
@@ -60,6 +81,7 @@ def load_bc_policy(
     env: Any,
     bc_cfg: dict,
     device: th.device,
+    load_cfg_from_clearml: bool = True,
     exp_name: Optional[str] = None,
     log_dir: Optional[Path] = None,
     clearml_task_id: Optional[str] = None,
@@ -76,6 +98,26 @@ def load_bc_policy(
         local_checkpoint_pattern=r"checkpoint_\d+\.pt",
     )
     print(f"[Policy Loader] Resolved BC checkpoint path: {last_ckpt}")
+    if load_cfg_from_clearml:
+        if clearml_task_id is None and clearml_model_id is not None:
+            clearml_task_id = InputModel(model_id=clearml_model_id).task
+        if clearml_task_id is None:
+            raise ValueError(
+                "Cannot load BC config from ClearML: provide either clearml_task_id or clearml_model_id"
+            )
+        task = Task.get_task(task_id=clearml_task_id)
+        cfg_from_clearml = task.get_configuration_object_as_dict("bc_cfg")
+        if cfg_from_clearml:
+            bc_cfg = cfg_from_clearml
+            print(
+                f"[Policy Loader] Overwritten the BC config by the configuration from task: {clearml_task_id}"
+            )
+        else:
+            print(
+                f"[Policy Loader] Failed to obtain the BC config from task {clearml_task_id}. Proceeding with the current one"
+            )
+    else:
+        print("[Policy Loader] Keeping the current BC config")
 
     bc_runner = BehaviorCloning(env, bc_cfg, None, log_dir, device=device)
     bc_runner.load(last_ckpt)

@@ -1,3 +1,67 @@
+import pickle
+from dataclasses import dataclass, fields
+from typing import ClassVar
+from pathlib import Path
+
+import torch as th
+from clearml import Task
+
+
+@dataclass(slots=True, frozen=True)
+class GraspConfig:
+    logger_cfg: dict
+    rl_cfg: dict
+    bc_cfg: dict
+    env_cfg: dict
+    robot_cfg: dict
+
+    _device: ClassVar["th.device"] = None
+    _instance: ClassVar["GraspConfig | None"] = None
+
+    @classmethod
+    def set_device(cls, device: "th.device") -> None:
+        cls._device = device
+
+    @classmethod
+    def get_device(cls) -> "th.device":
+        return cls._device
+
+    @classmethod
+    def get_instance(cls) -> "GraspConfig":
+        if cls._instance is None:
+            raise RuntimeError("GraspConfig has not been created.")
+        return cls._instance
+
+    @classmethod
+    def create(cls, device: any = "cpu") -> "GraspConfig":
+        cls._instance = cls(
+            logger_cfg=get_logger_cfg(),
+            rl_cfg=get_rl_cfg(),
+            bc_cfg=get_bc_cfg(),
+            env_cfg=get_env_cfg(),
+            robot_cfg=get_robot_cfg(),
+        )
+        return cls._instance
+
+    @classmethod
+    def create_with_clearml(cls, task: Task) -> "GraspConfig":
+        instance = cls.create()
+        cls._instance = cls(
+            **{
+                field.name: task.connect_configuration(
+                    getattr(instance, field.name), name=field.name
+                )
+                for field in fields(instance)
+            }
+        )
+        return cls._instance
+
+    def to_pickle(self, path: Path) -> None:
+        data = {field.name: getattr(self, field.name) for field in fields(self)}
+        with path.open("wb") as f:
+            pickle.dump(data, f)
+
+
 def get_logger_cfg() -> dict:
     return {
         # Logger
@@ -5,11 +69,11 @@ def get_logger_cfg() -> dict:
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
         "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
         "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
+        "clearml_log_cfg_as_hyperparams": False,
     }
 
 
 def get_rl_cfg() -> dict:
-    # stage 1: privileged reinforcement learning
     return {
         "class_name": "OnPolicyRunner",
         # General
@@ -71,7 +135,6 @@ def get_rl_cfg() -> dict:
 
 
 def get_bc_cfg() -> dict:
-    # stage 2: vision-based behavior cloning
     return {
         # basic training parameters
         "num_steps_per_env": 24,
@@ -180,8 +243,14 @@ def get_bc_cfg() -> dict:
     }
 
 
-def get_task_cfgs():
-    env_cfg = {
+def get_task_cfgs() -> tuple[dict, dict]:
+    env_cfg = get_env_cfg()
+    robot_cfg = get_robot_cfg()
+    return env_cfg, robot_cfg
+
+
+def get_env_cfg() -> dict:
+    return {
         "num_envs": 10,
         "num_obs": 14,
         "num_actions": 6,
@@ -210,8 +279,10 @@ def get_task_cfgs():
             "keypoints": 1.0,
         },
     }
-    # robot specific
-    robot_cfg = {
+
+
+def get_robot_cfg() -> dict:
+    return {
         "ee_link_name": "robotiq_hande_end",
         "gripper_link_names": [
             "robotiq_hande_left_finger",
@@ -226,4 +297,3 @@ def get_task_cfgs():
             "no_cell": "718ea536c68c4aaba79d1515ced27eeb",
         },
     }
-    return env_cfg, robot_cfg

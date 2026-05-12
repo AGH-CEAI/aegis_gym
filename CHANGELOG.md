@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-112](https://github.com/AGH-CEAI/aegis_gym/pull/112) - Added script to batch-enqueue ClearML eval tasks from training runs.
+- [PR-94](https://github.com/AGH-CEAI/aegis_gym/pull/94) - Added ClearML config connection to the `grasp_cfg.py` config getters.
 - [PR-104](https://github.com/AGH-CEAI/aegis_gym/pull/104) - Added best model checkpoint saving.
 - [PR-106](https://github.com/AGH-CEAI/aegis_gym/pull/106) - Added rsl-rl option `detach_actor_grad` to stop propagation of policy gradients.
 
