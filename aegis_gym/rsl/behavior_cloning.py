@@ -96,7 +96,7 @@ class BehaviorCloning:
         cfg["policy"]["num_cameras"] = num_cameras
         cfg["policy"]["image_height"] = env.image_height
         cfg["policy"]["image_width"] = env.image_width
-        cfg["policy"]["device"] = self._device
+        cfg["policy"]["device"] = str(self._device)
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 

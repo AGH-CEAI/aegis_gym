@@ -28,7 +28,7 @@ repos:
         args: ["--autofix", "--no-sort-keys", "--indent", "2"]
 
 -   repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.11.12
+    rev: 0.11.13
     hooks:
     -   id: uv-lock
 
