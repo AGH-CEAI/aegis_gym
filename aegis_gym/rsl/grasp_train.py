@@ -70,6 +70,11 @@ def parse_arguments() -> Namespace:
     p.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
     p.add_argument("--load-rl-task-id", type=str, default=None)
     p.add_argument("--load-rl-model-id", type=str, default=None)
+    p.add_argument(
+        "--enforce-current-config",
+        action="store_true",
+        help="Do not load config from RL/BC checkpoint",
+    )
     p.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
@@ -172,6 +177,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
                 env=env,
                 rl_cfg=cfg.rl_cfg,
                 device=device,
+                load_cfg_from_clearml=not args.enforce_current_config,
                 exp_name=args.exp_name,
                 log_dir=log_dir,
                 clearml_task_id=args.load_rl_task_id,

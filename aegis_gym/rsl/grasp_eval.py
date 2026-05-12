@@ -97,6 +97,11 @@ def parse_arguments() -> Namespace:
     p.add_argument("--load-bc-task-id", type=str, default=None)
     p.add_argument("--load-bc-model-id", type=str, default=None)
     p.add_argument(
+        "--enforce-current-config",
+        action="store_true",
+        help="Do not load config from RL/BC checkpoint",
+    )
+    p.add_argument(
         "--bc-all-checkpoints",
         action="store_true",
         default=False,
@@ -202,6 +207,7 @@ def load_policy(
             env=env,
             rl_cfg=cfg.rl_cfg,
             device=device,
+            load_cfg_from_clearml=not args.enforce_current_config,
             log_dir=log_dir,
             clearml_task_id=args.load_rl_task_id,
             clearml_model_id=args.load_rl_model_id,
@@ -211,6 +217,7 @@ def load_policy(
             env=env,
             bc_cfg=cfg.bc_cfg,
             device=device,
+            load_cfg_from_clearml=not args.enforce_current_config,
             log_dir=log_dir,
             clearml_task_id=args.load_bc_task_id,
             clearml_model_id=args.load_bc_model_id,
