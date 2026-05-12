@@ -179,7 +179,6 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
                 clearml_artifact_name="model",
                 enable_logging=False,
             )
-            cfg.bc_cfg["teacher_policy"] = teacher_policy.policy_cfg
             cfg.to_pickle(cfg_pickle_path)
             print("[GraspTrain] > Saved config as a pickle.")
 
