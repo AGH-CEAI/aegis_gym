@@ -53,10 +53,16 @@ def load_rl_policy(
                 "Cannot load RL config from ClearML: provide either clearml_task_id or clearml_model_id"
             )
         task = Task.get_task(task_id=clearml_task_id)
-        rl_cfg = task.get_configuration_object_as_dict("rl_cfg")
-        print(
-            f"[Policy Loader] Overwritten the RL config by the configuration from task: {clearml_task_id}"
-        )
+        cfg_from_clearml = task.get_configuration_object_as_dict("rl_cfg")
+        if cfg_from_clearml:
+            rl_cfg = cfg_from_clearml
+            print(
+                f"[Policy Loader] Overwritten the RL config by the configuration from task: {clearml_task_id}"
+            )
+        else:
+            print(
+                f"[Policy Loader] Failed to obtain the RL config from task {clearml_task_id}. Proceeding with the current one"
+            )
     else:
         print("[Policy Loader] Keeping the current RL config")
 
@@ -100,10 +106,16 @@ def load_bc_policy(
                 "Cannot load BC config from ClearML: provide either clearml_task_id or clearml_model_id"
             )
         task = Task.get_task(task_id=clearml_task_id)
-        bc_cfg = task.get_configuration_object_as_dict("rl_cfg")
-        print(
-            f"[Policy Loader] Overwritten the BC config by the configuration from task: {clearml_task_id}"
-        )
+        cfg_from_clearml = task.get_configuration_object_as_dict("bc_cfg")
+        if cfg_from_clearml:
+            bc_cfg = cfg_from_clearml
+            print(
+                f"[Policy Loader] Overwritten the BC config by the configuration from task: {clearml_task_id}"
+            )
+        else:
+            print(
+                f"[Policy Loader] Failed to obtain the BC config from task {clearml_task_id}. Proceeding with the current one"
+            )
     else:
         print("[Policy Loader] Keeping the current BC config")
 
