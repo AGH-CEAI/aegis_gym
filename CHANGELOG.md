@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.
 - [PR-112](https://github.com/AGH-CEAI/aegis_gym/pull/112) - Added script to batch-enqueue ClearML eval tasks from training runs.
 - [PR-94](https://github.com/AGH-CEAI/aegis_gym/pull/94) - Added ClearML config connection to the `grasp_cfg.py` config getters.
 - [PR-104](https://github.com/AGH-CEAI/aegis_gym/pull/104) - Added best model checkpoint saving.
@@ -16,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
+- [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Tensor operation improvements in `grasp_env.py`, `grasp_env_ros.py`, `PerCameraCNNEncoder`, `SharedCNNEncoder` and `AutoencoderCNNEncoder`.
 - [PR-109](https://github.com/AGH-CEAI/aegis_gym/pull/109) - Made pose head optional.
 - [PR-97](https://github.com/AGH-CEAI/aegis_gym/pull/97) - Changed BC logging to every iteration (removed `log_freq` parameter from bc_config).
 - [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - `utils/clearml_enquee_tasks.py`: Improved information for the user.
