@@ -12,8 +12,8 @@
 - Train the RL teacher policy:
 ```bash
 python3 grasp_train.py --stage=rl
-python3 grasp_train.py --stage=rl --num_envs=1
-python3 grasp_train.py --stage=rl --num_envs=1 --control=ros
+python3 grasp_train.py --stage=rl --num-envs=1
+python3 grasp_train.py --stage=rl --num-envs=1 --control=ros
 ```
 - Train the student BC policy (requires a trained RL teacher):
 ```bash
@@ -24,6 +24,7 @@ python3 grasp_train.py --stage=bc
 - Evaluate a trained RL policy:
 ```bash
 python3 grasp_eval.py --stage=rl
+python3 grasp_eval.py --stage=rl --load-rl-task-id aa7a4ad4079a4964b7c33a46651c9eab
 ```
 - Evaluate a trained BC policy:
 ```bash

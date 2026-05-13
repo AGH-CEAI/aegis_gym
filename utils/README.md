@@ -58,6 +58,15 @@ Clone task multiple times into a selected queue.
 
 ---
 
+### [`clearml_enqueue_eval_tasks.py`](./clearml_enqueue_eval_tasks.py)
+For each completed training task in a source project, clone an eval template and enqueue.
+
+```bash
+./clearml_enqueue_eval_tasks.py --eval-template-id=TEMPLATE-TASK-ID --source-project=PROJECT-PATH --queue-name=geonosis
+```
+
+---
+
 ### [`clearml_exp_plotter.py`](./clearml_exp_plotter.py)
 Aggregate summaries of multiple ClearML experiments into comparison plots!
 
