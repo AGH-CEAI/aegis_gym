@@ -4,6 +4,7 @@ from typing import Literal, Optional
 import genesis as gs
 import numpy as np
 import torch as th
+import torch.nn.functional as F
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import (
@@ -49,7 +50,11 @@ class GraspEnv(VecEnv):
             f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 
+        self._dr_cfg = env_cfg.get("domain_randomization", {"enabled": False})
+        self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
+
         self._cameras: dict[str, gs.Camera] = {}
+        self._debug_cameras: dict[str, gs.Camera] = {}
         self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
 
         self.scene.build(
@@ -59,6 +64,10 @@ class GraspEnv(VecEnv):
 
         self.robot.set_pd_gains()
         self._attach_cameras()
+
+        if self._dr_cfg.get("enabled", False):
+            self._setup_dr_pd_gains()
+            self._cache_camera_base_offsets()
 
         self._init_reward_functions()
         self._init_buffers()
@@ -108,6 +117,8 @@ class GraspEnv(VecEnv):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
+                batch_dofs_info=True,
+                batch_links_info=True,
             ),
             vis_options=gs.options.VisOptions(
                 rendered_envs_idx=list(range(self.num_envs)),
@@ -219,6 +230,14 @@ class GraspEnv(VecEnv):
             fov=fov,
             GUI=self.show_cameras_gui,
         )
+        if self.show_cameras_gui:
+            self._debug_cameras[name] = self.scene.add_camera(
+                res=res,
+                pos=pos,
+                lookat=lookat,
+                fov=fov,
+                GUI=False,
+            )
 
     def _attach_cameras(self):
         if self.camera_setup != "default":
@@ -250,10 +269,11 @@ class GraspEnv(VecEnv):
         ]
 
         for cam_name, link_name, offset in cams_to_attach:
-            self._cameras[cam_name].attach(
-                self.robot._robot_entity.get_link(link_name), offset
-            )
-            self._cameras[cam_name].move_to_attach()
+            link = self.robot._robot_entity.get_link(link_name)
+            for cam_dict in (self._cameras, self._debug_cameras):
+                if cam_name in cam_dict:
+                    cam_dict[cam_name].attach(link, offset)
+                    cam_dict[cam_name].move_to_attach()
 
     # Required by rsl_rl
     @property
@@ -341,6 +361,10 @@ class GraspEnv(VecEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
+        if self._dr_cfg.get("enabled", False):
+            self._randomize_camera_extrinsics(envs_idx)
+            self._randomize_camera_fov()
+
     def generate_object_poses(self, seed: int) -> th.Tensor:
         rng = th.Generator(device=self.device)
         rng.manual_seed(seed)
@@ -403,6 +427,8 @@ class GraspEnv(VecEnv):
         self.scene.step()
         if self.show_cameras_gui:
             self.get_observations_vis()
+            if self._dr_cfg.get("debug_viewer", False):
+                self._show_augmented_debug()
         self._log_state_to_plot_juggler()
 
         # check termination
@@ -529,10 +555,16 @@ class GraspEnv(VecEnv):
         rgb_list = [None] * len(cams)
 
         for cam_id, cam in enumerate(cams):
-            rgb = cam.render(rgb=True, depth=False, segmentation=False, normal=False)[0]
+            rgb, _, _, _ = cam.render(
+                rgb=True, depth=False, segmentation=False, normal=False
+            )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]  # (B, 3, H, W)
             if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
+                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+
+            if self._dr_cfg.get("enabled", False):
+                rgb = self._apply_image_augmentation(rgb)
+
             rgb_list[cam_id] = rgb
 
         return th.cat(rgb_list, dim=1)
@@ -643,6 +675,234 @@ class GraspEnv(VecEnv):
         success_rate = success.float().mean().item()
 
         return success_rate
+
+    def _setup_dr_pd_gains(self) -> None:
+        pd_cfg = self._dr_cfg.get("pd_gains", {})
+        if not pd_cfg.get("enabled", False):
+            return
+
+        robot_entity = self.robot._robot_entity
+        n_dofs = robot_entity.n_dofs
+
+        kp_noise = pd_cfg.get("kp_noise", 0.0)
+        kv_noise = pd_cfg.get("kv_noise", 0.0)
+
+        nominal_kp = np.array(self.robot._kp_gains)
+        nominal_kv = np.array(self.robot._kv_gains)
+
+        kp_scale = 1.0 + (np.random.rand(self.num_envs, n_dofs) * 2.0 - 1.0) * kp_noise
+        kv_scale = 1.0 + (np.random.rand(self.num_envs, n_dofs) * 2.0 - 1.0) * kv_noise
+
+        kp_rand = nominal_kp[None, :] * kp_scale
+        kv_rand = nominal_kv[None, :] * kv_scale
+
+        motors_dof = list(range(n_dofs))
+        robot_entity.set_dofs_kp(kp_rand, motors_dof)
+        robot_entity.set_dofs_kv(kv_rand, motors_dof)
+
+    def _cache_camera_base_offsets(self) -> None:
+        self._dr_cam_base_offsets = {}
+        if self.camera_setup != "default":
+            return
+
+        self._dr_cam_base_offsets = {
+            "scene_cam": np.array(
+                [
+                    [0.0, 0.0, -1.0, 0.0],
+                    [-1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+            "tool_left_cam": np.array(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, -0.03],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+            "tool_right_cam": np.array(
+                [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, -0.03],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+        }
+
+    @staticmethod
+    def _make_random_se3_perturbation(
+        translation_std: float,
+        rotation_std_deg: float,
+    ) -> np.ndarray:
+        t = np.random.randn(3) * translation_std
+        angles = np.random.randn(3) * math.radians(rotation_std_deg)
+        rx, ry, rz = angles
+        Rx = np.array(
+            [
+                [1, 0, 0],
+                [0, math.cos(rx), -math.sin(rx)],
+                [0, math.sin(rx), math.cos(rx)],
+            ]
+        )
+        Ry = np.array(
+            [
+                [math.cos(ry), 0, math.sin(ry)],
+                [0, 1, 0],
+                [-math.sin(ry), 0, math.cos(ry)],
+            ]
+        )
+        Rz = np.array(
+            [
+                [math.cos(rz), -math.sin(rz), 0],
+                [math.sin(rz), math.cos(rz), 0],
+                [0, 0, 1],
+            ]
+        )
+        T = np.eye(4, dtype=np.float32)
+        T[:3, :3] = Rz @ Ry @ Rx
+        T[:3, 3] = t
+        return T
+
+    def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
+        cam_cfg = self._dr_cfg.get("camera_extrinsics", {})
+        if not cam_cfg.get("enabled", False):
+            return
+        if not self._dr_cam_base_offsets:
+            return
+
+        link_names = {
+            "scene_cam": "cam_scene_rgb_camera_frame",
+            "tool_left_cam": "cam_tool_left",
+            "tool_right_cam": "cam_tool_right",
+        }
+
+        for cam_name, base_offset in self._dr_cam_base_offsets.items():
+            per_cam = cam_cfg.get(
+                "scene_cam" if cam_name == "scene_cam" else "tool_cams", {}
+            )
+            t_std = per_cam.get("translation_std", 0.002)
+            r_std = per_cam.get("rotation_std_deg", 0.5)
+
+            perturb = self._make_random_se3_perturbation(t_std, r_std)
+            perturbed_offset = (base_offset @ perturb).astype(np.float32)
+            try:
+                link = self.robot._robot_entity.get_link(link_names[cam_name])
+                for cam_dict in (self._cameras, self._debug_cameras):
+                    if cam_name in cam_dict:
+                        cam_dict[cam_name].attach(link, perturbed_offset)
+                        cam_dict[cam_name].move_to_attach()
+            except Exception:
+                self._dr_cfg["camera_extrinsics"]["enabled"] = False
+                break
+
+    def _randomize_camera_fov(self) -> None:
+        fov_cfg = self._dr_cfg.get("camera_fov", {})
+        if not fov_cfg.get("enabled", False):
+            return
+
+        for cam_name, cam in self._cameras.items():
+            per_cam = fov_cfg.get(
+                "scene_cam" if cam_name == "scene_cam" else "tool_cams", {}
+            )
+            base_fov = per_cam.get("base_fov", 35)
+            std_deg = per_cam.get("std_deg", 2.0)
+            new_fov = float(np.clip(base_fov + np.random.randn() * std_deg, 5, 120))
+            try:
+                cam.set_params(fov=new_fov)
+                if cam_name in self._debug_cameras:
+                    self._debug_cameras[cam_name].set_params(fov=new_fov)
+            except Exception:
+                self._dr_cfg["camera_fov"]["enabled"] = False
+                break
+
+    def _apply_gaussian_blur(
+        self,
+        rgb: th.Tensor,
+        kernel_size: int = 3,
+        sigma: float = 0.8,
+    ) -> th.Tensor:
+        x = (
+            th.arange(kernel_size, dtype=th.float32, device=self.device)
+            - kernel_size // 2
+        )
+        k1d = th.exp(-(x**2) / (2.0 * sigma**2))
+        k1d = k1d / k1d.sum()
+        k2d = k1d.unsqueeze(0) * k1d.unsqueeze(1)
+        C = rgb.shape[1]
+        kernel = k2d.unsqueeze(0).unsqueeze(0).expand(C, 1, kernel_size, kernel_size)
+        pad = kernel_size // 2
+        return F.conv2d(rgb, kernel, padding=pad, groups=C)
+
+    def _show_augmented_debug(self) -> None:
+        if not self._debug_cameras:
+            return
+        try:
+            import cv2
+        except ImportError:
+            self._dr_cfg["debug_viewer"] = False
+            return
+
+        frames = []
+        for name, cam in self._debug_cameras.items():
+            rgb, _, _, _ = cam.render(
+                rgb=True, depth=False, segmentation=False, normal=False
+            )
+            rgb = rgb.permute(0, 3, 1, 2)[:, :3]
+            rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+            if self._dr_cfg.get("enabled", False):
+                rgb = self._apply_image_augmentation(rgb)
+            frame = rgb[0].detach().float().cpu()
+            frame_np = (frame.permute(1, 2, 0).clamp(0, 1).numpy() * 255).astype(
+                np.uint8
+            )
+            frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
+            frame_up = cv2.resize(
+                frame_bgr, (256, 256), interpolation=cv2.INTER_NEAREST
+            )
+            cv2.putText(
+                frame_up, name, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1
+            )
+            frames.append(frame_up)
+        cv2.imshow("Network view", np.concatenate(frames, axis=1))
+        cv2.waitKey(1)
+
+    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
+        aug = self._dr_cfg.get("image_aug", {})
+        N = rgb.shape[0]
+
+        b = aug.get("brightness_jitter", 0.0)
+        if b > 0.0:
+            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * b
+            rgb = rgb * factor
+
+        c = aug.get("contrast_jitter", 0.0)
+        if c > 0.0:
+            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
+            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * c
+            rgb = (rgb - mean) * factor + mean
+
+        sigma = aug.get("gaussian_noise_std", 0.0)
+        if sigma > 0.0:
+            rgb = rgb + th.randn_like(rgb) * sigma
+
+        g = aug.get("gamma_range", 0.0)
+        if g > 0.0:
+            gamma = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * g
+            rgb = rgb.clamp(1e-6, 1.0).pow(gamma)
+
+        p = aug.get("blur_prob", 0.0)
+        if p > 0.0 and th.rand(1).item() < p:
+            ks = aug.get("blur_kernel_size", 3)
+            s = aug.get("blur_sigma", 0.8)
+            rgb = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
+
+        return rgb.clamp(0.0, 1.0)
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:
