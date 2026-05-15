@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 ### Fixed
 
+- [PR-114](https://github.com/AGH-CEAI/aegis_gym/pull/114) - Fixed bug with config overwrite by args.
 - [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - Fixed bug with `matplotlib` dependency in  `utils/clearml_enquee_tasks.py`.
 
 ### Security
