@@ -86,15 +86,11 @@ def parse_arguments() -> Namespace:
 
 def setup_config(args: Namespace, task: Task) -> GraspConfig:
     cfg = GraspConfig.create_with_clearml(task)
-
-    def overwrite_if_given(a: any, b: any):
-        a = b or a
-
-    overwrite_if_given(cfg.rl_cfg["experiment_name"], args.exp_name)
-    overwrite_if_given(cfg.rl_cfg["experiment_name"], args.exp_name)
-    overwrite_if_given(cfg.rl_cfg["max_iterations"], args.max_iterations)
-    overwrite_if_given(cfg.env_cfg["num_envs"], args.num_envs)
-    overwrite_if_given(cfg.env_cfg["visualize_camera"], args.visualize_camera)
+    
+    cfg.rl_cfg["experiment_name"] = args.exp_name or cfg.rl_cfg["experiment_name"]
+    cfg.rl_cfg["max_iterations"] = args.max_iterations or cfg.rl_cfg["max_iterations"]
+    cfg.env_cfg["num_envs"] = args.num_envs or cfg.env_cfg["num_envs"]
+    cfg.env_cfg["visualize_camera"] = args.visualize_camera or cfg.env_cfg["visualize_camera"]
 
     # TODO(issue#111) simplify config structure
     project_suffix = f"_{args.stage}-{args.control}"
