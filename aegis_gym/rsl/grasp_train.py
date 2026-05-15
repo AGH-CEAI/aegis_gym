@@ -86,11 +86,13 @@ def parse_arguments() -> Namespace:
 
 def setup_config(args: Namespace, task: Task) -> GraspConfig:
     cfg = GraspConfig.create_with_clearml(task)
-    
+
     cfg.rl_cfg["experiment_name"] = args.exp_name or cfg.rl_cfg["experiment_name"]
     cfg.rl_cfg["max_iterations"] = args.max_iterations or cfg.rl_cfg["max_iterations"]
     cfg.env_cfg["num_envs"] = args.num_envs or cfg.env_cfg["num_envs"]
-    cfg.env_cfg["visualize_camera"] = args.visualize_camera or cfg.env_cfg["visualize_camera"]
+    cfg.env_cfg["visualize_camera"] = (
+        args.visualize_camera or cfg.env_cfg["visualize_camera"]
+    )
 
     # TODO(issue#111) simplify config structure
     project_suffix = f"_{args.stage}-{args.control}"
