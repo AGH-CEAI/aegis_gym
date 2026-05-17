@@ -17,6 +17,11 @@ class Stage(StrEnum):
     BC = "bc"
 
 
+class Control(StrEnum):
+    SIM = "sim"
+    ROS = "ros"
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class Checkpoint:
     step: int

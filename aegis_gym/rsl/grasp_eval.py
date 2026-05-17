@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import GraspConfig, get_logger_cfg
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage, Control
 
 from envs.grasp_env import GraspEnv
 from envs.grasp_env_ros import GraspEnvROS
@@ -24,8 +24,8 @@ def main():
     args = parse_arguments()
 
     task = Task.init(
-        project_name=f"{args.project_name}_eval-{args.stage}-{args.control}",
-        task_name=f"{args.exp_name}_{args.stage}_eval",
+        project_name=f"{args.project_name}_eval-{str(args.stage)}-{str(args.control)}",
+        task_name=f"{args.exp_name}_{str(args.stage)}_eval",
         # Probably there will bo no way to control parameters from ClearML UI without reusing task
         reuse_last_task_id=False,
     )
@@ -86,7 +86,9 @@ def parse_arguments() -> Namespace:
         default=None,
         help="Path to save the video file (default: auto-generated)",
     )
-    p.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
+    p.add_argument(
+        "--control", type=Control, choices=list(Control), default=Control.SIM
+    )
     p.add_argument(
         "--load-from-pickle",
         action="store_true",
@@ -132,7 +134,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     cfg = GraspConfig.create_with_clearml(task)
 
     # TODO dynamic config variables should be grouped into other dict/object
-    stage_type = args.stage
+    stage_type = str(args.stage)
     log_dir = Path("logs") / f"{args.exp_name}_{stage_type}_eval"
     log_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
@@ -162,7 +164,7 @@ def is_checkpoints_sweep_required(args: Namespace) -> bool:
 def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
     device = cfg.get_device()
     env = None
-    if args.control == "sim":
+    if args.control == Control.SIM:
         cfg.env_cfg["max_visualize_FPS"] = 60
         cfg.env_cfg["num_envs"] = args.num_envs
         cfg.env_cfg["box_collision"] = True
@@ -179,7 +181,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
             show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
-    if args.control == "ros":
+    if args.control == Control.ROS:
         cfg.env_cfg["max_visualize_FPS"] = int(1 / cfg.env_cfg["policy_dt"])
         cfg.env_cfg["num_envs"] = 1
 
@@ -229,8 +231,10 @@ def load_policy(
 def start_cameras_recording(
     env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> None:
-    if not args.control == "sim":
-        print(f"[GraspEval] Skipping camera setup for control type: {args.control}")
+    if not args.control == Control.SIM:
+        print(
+            f"[GraspEval] Skipping camera setup for control type: {str(args.control)}"
+        )
     if not args.record:
         return
     camera_setup = cfg.env_cfg["camera_setup"]
@@ -248,13 +252,13 @@ def start_cameras_recording(
             env._cameras["scene_right_cam"].start_recording()
         case _:
             raise RuntimeError(f"Unknown camera_setup: {camera_setup}")
-    print(f"[GraspEval] Recording video (camera setup: {args.control})...")
+    print(f"[GraspEval] Recording video (camera setup: {camera_setup})...")
 
 
 def stop_cameras_recording(
     env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> None:
-    if not args.control == "sim":
+    if not args.control == Control.SIM:
         return
     if not args.record:
         return
@@ -302,7 +306,7 @@ def eval_policy_single(
     args: Namespace,
     task: Task,
 ) -> None:
-    record_render = args.control == "sim" and args.record
+    record_render = args.control == Control.SIM and args.record
     device = cfg.get_device()
     max_steps = cfg.env_cfg["max_steps"]
 

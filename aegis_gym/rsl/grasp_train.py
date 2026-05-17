@@ -10,7 +10,7 @@ from clearml import Task
 
 from behavior_cloning import BehaviorCloning
 from grasp_cfgs import GraspConfig, get_logger_cfg
-from utils import load_rl_policy
+from utils import load_rl_policy, Stage, Control
 
 from envs.grasp_env import GraspEnv
 
@@ -29,8 +29,8 @@ def main():
     args = parse_arguments()
     # The ClearML task must exists for connecting configuration
     task = Task.init(
-        project_name=f"{args.project_name}_{args.stage}-{args.control}",
-        task_name=f"{args.exp_name}_{args.stage}",
+        project_name=f"{args.project_name}_{str(args.stage)}-{str(args.control)}",
+        task_name=f"{args.exp_name}_{str(args.stage)}",
         reuse_last_task_id=True,
     )
     cfg = setup_config(args, task)
@@ -67,7 +67,7 @@ def parse_arguments() -> Namespace:
     p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=300)
-    p.add_argument("--stage", type=str, choices=["rl", "bc"], default="rl")
+    p.add_argument("--stage", type=Stage, choices=list(Stage), default=Stage.RL)
     p.add_argument("--load-rl-task-id", type=str, default=None)
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument(
@@ -75,7 +75,9 @@ def parse_arguments() -> Namespace:
         action="store_true",
         help="Do not load config from RL/BC checkpoint",
     )
-    p.add_argument("--control", type=str, choices=["sim", "ros"], default="sim")
+    p.add_argument(
+        "--control", type=Control, choices=list(Control), default=Control.SIM
+    )
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=500)
@@ -95,14 +97,14 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     )
 
     # TODO(issue#111) simplify config structure
-    project_suffix = f"_{args.stage}-{args.control}"
+    project_suffix = f"_{str(args.stage)}-{str(args.control)}"
     cfg.logger_cfg["wandb_project"] += project_suffix
     cfg.logger_cfg["clearml_project"] += project_suffix
     cfg.logger_cfg["neptune_project"] += project_suffix
     cfg.rl_cfg.update(cfg.logger_cfg)
     cfg.bc_cfg.update(cfg.logger_cfg)
 
-    train_type = args.stage  # "rl" or "bc"
+    train_type = str(args.stage)
     log_dir = Path("logs") / f"{args.exp_name}_{train_type}"
     log_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
@@ -113,7 +115,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
 def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
     device = cfg.get_device()
     env = None
-    if args.control == "sim":
+    if args.control == Control.SIM:
         gs.init(logging_level="info", precision="32")
         env = GraspEnv(
             env_cfg=cfg.env_cfg,
@@ -121,7 +123,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
             show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
-    if args.control == "ros":
+    if args.control == Control.ROS:
         if GraspEnvROS is None:
             print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
             exit()
@@ -169,7 +171,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     cfg_pickle_path = Path(cfg.logger_cfg["local_log_dir"]) / "cfgs.pkl"
     match args.stage:
-        case "bc":
+        case Stage.BC:
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
             teacher_policy = load_rl_policy(
                 env=env,
@@ -190,7 +192,7 @@ def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> No
                 env, cfg.bc_cfg, teacher_policy, log_dir=log_dir, device=device
             )
             runner.learn(num_learning_iterations=args.max_iterations)
-        case "rl":
+        case Stage.RL:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
             cfg.to_pickle(cfg_pickle_path)
             print("[GraspTrain] > Saved config as a pickle.")
