@@ -33,7 +33,7 @@ class GraspConfig:
         return cls._instance
 
     @classmethod
-    def create(cls, device: any = "cpu") -> "GraspConfig":
+    def create(cls) -> "GraspConfig":
         cls._instance = cls(
             logger_cfg=get_logger_cfg(),
             rl_cfg=get_rl_cfg(),
@@ -68,7 +68,6 @@ def get_logger_cfg() -> dict:
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
         "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
-        # "clearml_project": "BASELINE_3/EVAL/student_enc-per-camera-att-spat",
         "clearml_project": "TEST_PLAYGROUND/randomization",
         "clearml_log_cfg_as_hyperparams": False,
     }
@@ -250,43 +249,6 @@ def get_task_cfgs() -> tuple[dict, dict]:
     return env_cfg, robot_cfg
 
 
-def get_dr_cfg() -> dict:
-    return {
-        "enabled": True,
-        "image_aug": {
-            "brightness_jitter": 0.25,
-            "contrast_jitter": 0.20,
-            "gaussian_noise_std": 0.025,
-            "gamma_range": 0.25,
-            "blur_prob": 0.30,
-            "blur_kernel_size": 3,
-            "blur_sigma": 0.8,
-        },
-        "pd_gains": {
-            "enabled": True,
-            "kp_noise": 0.10,
-            "kv_noise": 0.10,
-        },
-        "camera_extrinsics": {
-            "enabled": True,
-            "scene_cam": {
-                "translation_std": 0.0,
-                "rotation_std_deg": 1.0,
-            },
-            "tool_cams": {
-                "translation_std": 0.0,
-                "rotation_std_deg": 0.5,
-            },
-        },
-        "camera_fov": {
-            "enabled": True,
-            "scene_cam": {"base_fov": 38, "std_deg": 2.0},
-            "tool_cams": {"base_fov": 30, "std_deg": 2.0},
-        },
-        "debug_viewer": True,
-    }
-
-
 def get_env_cfg() -> dict:
     return {
         "num_envs": 10,
@@ -317,6 +279,44 @@ def get_env_cfg() -> dict:
             "keypoints": 1.0,
         },
         "domain_randomization": get_dr_cfg(),
+    }
+
+
+def get_dr_cfg() -> dict:
+    return {
+        "enabled": True,
+        "debug_viewer": True,
+        "image_aug": {
+            "enabled": True,
+            "brightness_jitter": 0.25,
+            "contrast_jitter": 0.20,
+            "gaussian_noise_std": 0.025,
+            "gamma_range": 0.25,
+            "blur_prob": 0.30,
+            "blur_kernel_size": 3,
+            "blur_sigma": 0.8,
+        },
+        "pd_gains": {
+            "enabled": True,
+            "kp_noise": 0.10,
+            "kv_noise": 0.10,
+        },
+        "camera_extrinsics": {
+            "enabled": True,
+            "scene_cam": {
+                "translation_std": 0.0,
+                "rotation_std_deg": 1.0,
+            },
+            "tool_cams": {
+                "translation_std": 0.0,
+                "rotation_std_deg": 0.5,
+            },
+        },
+        "camera_fov": {
+            "enabled": True,
+            "scene_cam": {"base_fov": 38, "std_deg": 2.0},
+            "tool_cams": {"base_fov": 30, "std_deg": 2.0},
+        },
     }
 
 
