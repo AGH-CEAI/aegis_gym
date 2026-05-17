@@ -770,7 +770,7 @@ class GraspEnv(VecEnv):
         return T
 
     def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
-        cam_cfg = self._dr_cfg.get("camera_extrinsics", {})
+        cam_cfg = self._dr_cfg.get("cameras_extrinsics", {})
         if not cam_cfg.get("enabled", False):
             return
         if not self._dr_cam_base_offsets:
@@ -798,11 +798,11 @@ class GraspEnv(VecEnv):
                         cam_dict[cam_name].attach(link, perturbed_offset)
                         cam_dict[cam_name].move_to_attach()
             except Exception:
-                self._dr_cfg["camera_extrinsics"]["enabled"] = False
+                self._dr_cfg["cameras_extrinsics"]["enabled"] = False
                 break
 
     def _randomize_camera_fov(self) -> None:
-        fov_cfg = self._dr_cfg.get("camera_fov", {})
+        fov_cfg = self._dr_cfg.get("cameras_fov", {})
         if not fov_cfg.get("enabled", False):
             return
 
@@ -818,7 +818,7 @@ class GraspEnv(VecEnv):
                 if cam_name in self._debug_cameras:
                     self._debug_cameras[cam_name].set_params(fov=new_fov)
             except Exception:
-                self._dr_cfg["camera_fov"]["enabled"] = False
+                self._dr_cfg["cameras_fov"]["enabled"] = False
                 break
 
     def _apply_gaussian_blur(

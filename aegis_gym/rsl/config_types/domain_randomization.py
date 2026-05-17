@@ -56,4 +56,4 @@ class DomainRandomizationCfg(ToggleCfg):
         default_factory=CamerasExtrinsicsCfg
     )
 
-    camera_fov: CamerasFovCfg = field(default_factory=CamerasFovCfg)
+    cameras_fov: CamerasFovCfg = field(default_factory=CamerasFovCfg)

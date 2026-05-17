@@ -150,6 +150,7 @@ def get_rl_cfg() -> dict:
             "state_dependent_std": False,
             "detach_actor_grad": False,
         },
+        "domain_randomization": get_dr_cfg(),  # TODO remove this after code refactor
     }
 
 
@@ -320,7 +321,7 @@ def get_dr_cfg() -> dict:
             "kp_noise": 0.10,
             "kv_noise": 0.10,
         },
-        "camera_extrinsics": {
+        "cameras_extrinsics": {
             "enabled": True,
             "scene_cam": {
                 "translation_std": 0.0,
@@ -331,7 +332,7 @@ def get_dr_cfg() -> dict:
                 "rotation_std_deg": 0.5,
             },
         },
-        "camera_fov": {
+        "cameras_fov": {
             "enabled": True,
             "scene_cam": {"base_fov": 38, "std_deg": 2.0},
             "tool_cams": {"base_fov": 30, "std_deg": 2.0},
