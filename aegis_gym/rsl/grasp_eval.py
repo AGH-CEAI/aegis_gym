@@ -13,7 +13,11 @@ from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage, Control
 
 from envs.grasp_env import GraspEnv
-from envs.grasp_env_ros import GraspEnvROS
+
+try:
+    from envs.grasp_env_ros import GraspEnvROS
+except ImportError:
+    GraspEnvROS = None
 
 GraspEnvironment = GraspEnv | GraspEnvROS
 

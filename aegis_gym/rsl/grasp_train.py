@@ -19,7 +19,7 @@ try:
 except ImportError:
     GraspEnvROS = None
 
-GraspEnvironemnt = GraspEnv | GraspEnvROS
+GraspEnvironment = GraspEnv | GraspEnvROS
 
 
 def main():
@@ -112,7 +112,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     return cfg
 
 
-def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
+def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
     device = cfg.get_device()
     env = None
     if args.control == Control.SIM:
@@ -138,7 +138,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironemnt | None:
 
 
 def calibration_movment(
-    env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig
+    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
 ) -> None:
     device = cfg.get_device()
 
@@ -166,7 +166,7 @@ def calibration_movment(
     print("[GraspTrain] >>> Finished relative joints movement.")
 
 
-def train_runner(env: GraspEnvironemnt, args: Namespace, cfg: GraspConfig) -> None:
+def train_runner(env: GraspEnvironment, args: Namespace, cfg: GraspConfig) -> None:
     device = cfg.get_device()
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     cfg_pickle_path = Path(cfg.logger_cfg["local_log_dir"]) / "cfgs.pkl"

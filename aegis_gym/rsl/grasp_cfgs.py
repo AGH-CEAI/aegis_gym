@@ -1,10 +1,12 @@
 import pickle
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, asdict, is_dataclass
 from typing import ClassVar
 from pathlib import Path
 
 import torch as th
 from clearml import Task
+
+from config_types.domain_randomization import DomainRandomizationCfg
 
 
 @dataclass(slots=True, frozen=True)
@@ -14,6 +16,7 @@ class GraspConfig:
     bc_cfg: dict
     env_cfg: dict
     robot_cfg: dict
+    dr_cfg: DomainRandomizationCfg
 
     _device: ClassVar["th.device"] = None
     _instance: ClassVar["GraspConfig | None"] = None
@@ -40,20 +43,36 @@ class GraspConfig:
             bc_cfg=get_bc_cfg(),
             env_cfg=get_env_cfg(),
             robot_cfg=get_robot_cfg(),
+            dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
         )
         return cls._instance
 
     @classmethod
     def create_with_clearml(cls, task: Task) -> "GraspConfig":
         instance = cls.create()
-        cls._instance = cls(
-            **{
-                field.name: task.connect_configuration(
-                    getattr(instance, field.name), name=field.name
+
+        values = {}
+
+        for field in fields(instance):
+            value = getattr(instance, field.name)
+
+            if is_dataclass(value):
+                connected = task.connect_configuration(
+                    asdict(value),
+                    name=field.name,
                 )
-                for field in fields(instance)
-            }
-        )
+
+                value = type(value).create(connected)
+
+            else:
+                value = task.connect_configuration(
+                    value,
+                    name=field.name,
+                )
+
+            values[field.name] = value
+
+        cls._instance = cls(**values)
         return cls._instance
 
     def to_pickle(self, path: Path) -> None:
