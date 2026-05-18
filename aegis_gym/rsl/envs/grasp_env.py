@@ -52,6 +52,7 @@ class GraspEnv(VecEnv):
 
         self._dr_cfg = env_cfg.get("domain_randomization", {"enabled": False})
         self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
+        self._aug_profile: dict[str, th.Tensor] | None = None
 
         self._cameras: dict[str, gs.Camera] = {}
         self._debug_cameras: dict[str, gs.Camera] = {}
@@ -68,6 +69,7 @@ class GraspEnv(VecEnv):
         if self._dr_cfg.get("enabled", False):
             self._setup_dr_pd_gains()
             self._cache_camera_base_offsets()
+            self._init_aug_profile()
 
         self._init_reward_functions()
         self._init_buffers()
@@ -363,7 +365,7 @@ class GraspEnv(VecEnv):
 
         if self._dr_cfg.get("enabled", False):
             self._randomize_camera_extrinsics(envs_idx)
-            self._randomize_camera_fov()
+            self._resample_aug_profile(envs_idx)
 
     def generate_object_poses(self, seed: int) -> th.Tensor:
         rng = th.Generator(device=self.device)
@@ -681,24 +683,22 @@ class GraspEnv(VecEnv):
         if not pd_cfg.get("enabled", False):
             return
 
-        robot_entity = self.robot._robot_entity
-        n_dofs = robot_entity.n_dofs
-
         kp_noise = pd_cfg.get("kp_noise", 0.0)
         kv_noise = pd_cfg.get("kv_noise", 0.0)
+        n = self.num_envs
+        n_dofs = len(self.robot._kp_gains)
+        dev = self.device
 
-        nominal_kp = np.array(self.robot._kp_gains)
-        nominal_kv = np.array(self.robot._kv_gains)
+        nominal_kp = th.tensor(self.robot._kp_gains, dtype=th.float32, device=dev)
+        nominal_kv = th.tensor(self.robot._kv_gains, dtype=th.float32, device=dev)
 
-        kp_scale = 1.0 + (np.random.rand(self.num_envs, n_dofs) * 2.0 - 1.0) * kp_noise
-        kv_scale = 1.0 + (np.random.rand(self.num_envs, n_dofs) * 2.0 - 1.0) * kv_noise
+        kp_scale = 1.0 + (th.rand(n, n_dofs, device=dev) * 2.0 - 1.0) * kp_noise
+        kv_scale = 1.0 + (th.rand(n, n_dofs, device=dev) * 2.0 - 1.0) * kv_noise
 
-        kp_rand = nominal_kp[None, :] * kp_scale
-        kv_rand = nominal_kv[None, :] * kv_scale
+        kp_rand = nominal_kp.unsqueeze(0) * kp_scale
+        kv_rand = nominal_kv.unsqueeze(0) * kv_scale
 
-        motors_dof = list(range(n_dofs))
-        robot_entity.set_dofs_kp(kp_rand, motors_dof)
-        robot_entity.set_dofs_kv(kv_rand, motors_dof)
+        self.robot.set_pd_gains(kp=kp_rand, kv=kv_rand)
 
     def _cache_camera_base_offsets(self) -> None:
         self._dr_cam_base_offsets = {}
@@ -769,6 +769,69 @@ class GraspEnv(VecEnv):
         T[:3, 3] = t
         return T
 
+    def _init_aug_profile(self) -> None:
+        aug = self._dr_cfg.get("image_aug", {})
+        if not aug.get("per_episode_aug", False):
+            return
+        N = self.num_envs
+        self._aug_profile = {
+            "brightness_jitter": th.zeros(N, device=self.device),
+            "contrast_jitter": th.zeros(N, device=self.device),
+            "gaussian_noise_std": th.zeros(N, device=self.device),
+            "gamma_range": th.zeros(N, device=self.device),
+            "blur_active": th.zeros(N, device=self.device),
+            "cutout_active": th.zeros(N, dtype=th.bool, device=self.device),
+            "cutout_y": th.zeros(N, dtype=th.long, device=self.device),
+            "cutout_x": th.zeros(N, dtype=th.long, device=self.device),
+            "cutout_h": th.zeros(N, dtype=th.long, device=self.device),
+            "cutout_w": th.zeros(N, dtype=th.long, device=self.device),
+        }
+
+    def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
+        if self._aug_profile is None:
+            return
+        aug = self._dr_cfg.get("image_aug", {})
+        n = len(envs_idx)
+        dev = self.device
+
+        def sample(max_val: float) -> th.Tensor:
+            active = th.rand(n, device=dev) < 0.5
+            return active.float() * (th.rand(n, device=dev) * max_val)
+
+        self._aug_profile["brightness_jitter"][envs_idx] = sample(
+            aug.get("brightness_jitter", 0.0)
+        )
+        self._aug_profile["contrast_jitter"][envs_idx] = sample(
+            aug.get("contrast_jitter", 0.0)
+        )
+        self._aug_profile["gaussian_noise_std"][envs_idx] = sample(
+            aug.get("gaussian_noise_std", 0.0)
+        )
+        self._aug_profile["gamma_range"][envs_idx] = sample(aug.get("gamma_range", 0.0))
+        self._aug_profile["blur_active"][envs_idx] = (
+            th.rand(n, device=dev) < aug.get("blur_prob", 0.0)
+        ).float()
+
+        cutout_cfg = aug.get("cutout", {})
+        prob = cutout_cfg.get("prob", 0.0)
+        min_sz = cutout_cfg.get("min_size", 4)
+        max_sz = cutout_cfg.get("max_size", 16)
+        H, W = self.image_height, self.image_width
+        active = th.rand(n, device=dev) < prob
+        self._aug_profile["cutout_active"][envs_idx] = active
+        self._aug_profile["cutout_h"][envs_idx] = th.randint(
+            min_sz, max_sz + 1, (n,), device=dev
+        )
+        self._aug_profile["cutout_w"][envs_idx] = th.randint(
+            min_sz, max_sz + 1, (n,), device=dev
+        )
+        self._aug_profile["cutout_y"][envs_idx] = th.randint(
+            0, max(1, H - max_sz), (n,), device=dev
+        )
+        self._aug_profile["cutout_x"][envs_idx] = th.randint(
+            0, max(1, W - max_sz), (n,), device=dev
+        )
+
     def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
         cam_cfg = self._dr_cfg.get("cameras_extrinsics", {})
         if not cam_cfg.get("enabled", False):
@@ -801,26 +864,6 @@ class GraspEnv(VecEnv):
                 self._dr_cfg["cameras_extrinsics"]["enabled"] = False
                 break
 
-    def _randomize_camera_fov(self) -> None:
-        fov_cfg = self._dr_cfg.get("cameras_fov", {})
-        if not fov_cfg.get("enabled", False):
-            return
-
-        for cam_name, cam in self._cameras.items():
-            per_cam = fov_cfg.get(
-                "scene_cam" if cam_name == "scene_cam" else "tool_cams", {}
-            )
-            base_fov = per_cam.get("base_fov", 35)
-            std_deg = per_cam.get("std_deg", 2.0)
-            new_fov = float(np.clip(base_fov + np.random.randn() * std_deg, 5, 120))
-            try:
-                cam.set_params(fov=new_fov)
-                if cam_name in self._debug_cameras:
-                    self._debug_cameras[cam_name].set_params(fov=new_fov)
-            except Exception:
-                self._dr_cfg["cameras_fov"]["enabled"] = False
-                break
-
     def _apply_gaussian_blur(
         self,
         rgb: th.Tensor,
@@ -838,6 +881,82 @@ class GraspEnv(VecEnv):
         kernel = k2d.unsqueeze(0).unsqueeze(0).expand(C, 1, kernel_size, kernel_size)
         pad = kernel_size // 2
         return F.conv2d(rgb, kernel, padding=pad, groups=C)
+
+    def _apply_cutout(self, rgb: th.Tensor, cutout_cfg: dict) -> th.Tensor:
+        N, _, H, W = rgb.shape
+        prof = self._aug_profile
+        if prof is not None and "cutout_active" in prof:
+            for i in range(N):
+                if prof["cutout_active"][i]:
+                    y = int(prof["cutout_y"][i].item())
+                    x = int(prof["cutout_x"][i].item())
+                    h = int(prof["cutout_h"][i].item())
+                    w = int(prof["cutout_w"][i].item())
+                    rgb[i, :, y : y + h, x : x + w] = 0.0
+        else:
+            prob = cutout_cfg.get("prob", 0.0)
+            min_sz = cutout_cfg.get("min_size", 4)
+            max_sz = cutout_cfg.get("max_size", 16)
+            for i in range(N):
+                if th.rand(1).item() < prob:
+                    sz_h = int(th.randint(min_sz, max_sz + 1, (1,)).item())
+                    sz_w = int(th.randint(min_sz, max_sz + 1, (1,)).item())
+                    y = int(th.randint(0, max(1, H - sz_h + 1), (1,)).item())
+                    x = int(th.randint(0, max(1, W - sz_w + 1), (1,)).item())
+                    rgb[i, :, y : y + sz_h, x : x + sz_w] = 0.0
+        return rgb
+
+    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
+        aug = self._dr_cfg.get("image_aug", {})
+        if not aug.get("enabled", True):
+            return rgb
+        N = rgb.shape[0]
+        prof = self._aug_profile
+
+        def mag(key: str) -> th.Tensor:
+            if prof is not None:
+                return prof[key].view(N, 1, 1, 1)
+            return th.full((N, 1, 1, 1), aug.get(key, 0.0), device=self.device)
+
+        b = mag("brightness_jitter")
+        if b.any():
+            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * b
+            rgb = rgb * factor
+
+        c = mag("contrast_jitter")
+        if c.any():
+            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
+            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * c
+            rgb = (rgb - mean) * factor + mean
+
+        sigma = mag("gaussian_noise_std")
+        if sigma.any():
+            rgb = rgb + th.randn_like(rgb) * sigma
+
+        g = mag("gamma_range")
+        if g.any():
+            gamma = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * g
+            rgb = rgb.clamp(1e-6, 1.0).pow(gamma)
+
+        if prof is not None:
+            blur_mask = prof["blur_active"].view(N, 1, 1, 1)
+            if blur_mask.any():
+                ks = aug.get("blur_kernel_size", 3)
+                s = aug.get("blur_sigma", 0.8)
+                blurred = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
+                rgb = th.where(blur_mask > 0, blurred, rgb)
+        else:
+            p = aug.get("blur_prob", 0.0)
+            if p > 0.0 and th.rand(1).item() < p:
+                ks = aug.get("blur_kernel_size", 3)
+                s = aug.get("blur_sigma", 0.8)
+                rgb = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
+
+        cutout_cfg = aug.get("cutout", {})
+        if cutout_cfg.get("prob", 0.0) > 0.0:
+            rgb = self._apply_cutout(rgb, cutout_cfg)
+
+        return rgb.clamp(0.0, 1.0)
 
     def _show_augmented_debug(self) -> None:
         if not self._debug_cameras:
@@ -871,38 +990,6 @@ class GraspEnv(VecEnv):
             frames.append(frame_up)
         cv2.imshow("Network view", np.concatenate(frames, axis=1))
         cv2.waitKey(1)
-
-    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
-        aug = self._dr_cfg.get("image_aug", {})
-        N = rgb.shape[0]
-
-        b = aug.get("brightness_jitter", 0.0)
-        if b > 0.0:
-            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * b
-            rgb = rgb * factor
-
-        c = aug.get("contrast_jitter", 0.0)
-        if c > 0.0:
-            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
-            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * c
-            rgb = (rgb - mean) * factor + mean
-
-        sigma = aug.get("gaussian_noise_std", 0.0)
-        if sigma > 0.0:
-            rgb = rgb + th.randn_like(rgb) * sigma
-
-        g = aug.get("gamma_range", 0.0)
-        if g > 0.0:
-            gamma = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * g
-            rgb = rgb.clamp(1e-6, 1.0).pow(gamma)
-
-        p = aug.get("blur_prob", 0.0)
-        if p > 0.0 and th.rand(1).item() < p:
-            ks = aug.get("blur_kernel_size", 3)
-            s = aug.get("blur_sigma", 0.8)
-            rgb = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
-
-        return rgb.clamp(0.0, 1.0)
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:

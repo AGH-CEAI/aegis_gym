@@ -6,8 +6,6 @@ from pathlib import Path
 import torch as th
 from clearml import Task
 
-from config_types.domain_randomization import DomainRandomizationCfg
-
 
 @dataclass(slots=True, frozen=True)
 class GraspConfig:
@@ -16,7 +14,7 @@ class GraspConfig:
     bc_cfg: dict[str, Any]
     env_cfg: dict[str, Any]
     robot_cfg: dict[str, Any]
-    dr_cfg: DomainRandomizationCfg
+    # dr_cfg: DomainRandomizationCfg
 
     _device: ClassVar["th.device"] = None
     _instance: ClassVar["GraspConfig | None"] = None
@@ -43,7 +41,7 @@ class GraspConfig:
             bc_cfg=get_bc_cfg(),
             env_cfg=get_env_cfg(),
             robot_cfg=get_robot_cfg(),
-            dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
+            # dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
         )
         return cls._instance
 
@@ -87,7 +85,7 @@ def get_logger_cfg() -> dict[str, Any]:
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
         "neptune_project": "TEST_PLAYGROUND/aegis_grasp",
         "wandb_project": "TEST_PLAYGROUND/aegis_grasp",
-        "clearml_project": "TEST_PLAYGROUND/randomization",
+        "clearml_project": "TEST_PLAYGROUND/aegis_grasp",
         "clearml_log_cfg_as_hyperparams": False,
     }
 
@@ -308,13 +306,19 @@ def get_dr_cfg() -> dict[str, Any]:
         "debug_viewer": True,
         "image_aug": {
             "enabled": True,
-            "brightness_jitter": 0.25,
-            "contrast_jitter": 0.20,
+            "per_episode_aug": True,
+            "brightness_jitter": 0.4,
+            "contrast_jitter": 0.3,
             "gaussian_noise_std": 0.025,
             "gamma_range": 0.25,
             "blur_prob": 0.30,
             "blur_kernel_size": 3,
             "blur_sigma": 0.8,
+            "cutout": {
+                "prob": 0.3,
+                "min_size": 4,
+                "max_size": 12,
+            },
         },
         "pd_gains": {
             "enabled": True,
@@ -328,14 +332,9 @@ def get_dr_cfg() -> dict[str, Any]:
                 "rotation_std_deg": 1.0,
             },
             "tool_cams": {
-                "translation_std": 0.0,
-                "rotation_std_deg": 0.5,
+                "translation_std": 0.001,
+                "rotation_std_deg": 0.6,
             },
-        },
-        "cameras_fov": {
-            "enabled": True,
-            "scene_cam": {"base_fov": 38, "std_deg": 2.0},
-            "tool_cams": {"base_fov": 30, "std_deg": 2.0},
         },
     }
 

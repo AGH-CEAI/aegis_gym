@@ -116,22 +116,33 @@ class Manipulator:
         if self._args["default_gripper_dof"] is not None:
             self._default_joint_angles += self._args["default_gripper_dof"]
 
-    def set_pd_gains(self):
-        # set control gains
+    def set_pd_gains(
+        self,
+        kp: Optional[th.Tensor] = None,
+        kv: Optional[th.Tensor] = None,
+    ) -> None:
         self._kp_gains = [4500, 4500, 3500, 3500, 3500, 3500, 100, 100]
         self._kv_gains = [350, 350, 250, 250, 250, 250, 10, 10]
         n = self._num_envs
-        self._robot_entity.set_dofs_kp(
-            th.tensor(self._kp_gains).unsqueeze(0).expand(n, -1),
+        kp_t = (
+            kp
+            if kp is not None
+            else th.tensor(self._kp_gains, dtype=th.float32).unsqueeze(0).expand(n, -1)
         )
-        self._robot_entity.set_dofs_kv(
-            th.tensor(self._kv_gains).unsqueeze(0).expand(n, -1),
+        kv_t = (
+            kv
+            if kv is not None
+            else th.tensor(self._kv_gains, dtype=th.float32).unsqueeze(0).expand(n, -1)
         )
+        self._robot_entity.set_dofs_kp(kp_t)
+        self._robot_entity.set_dofs_kv(kv_t)
         self._robot_entity.set_dofs_force_range(
-            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100])
+            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100], dtype=th.float32)
             .unsqueeze(0)
             .expand(n, -1),
-            th.tensor([87, 87, 87, 87, 87, 87, 100, 100]).unsqueeze(0).expand(n, -1),
+            th.tensor([87, 87, 87, 87, 87, 87, 100, 100], dtype=th.float32)
+            .unsqueeze(0)
+            .expand(n, -1),
         )
         # TODO(issue#57) configure armature, damping and stiffness
         # self._robot_entity.set_dofs_armature(
