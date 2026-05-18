@@ -1,6 +1,6 @@
 import pickle
 from dataclasses import dataclass, fields, asdict, is_dataclass
-from typing import ClassVar
+from typing import ClassVar, Any
 from pathlib import Path
 
 import torch as th
@@ -11,11 +11,11 @@ from config_types.domain_randomization import DomainRandomizationCfg
 
 @dataclass(slots=True, frozen=True)
 class GraspConfig:
-    logger_cfg: dict
-    rl_cfg: dict
-    bc_cfg: dict
-    env_cfg: dict
-    robot_cfg: dict
+    logger_cfg: dict[str, Any]
+    rl_cfg: dict[str, Any]
+    bc_cfg: dict[str, Any]
+    env_cfg: dict[str, Any]
+    robot_cfg: dict[str, Any]
     dr_cfg: DomainRandomizationCfg
 
     _device: ClassVar["th.device"] = None
@@ -51,7 +51,7 @@ class GraspConfig:
     def create_with_clearml(cls, task: Task) -> "GraspConfig":
         instance = cls.create()
 
-        values = {}
+        values: dict[str, Any] = {}
 
         for field in fields(instance):
             value = getattr(instance, field.name)
@@ -81,7 +81,7 @@ class GraspConfig:
             pickle.dump(data, f)
 
 
-def get_logger_cfg() -> dict:
+def get_logger_cfg() -> dict[str, Any]:
     return {
         # Logger
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
@@ -92,7 +92,7 @@ def get_logger_cfg() -> dict:
     }
 
 
-def get_rl_cfg() -> dict:
+def get_rl_cfg() -> dict[str, Any]:
     return {
         "class_name": "OnPolicyRunner",
         # General
@@ -154,7 +154,7 @@ def get_rl_cfg() -> dict:
     }
 
 
-def get_bc_cfg() -> dict:
+def get_bc_cfg() -> dict[str, Any]:
     return {
         # basic training parameters
         "num_steps_per_env": 24,
@@ -263,13 +263,13 @@ def get_bc_cfg() -> dict:
     }
 
 
-def get_task_cfgs() -> tuple[dict, dict]:
+def get_task_cfgs() -> tuple[dict[str, Any], dict[str, Any]]:
     env_cfg = get_env_cfg()
     robot_cfg = get_robot_cfg()
     return env_cfg, robot_cfg
 
 
-def get_env_cfg() -> dict:
+def get_env_cfg() -> dict[str, Any]:
     return {
         "num_envs": 10,
         "num_obs": 14,
@@ -302,7 +302,7 @@ def get_env_cfg() -> dict:
     }
 
 
-def get_dr_cfg() -> dict:
+def get_dr_cfg() -> dict[str, Any]:
     return {
         "enabled": True,
         "debug_viewer": True,
@@ -340,7 +340,7 @@ def get_dr_cfg() -> dict:
     }
 
 
-def get_robot_cfg() -> dict:
+def get_robot_cfg() -> dict[str, Any]:
     return {
         "ee_link_name": "robotiq_hande_end",
         "gripper_link_names": [
