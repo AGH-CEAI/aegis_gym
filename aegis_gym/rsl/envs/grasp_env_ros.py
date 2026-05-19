@@ -2,11 +2,6 @@ import math
 import time
 from typing import Literal, Optional
 
-import os
-import tempfile
-from PIL import Image
-import numpy as np
-import cv2
 
 import torch as th
 from rsl_rl.env import VecEnv
@@ -315,8 +310,8 @@ class GraspEnvROS(VecEnv):
                     np_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
                 )
 
-                cv2.imshow(f"{cam_name} (large)", large_img)
-                cv2.waitKey(1)
+            #     cv2.imshow(f"{cam_name} (large)", large_img)
+            #     cv2.waitKey(1)
 
             if save_frames:
                 # Determine save directory
@@ -427,35 +422,44 @@ class GraspEnvROS(VecEnv):
         step_4 = False
         success = False
 
-        for i in range(total_steps):
-            self.robot.read_state()
-            if i < total_steps / 5:  # go down
-                if step_1:
-                    continue
-                print("[GraspEnvROS][Demo] Going down to the grasp pose")
-                self.robot.go_to_goal(goal_pose)
-                step_1 = True
-            elif i < total_steps * 2 / 5:  # grasping
-                if step_2:
-                    continue
-                print("[GraspEnvROS][Demo] Grasping")
-                self.robot.gripper_close()
-                step_2 = True
-            elif i < total_steps * 3 / 5:  # lifting
-                if step_3:
-                    continue
-                print("[GraspEnvROS][Demo] Going up to the lift pose")
-                self.robot.go_to_goal(lift_pose)
-                fingers_width = self.robot.gripper_width
-                success = (fingers_width > min_width) and (fingers_width < max_width)
-                step_3 = True
-            else:  # reset
-                if step_4:
-                    continue
-                print("[GraspEnvROS][Demo] Going home")
-                self.robot._move_to_home()
-                self.robot.gripper_open()
-                step_4 = True
+        try:
+            for i in range(total_steps):
+                self.robot.read_state()
+                if i < total_steps / 5:  # go down
+                    if step_1:
+                        continue
+                    print("[GraspEnvROS][Demo] STEP 1: Going down to the grasp pose")
+                    self.robot.go_to_goal(goal_pose)
+                    step_1 = True
+                elif i < total_steps * 2 / 5:  # grasping
+                    if step_2:
+                        continue
+                    print("[GraspEnvROS][Demo] STEP 2: Grasping")
+                    self.robot.gripper_close()
+                    step_2 = True
+                elif i < total_steps * 3 / 5:  # lifting
+                    if step_3:
+                        continue
+                    print("[GraspEnvROS][Demo] STEP 3: Going up to the lift pose")
+                    self.robot.go_to_goal(lift_pose)
+                    fingers_width = self.robot.gripper_width
+                    success = (fingers_width > min_width) and (
+                        fingers_width < max_width
+                    )
+                    step_3 = True
+                else:  # reset
+                    if step_4:
+                        continue
+                    print("[GraspEnvROS][Demo] STEP 4: Going home")
+                    self.robot._move_to_home()
+                    self.robot.gripper_open()
+                    step_4 = True
+        except Exception as e:
+            print(f"[GraspEnvROS][Demo] Caught an exception: {e}")
+            success = 0.0
+            print("[GraspEnvROS][Demo] Going home")
+            self.robot._move_to_home()
+            self.robot.gripper_open()
 
         print(f"[GraspEnvROS][Demo] Grasp success: {success}")
         return float(success)

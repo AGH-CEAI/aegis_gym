@@ -624,8 +624,8 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(features)
         fused = th.cat([fused, state_obs], dim=-1)
-        print(f">>>> DEBUG: the initial state_obs: {state_obs}")
-        raise RuntimeError("KLE")
+        # print(f">>>> DEBUG: the initial state_obs: {state_obs}")
+        # raise RuntimeError("KLE")
         return self.action_head(fused)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
