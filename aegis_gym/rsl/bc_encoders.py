@@ -20,6 +20,8 @@ class BaseVisionEncoder(nn.Module):
         image_width: int = 64,
         channels: int = 3,
     ) -> tuple[int, int, int]:
+        # HACK: Get the device through any nn.Module parameter
+        # see https://stackoverflow.com/a/63477353
         model_device = next(self.parameters()).device
         dummy = th.zeros((1, channels, image_height, image_width), device=model_device)
         with th.no_grad():
@@ -55,6 +57,8 @@ class ConcatenatedCNNEncoder(BaseVisionEncoder):
                 return  # only patch the first one
 
     def infer_output_shape(self, image_height=64, image_width=64, channels=3):
+        # HACK: Get the device through any nn.Module parameter
+        # see https://stackoverflow.com/a/63477353
         model_device = next(self.parameters()).device
         dummy = th.zeros(
             (1, self.num_cameras * channels, image_height, image_width),
