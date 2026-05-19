@@ -780,6 +780,7 @@ class GraspEnv(VecEnv):
             "gaussian_noise_std": th.zeros(N, device=self.device),
             "gamma_range": th.zeros(N, device=self.device),
             "blur_active": th.zeros(N, device=self.device),
+            "channel_jitter": th.zeros(N, 3, device=self.device),
             "cutout_active": th.zeros(N, dtype=th.bool, device=self.device),
             "cutout_y": th.zeros(N, dtype=th.long, device=self.device),
             "cutout_x": th.zeros(N, dtype=th.long, device=self.device),
@@ -811,6 +812,12 @@ class GraspEnv(VecEnv):
         self._aug_profile["blur_active"][envs_idx] = (
             th.rand(n, device=dev) < aug.get("blur_prob", 0.0)
         ).float()
+
+        ch = aug.get("channel_jitter", 0.0)
+        active = (th.rand(n, device=dev) < 0.5).float().unsqueeze(1)
+        self._aug_profile["channel_jitter"][envs_idx] = (
+            active * (th.rand(n, 3, device=dev) * 2.0 - 1.0) * ch
+        )
 
         cutout_cfg = aug.get("cutout", {})
         prob = cutout_cfg.get("prob", 0.0)
@@ -922,6 +929,16 @@ class GraspEnv(VecEnv):
         if b.any():
             factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * b
             rgb = rgb * factor
+
+        ch_max = aug.get("channel_jitter", 0.0)
+        if ch_max > 0.0:
+            if prof is not None:
+                ch_shift = prof["channel_jitter"].view(N, 3, 1, 1)
+            else:
+                ch_shift = (
+                    th.rand(N, 3, 1, 1, device=self.device) * 2.0 - 1.0
+                ) * ch_max
+            rgb = rgb * (1.0 + ch_shift)
 
         c = mag("contrast_jitter")
         if c.any():

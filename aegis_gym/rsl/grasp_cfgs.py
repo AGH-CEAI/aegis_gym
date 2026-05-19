@@ -311,6 +311,7 @@ def get_dr_cfg() -> dict[str, Any]:
             "contrast_jitter": 0.3,
             "gaussian_noise_std": 0.025,
             "gamma_range": 0.25,
+            "channel_jitter": 0.05,
             "blur_prob": 0.30,
             "blur_kernel_size": 3,
             "blur_sigma": 0.8,
