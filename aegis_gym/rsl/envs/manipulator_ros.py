@@ -197,7 +197,12 @@ class ManipulatorROS:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
     def get_camera_frame(self, camera_name: str) -> th.Tensor:
-        # TODO make a conversion from BGR to RGB in gRPC client
+        # TODO implement this as an pernament feature (an option)
+        # TODO Nas nie przekonaja, ze biale jest biale, a czarne jest czarne
+        if camera_name == "left":
+            camera_name = "right"
+        elif camera_name == "right":
+            camera_name = "left"
         return self._vision[camera_name].unsqueeze(dim=0)[
             :, [2, 1, 0], :, :
         ]  # BGR -> RGB (permute channels)

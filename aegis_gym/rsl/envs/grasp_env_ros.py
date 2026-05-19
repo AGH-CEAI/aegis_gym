@@ -2,7 +2,12 @@ import math
 import time
 from typing import Literal, Optional
 
+import os
+import tempfile
+from PIL import Image
 
+import cv2
+import numpy as np
 import torch as th
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
@@ -288,6 +293,54 @@ class GraspEnvROS(VecEnv):
             if normalize:
                 rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
+
+        # TODO implement this as an pernament feature
+        if show_windows:
+            # Convert all cameras to OpenCV format
+            opencv_images = []
+            for cam_id, cam_name in enumerate(cams):
+                # Take first image in batch (assuming B dimension)
+                img = self.robot.get_camera_frame(cam_name)
+                img = rgb_list[cam_id][0].permute(1, 2, 0).cpu().numpy()  # HWC
+                img = (
+                    (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+                )
+                # Add camera name text
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                # Resize to 256x256
+                img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_AREA)
+                cv2.putText(
+                    img,
+                    str(cam_name),  # Assuming cam has a 'name' attribute
+                    org=(10, 30),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1,
+                    color=(0, 255, 0),
+                    thickness=2,
+                )
+                opencv_images.append(img)
+
+            # Stack images horizontally (or vertically if you prefer)
+            preview = np.hstack(opencv_images)
+
+            # Show the preview
+            cv2.imshow("Cameras Preview", preview)
+            cv2.waitKey(1)  # 1ms delay to allow GUI update
+
+            # TODO implement this as an pernament feature
+            if save_frames:
+                if save_dir is None:
+                    save_dir = os.path.join(tempfile.gettempdir(), "aegis_frames")
+                os.makedirs(save_dir, exist_ok=True)
+
+                # Convert tensor to BGR uint8
+                img = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
+
+                global GLOBALE_STEP_COUNTER
+                fname = f"frame_{GLOBALE_STEP_COUNTER:08d}.png"
+                path = os.path.join(save_dir, fname)
+                Image.fromarray(img).save(path)
+                GLOBALE_STEP_COUNTER += 1
 
             # Visualization with OpenCV
             if show_windows:

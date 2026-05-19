@@ -61,7 +61,7 @@ class BehaviorCloning:
     ):
         self._env = env
         self._cfg = cfg
-        self._device = device
+        self._device = th.device(device)
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
@@ -102,7 +102,7 @@ class BehaviorCloning:
         action_dim = env.num_actions
 
         # Multi-task policy with action and pose heads
-        self._policy = Policy(cfg["policy"], action_dim).to(device)
+        self._policy = Policy(cfg["policy"], action_dim, device).to(device)
 
         # Initialize optimizer
         self._optimizer = th.optim.Adam(
@@ -577,7 +577,7 @@ class ExperienceBuffer:
 
 
 class Policy(nn.Module):
-    def __init__(self, config: dict, action_dim: int):
+    def __init__(self, config: dict, action_dim: int, device: th.device | str = "cpu"):
         super().__init__()
         self.num_cameras = config["num_cameras"]
         self.encoder_type = config["encoder_type"]
@@ -589,7 +589,7 @@ class Policy(nn.Module):
         self.use_pose_head = config.get("use_pose_head", True)
         print("Use pose head:", self.use_pose_head)
 
-        self.vision_encoder = self._build_vision_encoder(config)
+        self.vision_encoder = self._build_vision_encoder(config).to(device)
         self.feature_fusion = self._build_fusion(config)
 
         vision_obs_dim = self.feature_fusion.output_dim
@@ -672,9 +672,6 @@ class Policy(nn.Module):
         c, h, w = self.vision_encoder.infer_output_shape(
             image_height=config.get("image_height", 64),
             image_width=config.get("image_width", 64),
-            # TODO: the network for ROS must be on the GPU (i.e. send only data to gpu)
-            device=config.get("device", "cpu"),
-            # device="cpu",
         )
 
         match self.fusion_type:

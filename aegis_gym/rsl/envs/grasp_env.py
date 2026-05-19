@@ -1,11 +1,16 @@
 import math
 from typing import Literal, Optional
 
+import os
+import tempfile
+from PIL import Image
+
 import cv2
 import genesis as gs
 import numpy as np
 import torch as th
 import torch.nn.functional as F
+
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import (
@@ -19,6 +24,8 @@ from .plotjuggler_udp import PlotJugglerUDP
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
+
+GLOBALE_STEP_COUNTER = 0
 
 
 class GraspEnv(VecEnv):
@@ -589,7 +596,13 @@ class GraspEnv(VecEnv):
         stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
         return stereo_rgb
 
-    def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
+    def get_observations_vis(
+        self,
+        normalize: bool = True,
+        save_frames: bool = True,
+        save_dir: Optional[str] = None,
+        show_windows: bool = True,
+    ) -> th.Tensor:
         cams = tuple(self._cameras.values())
         rgb_list: list[th.Tensor] = [None] * len(cams)
 
@@ -605,6 +618,52 @@ class GraspEnv(VecEnv):
                 rgb = self._apply_image_augmentation(rgb)
 
             rgb_list[cam_id] = rgb
+
+        # TODO add this as a pernament feature
+        # if self.show_cameras_gui:
+        if True:
+            # Convert all cameras to OpenCV format
+            opencv_images = []
+            for cam_id, (cam_name, cam) in enumerate(self._cameras.items()):
+                # Take first image in batch (assuming B dimension)
+                img = rgb_list[cam_id][0].permute(1, 2, 0).cpu().numpy()  # HWC
+                img = (
+                    (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+                )
+                # Add camera name text
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_AREA)
+                cv2.putText(
+                    img,
+                    str(cam_name),  # Assuming cam has a 'name' attribute
+                    org=(10, 30),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1,
+                    color=(0, 255, 0),
+                    thickness=2,
+                )
+                opencv_images.append(img)
+
+            # Stack images horizontally (or vertically if you prefer)
+            preview = np.hstack(opencv_images)
+
+            # Show the preview
+            cv2.imshow("Cameras Preview", preview)
+            cv2.waitKey(1)  # 1ms delay to allow GUI update
+
+            # TODO add this as a pernament feature
+            if save_dir is None:
+                save_dir = os.path.join(tempfile.gettempdir(), "aegis_frames")
+            os.makedirs(save_dir, exist_ok=True)
+
+            # Convert tensor to BGR uint8
+            img = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
+
+            global GLOBALE_STEP_COUNTER
+            fname = f"frame_{GLOBALE_STEP_COUNTER:08d}.png"
+            path = os.path.join(save_dir, fname)
+            Image.fromarray(img).save(path)
+            GLOBALE_STEP_COUNTER += 1
 
         return th.cat(rgb_list, dim=1)
 

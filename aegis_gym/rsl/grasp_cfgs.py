@@ -165,8 +165,11 @@ def get_bc_cfg() -> dict[str, Any]:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
-            "encoder_type": "per_camera_cnn",  # shared_cnn, per_camera_cnn, autoencoder
-            "fusion_type": "attention_spatial",  # linear, attention_vector, attention_spatial
+            # TODO load config from clearml-model-id (currently only from clearml-task-id)
+            "encoder_type": "per_camera_cnn",
+            # "encoder_type": "per_camera_cnn",  # shared_cnn, per_camera_cnn, autoencoder
+            "fusion_type": "attention_spatial",
+            # "fusion_type": "attention_spatial",  # linear, attention_vector, attention_spatial
             "use_pose_head": True,
             "vision_encoder": {
                 "conv_layers": [
@@ -276,7 +279,6 @@ def get_env_cfg() -> dict[str, Any]:
             "max_linear_speed": 0.098,  # m/s
             "max_angular_speed": 0.1,  # rad/s
         },
-        # "episode_length_s": 5.0,
         "episode_length_s": 10.0,
         "ctrl_dt": 0.004,  # 1 / 250 Hz (RTDE protocol freq), original 0.01
         "policy_dt": 0.04,  # 1 / 25 Hz, used to calculate number of steps
