@@ -141,7 +141,10 @@ class GraspEnv(VecEnv):
 
         # == add ground ==
         plane_z = -self.workbench_size[2] if self.show_cell else 0.0
-        self.scene.add_entity(gs.morphs.Plane(pos=(0, 0, plane_z)))
+        self.scene.add_entity(
+            gs.morphs.Plane(pos=(0, 0, plane_z)),
+            surface=gs.surfaces.Default(color=(0.98, 0.98, 0.98)),
+        )
 
         # == add robot ==
         self.robot = Manipulator(
