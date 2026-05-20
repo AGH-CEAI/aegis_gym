@@ -149,7 +149,6 @@ def get_rl_cfg() -> dict[str, Any]:
             "state_dependent_std": False,
             "detach_actor_grad": False,
         },
-        "domain_randomization": get_dr_cfg(),  # TODO remove this after code refactor
     }
 
 
@@ -166,9 +165,8 @@ def get_bc_cfg() -> dict[str, Any]:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
-            # TODO revert the config to default before merge
-            "encoder_type": "per_camera_cnn",  # shared_cnn, per_camera_cnn, autoencoder
-            "fusion_type": "attention_spatial",  # linear, attention_vector, attention_spatial
+            "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
+            "fusion_type": "linear",  # linear, attention_vector, attention_spatial
             "use_pose_head": True,
             "vision_encoder": {
                 "conv_layers": [
