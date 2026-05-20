@@ -296,7 +296,6 @@ def get_env_cfg() -> dict[str, Any]:
         "reward_scales": {
             "keypoints": 1.0,
         },
-        "domain_randomization": get_dr_cfg(),
     }
 
 
