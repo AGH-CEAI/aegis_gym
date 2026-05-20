@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch as th
 from clearml import Task
+from config_types.domain_randomization import DomainRandomizationCfg
 
 
 @dataclass(slots=True, frozen=True)
@@ -14,7 +15,7 @@ class GraspConfig:
     bc_cfg: dict[str, Any]
     env_cfg: dict[str, Any]
     robot_cfg: dict[str, Any]
-    # dr_cfg: DomainRandomizationCfg
+    dr_cfg: DomainRandomizationCfg
 
     _device: ClassVar["th.device"] = None
     _instance: ClassVar["GraspConfig | None"] = None
@@ -41,7 +42,7 @@ class GraspConfig:
             bc_cfg=get_bc_cfg(),
             env_cfg=get_env_cfg(),
             robot_cfg=get_robot_cfg(),
-            # dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
+            dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
         )
         return cls._instance
 
@@ -60,7 +61,7 @@ class GraspConfig:
                     name=field.name,
                 )
 
-                value = type(value).create(connected)
+                value = type(value).from_dict(connected)
 
             else:
                 value = task.connect_configuration(

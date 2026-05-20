@@ -11,6 +11,7 @@ class CutoutCfg(BaseCfg):
 
 @dataclass(slots=True, frozen=True)
 class ImageAugCfg(ToggleCfg):
+    per_episode_aug: bool = True
     brightness_jitter: float = 0.25
     contrast_jitter: float = 0.20
     gaussian_noise_std: float = 0.025
