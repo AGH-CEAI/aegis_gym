@@ -27,7 +27,7 @@ class BaseCfg(ABC):
             value = data[f.name]
 
             if is_dataclass(field_type):
-                kwargs[f.name] = cls.from_dict(field_type, value)
+                kwargs[f.name] = field_type.from_dict(value)
             else:
                 kwargs[f.name] = value
 
