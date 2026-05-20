@@ -424,9 +424,10 @@ class GraspEnv(VecEnv):
         # Environment limitations
         actions = th.clamp(actions, min=-1.0, max=1.0)
 
-        # Applying real-world scaling
-        actions[:, :3] *= self.max_linear_speed
-        actions[:, 3:] *= self.max_angular_speed
+        # Applying real-world scaling (with optional noise)
+        max_lin_speed, max_ang_speed = self._get_max_speed_coeefs()
+        actions[:, :3] *= max_lin_speed
+        actions[:, 3:] *= max_ang_speed
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
@@ -453,10 +454,26 @@ class GraspEnv(VecEnv):
         dones = self.reset_buf
         return obs, reward, dones, self.extras
 
+    def _get_max_speed_coeefs(self) -> tuple[float, float]:
+        max_speed_cfg = self._dr_cfg.get("max_speed", {"enabled": False})
+        if not max_speed_cfg["enabled"]:
+            return self.max_linear_speed, self.max_angular_speed
+
+        lin_speed_noise = max_speed_cfg.get("linear_speed_noise", 0.0)
+        ang_speed_noise = max_speed_cfg.get("angular_speed_noise", 0.0)
+
+        lin_scale = 1.0 + (np.random.uniform(-1.0, 1.0)) * lin_speed_noise
+        ang_scale = 1.0 + (np.random.uniform(-1.0, 1.0)) * ang_speed_noise
+
+        max_lin_speed_rand = self.max_linear_speed * lin_scale
+        max_ang_speed_rand = self.max_angular_speed * ang_scale
+
+        return float(max_lin_speed_rand), float(max_ang_speed_rand)
+
     def calib_run(
         self,
         joints_diff: Optional[th.Tensor] = None,
-        cart_diff: Optional[th.tensor] = None,
+        cart_diff: Optional[th.Tensor] = None,
         steps: int = 100,
     ) -> None:
         idle_steps = 300  # int(0.4 * steps)

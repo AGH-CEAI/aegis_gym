@@ -165,6 +165,7 @@ def get_bc_cfg() -> dict[str, Any]:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
+            # TODO revert the config to default before merge
             "encoder_type": "per_camera_cnn",  # shared_cnn, per_camera_cnn, autoencoder
             "fusion_type": "attention_spatial",  # linear, attention_vector, attention_spatial
             "use_pose_head": True,
@@ -325,6 +326,11 @@ def get_dr_cfg() -> dict[str, Any]:
             "enabled": True,
             "kp_noise": 0.10,
             "kv_noise": 0.10,
+        },
+        "max_speed": {
+            "enabled": True,
+            "linear_speed_noise": 0.10,
+            "angular_speed_noise": 0.10,
         },
         "cameras_extrinsics": {
             "enabled": True,
