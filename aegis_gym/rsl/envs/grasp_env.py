@@ -84,7 +84,7 @@ class GraspEnv(VecEnv):
         self.reset()
 
     def _extract_config(self) -> None:
-        # TODO(issue#121) redesign the whole camera preview system
+        # TODO(issue##117) redesign the whole camera preview system
         self.show_cameras_gui = self._cfg["visualize_camera"]
 
         self.num_envs = self._cfg["num_envs"]
