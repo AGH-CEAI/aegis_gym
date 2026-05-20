@@ -329,8 +329,8 @@ def get_dr_cfg() -> dict[str, Any]:
         },
         "max_speed": {
             "enabled": True,
-            "linear_speed_noise": 0.10,
-            "angular_speed_noise": 0.10,
+            "linear_speed_noise": 0.03,
+            "angular_speed_noise": 0.03,
         },
         "cameras_extrinsics": {
             "enabled": True,
