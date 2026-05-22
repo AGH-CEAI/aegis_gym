@@ -670,7 +670,6 @@ class Policy(nn.Module):
         c, h, w = self.vision_encoder.infer_output_shape(
             image_height=config.get("image_height", 64),
             image_width=config.get("image_width", 64),
-            device=config.get("device", "cpu"),
         )
 
         match self.fusion_type:
