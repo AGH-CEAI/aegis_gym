@@ -845,7 +845,7 @@ class GraspEnv(VecEnv):
         self._aug_profile["gamma_range"][envs_idx] = sample(aug.gamma_range)
         self._aug_profile["blur_active"][envs_idx] = (
             th.rand(n, device=dev) < aug.blur_prob
-        ).float()
+        )
 
         ch = aug.channel_jitter
         active = (th.rand(n, device=dev) < 0.5).float().unsqueeze(1)
@@ -858,20 +858,87 @@ class GraspEnv(VecEnv):
         min_sz = cutout_cfg.min_size
         max_sz = cutout_cfg.max_size
         H, W = self.image_height, self.image_width
+
         active = th.rand(n, device=dev) < prob
         self._aug_profile["cutout_active"][envs_idx] = active
-        self._aug_profile["cutout_h"][envs_idx] = th.randint(
-            min_sz, max_sz + 1, (n,), device=dev
+
+        hs = th.randint(min_sz, max_sz + 1, (n,), device=dev)
+        ws = th.randint(min_sz, max_sz + 1, (n,), device=dev)
+        ys = (th.rand(n, device=dev) * (H - hs).clamp(min=1)).long()
+        xs = (th.rand(n, device=dev) * (W - ws).clamp(min=1)).long()
+
+        self._aug_profile["cutout_h"][envs_idx] = hs
+        self._aug_profile["cutout_w"][envs_idx] = ws
+        self._aug_profile["cutout_y"][envs_idx] = ys
+        self._aug_profile["cutout_x"][envs_idx] = xs
+
+    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
+        aug = self._dr_cfg.image_aug
+        if not aug.enabled:
+            return rgb
+
+        N, C, H, W = rgb.shape
+        device = self.device
+        prof = self._aug_profile  # {} = disabled, non-empty = per-episode replay
+
+        def sample_magnitude(key: str, shape: tuple) -> th.Tensor:
+            """Magnitude in [0, max_val]; sign is re-sampled each frame for variety."""
+            mag = (
+                prof[key].view(shape)
+                if prof
+                else th.rand(shape, device=device) * getattr(aug, key)
+            )
+            return mag * (th.rand(shape, device=device) * 2.0 - 1.0)
+
+        def sample_signed(key: str, shape: tuple) -> th.Tensor:
+            """Already a signed delta in the profile (channel_jitter)."""
+            if prof:
+                return prof[key].view(shape)
+            return (th.rand(shape, device=device) * 2.0 - 1.0) * getattr(aug, key)
+
+        # -- Brightness --
+        b_delta = sample_magnitude("brightness_jitter", (N, 1, 1, 1))
+        if b_delta.abs().any():
+            rgb = rgb * (1.0 + b_delta)
+
+        # -- Per-channel jitter (signed delta, no re-sampling) --
+        ch_delta = sample_signed("channel_jitter", (N, C, 1, 1))
+        if ch_delta.abs().any():
+            rgb = rgb * (1.0 + ch_delta)
+
+        # -- Contrast --
+        c_delta = sample_magnitude("contrast_jitter", (N, 1, 1, 1))
+        if c_delta.abs().any():
+            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
+            rgb = (rgb - mean) * (1.0 + c_delta) + mean
+
+        # -- Gaussian noise (magnitude only, always additive) --
+        noise_std = sample_magnitude("gaussian_noise_std", (N, 1, 1, 1)).abs()
+        if noise_std.any():
+            rgb = rgb + th.randn_like(rgb) * noise_std
+
+        # -- Gamma --
+        g_delta = sample_magnitude("gamma_range", (N, 1, 1, 1))
+        if g_delta.abs().any():
+            rgb = rgb.clamp(1e-6, 1.0).pow(1.0 + g_delta)
+
+        # -- Gaussian blur (per-env) --
+        blur_active = (
+            prof["blur_active"].bool()
+            if prof
+            else th.rand(N, device=device) < aug.blur_prob
         )
-        self._aug_profile["cutout_w"][envs_idx] = th.randint(
-            min_sz, max_sz + 1, (n,), device=dev
-        )
-        self._aug_profile["cutout_y"][envs_idx] = th.randint(
-            0, max(1, H - max_sz), (n,), device=dev
-        )
-        self._aug_profile["cutout_x"][envs_idx] = th.randint(
-            0, max(1, W - max_sz), (n,), device=dev
-        )
+        if blur_active.any():
+            blurred = self._apply_gaussian_blur(
+                rgb, kernel_size=aug.blur_kernel_size, sigma=aug.blur_sigma
+            )
+            rgb = th.where(blur_active.view(N, 1, 1, 1), blurred, rgb)
+
+        # -- Cutout --
+        if aug.cutout.prob > 0.0 or (prof and prof["cutout_active"].any()):
+            rgb = self._apply_cutout(rgb)
+
+        return rgb.clamp(0.0, 1.0)
 
     def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
         cam_cfg = self._dr_cfg.cameras_extrinsics
@@ -964,69 +1031,6 @@ class GraspEnv(VecEnv):
 
         mask = ~(in_box & active.view(N, 1, 1))  # (N, H, W)
         return rgb * mask.unsqueeze(1)  # broadcast over C
-
-    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
-        aug = self._dr_cfg.image_aug
-
-        if not aug.enabled:
-            return rgb
-
-        N = rgb.shape[0]
-        prof = self._aug_profile
-
-        def mag(key: str) -> th.Tensor:
-            if prof:
-                return prof[key].view(N, 1, 1, 1)
-            return th.full((N, 1, 1, 1), getattr(aug, key), device=self.device)
-
-        b = mag("brightness_jitter")
-        if b.any():
-            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * b
-            rgb = rgb * factor
-
-        ch_max = aug.channel_jitter
-        if ch_max > 0.0:
-            if prof is not None:
-                ch_shift = prof["channel_jitter"].view(N, 3, 1, 1)
-            else:
-                ch_shift = (
-                    th.rand(N, 3, 1, 1, device=self.device) * 2.0 - 1.0
-                ) * ch_max
-            rgb = rgb * (1.0 + ch_shift)
-
-        c = mag("contrast_jitter")
-        if c.any():
-            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
-            factor = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * c
-            rgb = (rgb - mean) * factor + mean
-
-        sigma = mag("gaussian_noise_std")
-        if sigma.any():
-            rgb = rgb + th.randn_like(rgb) * sigma
-
-        g = mag("gamma_range")
-        if g.any():
-            gamma = 1.0 + (th.rand(N, 1, 1, 1, device=self.device) * 2.0 - 1.0) * g
-            rgb = rgb.clamp(1e-6, 1.0).pow(gamma)
-
-        if prof is not None:
-            blur_mask = prof["blur_active"].view(N, 1, 1, 1)
-            if blur_mask.any():
-                ks = aug.blur_kernel_size
-                s = aug.blur_sigma
-                blurred = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
-                rgb = th.where(blur_mask > 0, blurred, rgb)
-        else:
-            p = aug.blur_prob
-            if p > 0.0 and th.rand(1).item() < p:
-                ks = aug.blur_kernel_size
-                s = aug.blur_sigma
-                rgb = self._apply_gaussian_blur(rgb, kernel_size=ks, sigma=s)
-
-        if aug.cutout.prob > 0.0:
-            rgb = self._apply_cutout(rgb)
-
-        return rgb.clamp(0.0, 1.0)
 
     def _show_augmented_debug(self) -> None:
         # TODO(issue#117) redesign the visualize-camera feature
