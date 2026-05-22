@@ -129,8 +129,8 @@ class GraspEnv(VecEnv):
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
-                batch_dofs_info=True,
-                batch_links_info=True,
+                batch_dofs_info=True,  # Enables (n_evs, n_dofs) shape
+                batch_links_info=True,  # Enables (n_envs, n_links, ...) shapes
             ),
             vis_options=gs.options.VisOptions(
                 rendered_envs_idx=list(range(self.num_envs)),
