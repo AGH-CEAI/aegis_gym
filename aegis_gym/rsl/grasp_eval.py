@@ -21,11 +21,6 @@ except ImportError:
 
 GraspEnvironment = GraspEnv | GraspEnvROS
 
-from envs.grasp_env import GraspEnv
-from envs.grasp_env_ros import GraspEnvROS
-
-GraspEnvironment = GraspEnv | GraspEnvROS
-
 
 def main():
     # Set PyTorch default dtype to float32 for better performance

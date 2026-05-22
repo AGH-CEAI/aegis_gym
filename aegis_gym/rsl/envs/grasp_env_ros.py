@@ -363,8 +363,8 @@ class GraspEnvROS(VecEnv):
                     np_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
                 )
 
-            #     cv2.imshow(f"{cam_name} (large)", large_img)
-            #     cv2.waitKey(1)
+                cv2.imshow(f"{cam_name} (large)", large_img)
+                cv2.waitKey(1)
 
             if save_frames:
                 # Determine save directory
