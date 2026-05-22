@@ -152,11 +152,13 @@ class ManipulatorROS:
             {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
             device=self.device,
         )
-        # We assume RGB channels instead of default BGR
+        # Convert BGR into RGB and np.ndarray into th.Tensor
         if not self._disable_vision:
             self._vision = TensorDict(
                 {
-                    k: th.from_numpy(v).to(self.device).roll(1, dims=-1)
+                    k: th.from_numpy(v[[2, 1, 0], :, :])
+                    .to(self.device)
+                    .roll(1, dims=-1)
                     for k, v in states["vision"].items()
                 },
                 device=self.device,
@@ -197,30 +199,16 @@ class ManipulatorROS:
         return th.zeros(3, dtype=th.float32, device=self.device)
 
     def get_camera_frame(self, camera_name: str) -> th.Tensor:
-        # TODO implement this as an pernament feature (an option)
-        # TODO Nas nie przekonaja, ze biale jest biale, a czarne jest czarne
-        if camera_name == "left":
-            camera_name = "right"
-        elif camera_name == "right":
-            camera_name = "left"
-        return self._vision[camera_name].unsqueeze(dim=0)[
-            :, [2, 1, 0], :, :
-        ]  # BGR -> RGB (permute channels)
+        return self._vision[camera_name].unsqueeze(dim=0)
 
     def get_camera_scene_frame(self) -> th.Tensor:
-        return self._vision["scene"].unsqueeze(dim=0)[
-            :, [2, 1, 0], :, :
-        ]  # BGR -> RGB (permute channels)
+        return self._vision["scene"].unsqueeze(dim=0)
 
     def get_camera_tool_right_frame(self) -> th.Tensor:
-        return self._vision["right"].unsqueeze(dim=0)[
-            :, [2, 1, 0], :, :
-        ]  # BGR -> RGB (permute channels)
+        return self._vision["right"].unsqueeze(dim=0)
 
     def get_camera_tool_left_frame(self) -> th.Tensor:
-        return self._vision["left"].unsqueeze(dim=0)[
-            :, [2, 1, 0], :, :
-        ]  # BGR -> RGB (permute channels)
+        return self._vision["left"].unsqueeze(dim=0)
 
     def _servo_enable(self) -> None:
         if self._servo_enabled:

@@ -277,6 +277,7 @@ class GraspEnvROS(VecEnv):
         save_frames: bool = True,
         save_dir: Optional[str] = None,
         show_windows: bool = True,
+        swap_tool_cameras: bool = False,
     ) -> th.Tensor:
         match self.camera_setup:
             case "default":
@@ -288,6 +289,9 @@ class GraspEnvROS(VecEnv):
 
         rgb_list = [None] * len(cams)
         for cam_id, cam_name in enumerate(cams):
+            if swap_tool_cameras:
+                cam_name = {"left": "right", "right": "left"}.get(cam_name, cam_name)
+
             rgb = self.robot.get_camera_frame(cam_name)
             # rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:

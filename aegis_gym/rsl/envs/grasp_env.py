@@ -602,6 +602,7 @@ class GraspEnv(VecEnv):
         save_frames: bool = True,
         save_dir: Optional[str] = None,
         show_windows: bool = True,
+        swap_tool_cameras: bool = False,
     ) -> th.Tensor:
         cams = tuple(self._cameras.values())
         rgb_list: list[th.Tensor] = [None] * len(cams)
@@ -625,6 +626,11 @@ class GraspEnv(VecEnv):
             # Convert all cameras to OpenCV format
             opencv_images = []
             for cam_id, (cam_name, cam) in enumerate(self._cameras.items()):
+                if swap_tool_cameras:
+                    cam_name = {"left": "right", "right": "left"}.get(
+                        cam_name, cam_name
+                    )
+
                 # Take first image in batch (assuming B dimension)
                 img = rgb_list[cam_id][0].permute(1, 2, 0).cpu().numpy()  # HWC
                 img = (

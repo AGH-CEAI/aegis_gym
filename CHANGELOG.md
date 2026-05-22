@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+
+- [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - `grasp_eval`: Added flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right).
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - `grasp_eval`: Added flag `--episode-length` for overwriting the default episode time.
 - [PR-116](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added domain randomization for Genesis environment.
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.

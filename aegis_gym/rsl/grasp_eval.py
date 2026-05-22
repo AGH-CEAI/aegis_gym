@@ -132,6 +132,13 @@ def parse_arguments() -> Namespace:
         help="Seed for box poses across checkpoints",
     )
 
+    p.add_argument(
+        "--debug-swap-tool-cameras",
+        action="store_true",
+        default=False,
+        help="Swap the sides of the tool cameras (i.e. left<->right).",
+    )
+
     return p.parse_args()
 
 
@@ -327,7 +334,14 @@ def eval_policy_single(
     policy = load_policy(env, args, cfg)
     obs, _ = env.reset()
     metrics = run_eval(
-        env, policy, args.stage, max_steps, obs, device, record_render=record_render
+        env,
+        policy,
+        args.stage,
+        max_steps,
+        obs,
+        device,
+        record_render=record_render,
+        swap_tool_cameras=args.debug_swap_tool_cameras,
     )
     log_metrics(task, metrics)
 
@@ -376,7 +390,14 @@ def eval_policy_sweep(
         obs = env.get_observations()
 
         metrics = run_eval(
-            env, policy, args.stage, max_steps, obs, device, record_render=False
+            env,
+            policy,
+            args.stage,
+            max_steps,
+            obs,
+            device,
+            record_render=False,
+            swap_tool_cameras=args.debug_swap_tool_cameras,
         )
         log_metrics(task, metrics, step=ckpt.step)
 
@@ -390,6 +411,7 @@ def run_eval(
     obs: Any,
     device: th.device,
     record_render: bool = False,
+    swap_tool_cameras: bool = False,
 ) -> dict[str, float]:
     total_rewards = th.zeros(env.num_envs, device=device)
     episode_lengths = th.zeros(env.num_envs, device=device)
@@ -402,7 +424,9 @@ def run_eval(
             case Stage.RL:
                 actions = policy(obs)
             case Stage.BC:
-                rgb_obs = env.get_observations_vis(normalize=True).float()
+                rgb_obs = env.get_observations_vis(
+                    normalize=True, swap_tool_cameras=swap_tool_cameras
+                ).float()
                 ee_pose = env.robot.ee_pose.float()
                 actions = policy(rgb_obs, ee_pose)
                 if record_render:
