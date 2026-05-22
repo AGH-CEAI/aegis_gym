@@ -720,14 +720,7 @@ class GraspEnv(VecEnv):
         if not cfg.enabled:
             return
 
-        nominal_kp = th.tensor(
-            self.robot._kp_gains, dtype=th.float32, device=self.device
-        )
-        nominal_kv = th.tensor(
-            self.robot._kv_gains, dtype=th.float32, device=self.device
-        )
-
-        n_dofs = len(self.robot._kp_gains)
+        n_dofs = self.robot.n_dofs
         kp_scale = (
             1.0
             + (th.rand(self.num_envs, n_dofs, device=self.device) * 2.0 - 1.0)
@@ -739,10 +732,7 @@ class GraspEnv(VecEnv):
             * cfg.kv_noise
         )
 
-        kp_rand = nominal_kp.unsqueeze(0) * kp_scale
-        kv_rand = nominal_kv.unsqueeze(0) * kv_scale
-
-        self.robot.set_pd_gains(kp=kp_rand, kv=kv_rand)
+        self.robot.set_pd_gains(kp_gain=kp_scale, kv_gain=kv_scale)
 
     def _cache_camera_base_offsets(self) -> None:
         self._dr_cam_base_offsets = {}

@@ -61,6 +61,10 @@ class Manipulator:
         self._setup_config()
         self._init_pd_tensors()
 
+    @property
+    def n_dofs(self) -> float:
+        return self._robot_entity.n_dofs
+
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
 
@@ -141,13 +145,14 @@ class Manipulator:
 
     def set_pd_gains(
         self,
-        kp: Optional[th.Tensor] = None,
-        kv: Optional[th.Tensor] = None,
+        kp_gain: Optional[th.Tensor] = None,
+        kv_gain: Optional[th.Tensor] = None,
     ) -> None:
-        kp_t = kp if kp is not None else self._default_kp
-        kv_t = kv if kv is not None else self._default_kv
-        self._robot_entity.set_dofs_kp(kp_t)
-        self._robot_entity.set_dofs_kv(kv_t)
+        kp_g = kp_gain if kp_gain is not None else 1.0
+        kv_g = kv_gain if kv_gain is not None else 1.0
+
+        self._robot_entity.set_dofs_kp(self._default_kp * kp_g)
+        self._robot_entity.set_dofs_kv(self._default_kv * kv_g)
         self._robot_entity.set_dofs_force_range(
             self._force_lower,
             self._force_upper,
