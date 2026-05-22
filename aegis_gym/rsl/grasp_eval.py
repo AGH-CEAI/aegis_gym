@@ -73,11 +73,17 @@ def parse_arguments() -> Namespace:
     p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument(
+        "--episode-length",
+        type=float,
+        default=None,
+        help="Overwrite the default episode length during evaluation (in seconds).",
+    )
+    p.add_argument(
         "--stage",
         type=Stage,
         default=Stage.RL,
         choices=list(Stage),
-        help="Model type: 'rl' for reinforcement learning, 'bc' for behavior cloning",
+        help=f"Model type: '{str(Stage.RL)}' for reinforcement learning, '{str(Stage.BC)}' for behavior cloning",
     )
     p.add_argument(
         "--record",
@@ -143,6 +149,9 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     log_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
 
+    cfg.env_cfg["episode_length_s"] = (
+        args.episode_length_s or cfg.env_cfg["episode_length_s"]
+    )
     episode_len_s = cfg.env_cfg["episode_length_s"]
     cfg.env_cfg["max_steps"] = int(episode_len_s / cfg.env_cfg["policy_dt"])
 
