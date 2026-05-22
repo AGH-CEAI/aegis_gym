@@ -868,6 +868,7 @@ class GraspEnv(VecEnv):
         self._aug_profile["cutout_y"][envs_idx] = ys
         self._aug_profile["cutout_x"][envs_idx] = xs
 
+    # TODO(issue#118) Extract domain randomization logic to external file
     def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
         aug = self._dr_cfg.image_aug
         if not aug.enabled:
@@ -1064,7 +1065,7 @@ class GraspEnv(VecEnv):
         for name in self._joint_names:
             j = robot.get_joint(name=name)
             for idx in j.dofs_idx_local:
-                # TODO investigate one query for obtaining all of the data
+                # TODO(issue#119) investigate one query for obtaining all of the data
                 # Query each DOF individually to get scalar values
                 pos = robot.get_dofs_position([idx])
                 vel = robot.get_dofs_velocity([idx])

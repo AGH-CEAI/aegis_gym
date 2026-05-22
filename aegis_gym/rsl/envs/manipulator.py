@@ -132,15 +132,12 @@ class Manipulator:
         # Sanity-check against the actual robot
         assert self._robot_entity.n_dofs == len(KP_GAINS)
 
-        n = self._num_envs
-        self._default_kp = self._build_gain_tensor(KP_GAINS, n)
-        self._default_kv = self._build_gain_tensor(KV_GAINS, n)
-        self._force_lower = self._build_gain_tensor(FORCE_LOWER, n)
-        self._force_upper = self._build_gain_tensor(FORCE_UPPER, n)
+        self._default_kp = self._build_gain_tensor(KP_GAINS)
+        self._default_kv = self._build_gain_tensor(KV_GAINS)
+        self._force_lower = self._build_gain_tensor(FORCE_LOWER)
+        self._force_upper = self._build_gain_tensor(FORCE_UPPER)
 
-    def _build_gain_tensor(self, values: list[float], n: int) -> th.Tensor:
-        # TODO validate the necessity of the additional dims
-        # return th.tensor(values, dtype=th.float32).unsqueeze(0).repeat(n, 1)
+    def _build_gain_tensor(self, values: list[float]) -> th.Tensor:
         return th.tensor(values, dtype=th.float32)
 
     def set_pd_gains(
