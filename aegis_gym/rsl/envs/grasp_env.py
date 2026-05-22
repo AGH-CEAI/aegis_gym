@@ -473,8 +473,12 @@ class GraspEnv(VecEnv):
         lin_speed_noise = cfg.linear_speed_noise
         ang_speed_noise = cfg.angular_speed_noise
 
-        lin_scale = 1.0 + (np.random.uniform(-1.0, 1.0)) * lin_speed_noise
-        ang_scale = 1.0 + (np.random.uniform(-1.0, 1.0)) * ang_speed_noise
+        lin_scale = (
+            1.0 + (th.rand(1, device=self.device).item() * 2.0 - 1.0) * lin_speed_noise
+        )
+        ang_scale = (
+            1.0 + (th.rand(1, device=self.device).item() * 2.0 - 1.0) * ang_speed_noise
+        )
 
         max_lin_speed_rand = self.max_linear_speed * lin_scale
         max_ang_speed_rand = self.max_angular_speed * ang_scale
@@ -629,11 +633,13 @@ class GraspEnv(VecEnv):
         quaternion: th.Tensor,  # [N, 4]
         keypoints_offset: th.Tensor,  # [N, 7, 3]
     ) -> th.Tensor:
-        world = th.zeros_like(keypoints_offset)
-        for k in range(keypoints_offset.shape[1]):
-            world[:, k] = position + transform_by_quat(
-                keypoints_offset[:, k], quaternion
-            )
+        N, K, _ = keypoints_offset.shape
+
+        v_flat = keypoints_offset.reshape(N * K, 3)
+        quat_flat = quaternion[:, None].expand(N, K, 4).reshape(N * K, 4)
+        rotated = transform_by_quat(v_flat, quat_flat)
+        rotated = rotated.reshape(N, K, 3)
+        world = position[:, None, :] + rotated
         return world
 
     @staticmethod
@@ -778,6 +784,7 @@ class GraspEnv(VecEnv):
         translation_std: float,
         rotation_std_deg: float,
     ) -> np.ndarray:
+        # TODO Fix Camera extrinsics are the same for every env in the batch, which undermines the DR goal
         t = np.random.randn(3) * translation_std
         angles = np.random.randn(3) * math.radians(rotation_std_deg)
         rx, ry, rz = angles
@@ -817,7 +824,7 @@ class GraspEnv(VecEnv):
             "contrast_jitter": th.zeros(N, device=self.device),
             "gaussian_noise_std": th.zeros(N, device=self.device),
             "gamma_range": th.zeros(N, device=self.device),
-            "blur_active": th.zeros(N, device=self.device),
+            "blur_active": th.zeros(N, dtype=th.bool, device=self.device),
             "channel_jitter": th.zeros(N, 3, device=self.device),
             "cutout_active": th.zeros(N, dtype=th.bool, device=self.device),
             "cutout_y": th.zeros(N, dtype=th.long, device=self.device),
@@ -924,9 +931,7 @@ class GraspEnv(VecEnv):
 
         # -- Gaussian blur (per-env) --
         blur_active = (
-            prof["blur_active"].bool()
-            if prof
-            else th.rand(N, device=device) < aug.blur_prob
+            prof["blur_active"] if prof else th.rand(N, device=device) < aug.blur_prob
         )
         if blur_active.any():
             blurred = self._apply_gaussian_blur(
@@ -1070,6 +1075,7 @@ class GraspEnv(VecEnv):
         for name in self._joint_names:
             j = robot.get_joint(name=name)
             for idx in j.dofs_idx_local:
+                # TODO investigate one query for obtaining all of the data
                 # Query each DOF individually to get scalar values
                 pos = robot.get_dofs_position([idx])
                 vel = robot.get_dofs_velocity([idx])
