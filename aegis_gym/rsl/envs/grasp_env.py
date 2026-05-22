@@ -59,6 +59,7 @@ class GraspEnv(VecEnv):
         self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
 
         self._cameras: dict[str, gs.Camera] = {}
+        # TODO(issue#117) redesign the cameras preview feature
         self._debug_cameras: dict[str, gs.Camera] = {}
         self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
         self._cameras_link_names = {
