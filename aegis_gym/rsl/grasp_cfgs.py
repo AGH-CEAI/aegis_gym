@@ -1,19 +1,21 @@
 import pickle
-from dataclasses import dataclass, fields
-from typing import ClassVar
+from dataclasses import dataclass, fields, asdict, is_dataclass
+from typing import ClassVar, Any
 from pathlib import Path
 
 import torch as th
 from clearml import Task
+from config_types.domain_randomization import DomainRandomizationCfg
 
 
 @dataclass(slots=True, frozen=True)
 class GraspConfig:
-    logger_cfg: dict
-    rl_cfg: dict
-    bc_cfg: dict
-    env_cfg: dict
-    robot_cfg: dict
+    logger_cfg: dict[str, Any]
+    rl_cfg: dict[str, Any]
+    bc_cfg: dict[str, Any]
+    env_cfg: dict[str, Any]
+    robot_cfg: dict[str, Any]
+    dr_cfg: DomainRandomizationCfg
 
     _device: ClassVar["th.device"] = None
     _instance: ClassVar["GraspConfig | None"] = None
@@ -33,27 +35,43 @@ class GraspConfig:
         return cls._instance
 
     @classmethod
-    def create(cls, device: any = "cpu") -> "GraspConfig":
+    def create(cls) -> "GraspConfig":
         cls._instance = cls(
             logger_cfg=get_logger_cfg(),
             rl_cfg=get_rl_cfg(),
             bc_cfg=get_bc_cfg(),
             env_cfg=get_env_cfg(),
             robot_cfg=get_robot_cfg(),
+            dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
         )
         return cls._instance
 
     @classmethod
     def create_with_clearml(cls, task: Task) -> "GraspConfig":
         instance = cls.create()
-        cls._instance = cls(
-            **{
-                field.name: task.connect_configuration(
-                    getattr(instance, field.name), name=field.name
+
+        values: dict[str, Any] = {}
+
+        for field in fields(instance):
+            value = getattr(instance, field.name)
+
+            if is_dataclass(value):
+                connected = task.connect_configuration(
+                    asdict(value),
+                    name=field.name,
                 )
-                for field in fields(instance)
-            }
-        )
+
+                value = type(value).from_dict(connected)
+
+            else:
+                value = task.connect_configuration(
+                    value,
+                    name=field.name,
+                )
+
+            values[field.name] = value
+
+        cls._instance = cls(**values)
         return cls._instance
 
     def to_pickle(self, path: Path) -> None:
@@ -62,7 +80,7 @@ class GraspConfig:
             pickle.dump(data, f)
 
 
-def get_logger_cfg() -> dict:
+def get_logger_cfg() -> dict[str, Any]:
     return {
         # Logger
         "logger": "clearml",  # tensorboard, neptune, wandb, clearml
@@ -73,7 +91,7 @@ def get_logger_cfg() -> dict:
     }
 
 
-def get_rl_cfg() -> dict:
+def get_rl_cfg() -> dict[str, Any]:
     return {
         "class_name": "OnPolicyRunner",
         # General
@@ -134,7 +152,7 @@ def get_rl_cfg() -> dict:
     }
 
 
-def get_bc_cfg() -> dict:
+def get_bc_cfg() -> dict[str, Any]:
     return {
         # basic training parameters
         "num_steps_per_env": 24,
@@ -243,13 +261,13 @@ def get_bc_cfg() -> dict:
     }
 
 
-def get_task_cfgs() -> tuple[dict, dict]:
+def get_task_cfgs() -> tuple[dict[str, Any], dict[str, Any]]:
     env_cfg = get_env_cfg()
     robot_cfg = get_robot_cfg()
     return env_cfg, robot_cfg
 
 
-def get_env_cfg() -> dict:
+def get_env_cfg() -> dict[str, Any]:
     return {
         "num_envs": 10,
         "num_obs": 14,
@@ -281,7 +299,52 @@ def get_env_cfg() -> dict:
     }
 
 
-def get_robot_cfg() -> dict:
+def get_dr_cfg() -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "debug_viewer": True,
+        "image_aug": {
+            "enabled": True,
+            "per_episode_aug": True,
+            "brightness_jitter": 0.4,
+            "contrast_jitter": 0.3,
+            "gaussian_noise_std": 0.025,
+            "gamma_range": 0.25,
+            "channel_jitter": 0.05,
+            "blur_prob": 0.30,
+            "blur_kernel_size": 3,
+            "blur_sigma": 0.8,
+            "cutout": {
+                "prob": 0.3,
+                "min_size": 4,
+                "max_size": 12,
+            },
+        },
+        "pd_gains": {
+            "enabled": True,
+            "kp_noise": 0.10,
+            "kv_noise": 0.10,
+        },
+        "max_speed": {
+            "enabled": True,
+            "linear_speed_noise": 0.03,
+            "angular_speed_noise": 0.03,
+        },
+        "cameras_extrinsics": {
+            "enabled": True,
+            "scene_cam": {
+                "translation_std": 0.0,
+                "rotation_std_deg": 1.0,
+            },
+            "tool_cams": {
+                "translation_std": 0.001,
+                "rotation_std_deg": 0.6,
+            },
+        },
+    }
+
+
+def get_robot_cfg() -> dict[str, Any]:
     return {
         "ee_link_name": "robotiq_hande_end",
         "gripper_link_names": [
