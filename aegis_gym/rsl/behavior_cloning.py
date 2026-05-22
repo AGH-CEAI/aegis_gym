@@ -57,11 +57,16 @@ class BehaviorCloning:
             return ("action_head", "pose_head")
 
     def __init__(
-        self, env, cfg: dict, teacher: nn.Module, log_dir: Path, device: str = "cpu"
+        self,
+        env,
+        cfg: dict,
+        teacher: nn.Module,
+        log_dir: Path,
+        device: th.device = th.device("cpu"),
     ):
         self._env = env
         self._cfg = cfg
-        self._device = th.device(device)
+        self._device = device
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
 
@@ -577,7 +582,9 @@ class ExperienceBuffer:
 
 
 class Policy(nn.Module):
-    def __init__(self, config: dict, action_dim: int, device: th.device | str = "cpu"):
+    def __init__(
+        self, config: dict, action_dim: int, device: th.device = th.device("cpu")
+    ):
         super().__init__()
         self.num_cameras = config["num_cameras"]
         self.encoder_type = config["encoder_type"]
@@ -624,8 +631,6 @@ class Policy(nn.Module):
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(features)
         fused = th.cat([fused, state_obs], dim=-1)
-        # print(f">>>> DEBUG: the initial state_obs: {state_obs}")
-        # raise RuntimeError("KLE")
         return self.action_head(fused)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
