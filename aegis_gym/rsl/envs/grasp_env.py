@@ -922,35 +922,48 @@ class GraspEnv(VecEnv):
         return F.conv2d(rgb, kernel, padding=pad, groups=C)
 
     def _apply_cutout(self, rgb: th.Tensor) -> th.Tensor:
-        N, _, H, W = rgb.shape
-        cutout_cfg = self._dr_cfg.image_aug.cutout
+        N, C, H, W = rgb.shape
+        device = rgb.device
         prof = self._aug_profile
 
-        if not prof:
+        # --- Resolve box coordinates (profile replay or fresh sample) ---
+        if prof and "cutout_active" in prof:
+            # Replay per-episode profile (already on correct device)
+            active = prof["cutout_active"]  # (N,) bool
+            hs = prof["cutout_h"]  # (N,) long
+            ws = prof["cutout_w"]  # (N,) long
+            ys = prof["cutout_y"]  # (N,) long
+            xs = prof["cutout_x"]  # (N,) long
+        else:
+            if not prof:
+                return rgb  # DR disabled / no per-episode aug
+            cutout_cfg = self._dr_cfg.image_aug.cutout
+            active = th.rand(N, device=device) < cutout_cfg.prob
+            hs = th.randint(
+                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
+            )
+            ws = th.randint(
+                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
+            )
+            ys = (th.rand(N, device=device) * (H - hs).clamp(min=1)).long()
+            xs = (th.rand(N, device=device) * (W - ws).clamp(min=1)).long()
+
+        if not active.any():
             return rgb
 
-        if "cutout_active" in prof:
-            for i in range(N):
-                if prof["cutout_active"][i]:
-                    y = int(prof["cutout_y"][i].item())
-                    x = int(prof["cutout_x"][i].item())
-                    h = int(prof["cutout_h"][i].item())
-                    w = int(prof["cutout_w"][i].item())
-                    rgb[i, :, y : y + h, x : x + w] = 0.0
-            return rgb
+        # --- Build vectorized binary mask: 0 = zeroed region ---
+        row_idx = th.arange(H, device=device).view(1, H, 1)  # (1, H, 1)
+        col_idx = th.arange(W, device=device).view(1, 1, W)  # (1, 1, W)
 
-        prob = cutout_cfg.prob
-        min_sz = cutout_cfg.min_size
-        max_sz = cutout_cfg.max_size
+        in_box = (
+            (row_idx >= ys.view(N, 1, 1))
+            & (row_idx < (ys + hs).view(N, 1, 1))
+            & (col_idx >= xs.view(N, 1, 1))
+            & (col_idx < (xs + ws).view(N, 1, 1))
+        )  # (N, H, W)
 
-        for i in range(N):
-            if th.rand(1).item() < prob:
-                sz_h = int(th.randint(min_sz, max_sz + 1, (1,)).item())
-                sz_w = int(th.randint(min_sz, max_sz + 1, (1,)).item())
-                y = int(th.randint(0, max(1, H - sz_h + 1), (1,)).item())
-                x = int(th.randint(0, max(1, W - sz_w + 1), (1,)).item())
-                rgb[i, :, y : y + sz_h, x : x + sz_w] = 0.0
-        return rgb
+        mask = ~(in_box & active.view(N, 1, 1))  # (N, H, W)
+        return rgb * mask.unsqueeze(1)  # broadcast over C
 
     def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
         aug = self._dr_cfg.image_aug
