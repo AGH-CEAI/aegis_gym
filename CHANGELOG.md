@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-116](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added domain randomization for Genesis environment.
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Added new `ConcatenatedCNNEncoder` encoder class.
 - [PR-112](https://github.com/AGH-CEAI/aegis_gym/pull/112) - Added script to batch-enqueue ClearML eval tasks from training runs.
 - [PR-94](https://github.com/AGH-CEAI/aegis_gym/pull/94) - Added ClearML config connection to the `grasp_cfg.py` config getters.
