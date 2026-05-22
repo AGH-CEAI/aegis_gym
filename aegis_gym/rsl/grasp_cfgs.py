@@ -165,11 +165,9 @@ def get_bc_cfg() -> dict[str, Any]:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
-            # TODO load config from clearml-model-id (currently only from clearml-task-id)
-            "encoder_type": "per_camera_cnn",
-            # "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
-            "fusion_type": "attention_spatial",
-            # "fusion_type": "linear",  # linear, attention_vector, attention_spatial
+            # TODO(issue#120) load config from clearml-model-id (currently only from clearml-task-id)
+            "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
+            "fusion_type": "linear",  # linear, attention_vector, attention_spatial
             "use_pose_head": True,
             "vision_encoder": {
                 "conv_layers": [
