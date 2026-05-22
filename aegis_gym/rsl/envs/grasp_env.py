@@ -784,7 +784,6 @@ class GraspEnv(VecEnv):
         translation_std: float,
         rotation_std_deg: float,
     ) -> np.ndarray:
-        # TODO Fix Camera extrinsics are the same for every env in the batch, which undermines the DR goal
         t = np.random.randn(3) * translation_std
         angles = np.random.randn(3) * math.radians(rotation_std_deg)
         rx, ry, rz = angles
