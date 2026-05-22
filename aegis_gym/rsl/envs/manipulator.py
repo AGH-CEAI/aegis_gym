@@ -135,7 +135,9 @@ class Manipulator:
         self._force_upper = self._build_gain_tensor(FORCE_UPPER, n)
 
     def _build_gain_tensor(self, values: list[float], n: int) -> th.Tensor:
-        return th.tensor(values, dtype=th.float32).unsqueeze(0).repeat(n, 1)
+        # TODO validate the necessity of the additional dims
+        # return th.tensor(values, dtype=th.float32).unsqueeze(0).repeat(n, 1)
+        return th.tensor(values, dtype=th.float32)
 
     def set_pd_gains(
         self,
