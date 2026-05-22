@@ -440,6 +440,7 @@ class GraspEnv(VecEnv):
 
         self.robot.apply_action(actions, open_gripper=True)
         self.scene.step()
+        # TODO(issue#117) redesign the visualize-cameras feature
         if self.show_cameras_gui:
             self.get_observations_vis()
             if self._dr_cfg.debug_viewer:
@@ -904,8 +905,8 @@ class GraspEnv(VecEnv):
     def _apply_gaussian_blur(
         self,
         rgb: th.Tensor,
-        kernel_size: int = 3,
-        sigma: float = 0.8,
+        kernel_size: int,
+        sigma: float,
     ) -> th.Tensor:
         x = (
             th.arange(kernel_size, dtype=th.float32, device=self.device)
@@ -1014,6 +1015,7 @@ class GraspEnv(VecEnv):
         return rgb.clamp(0.0, 1.0)
 
     def _show_augmented_debug(self) -> None:
+        # TODO(issue#117) redesign the visualize-camera feature
         if not self._debug_cameras:
             return
 
