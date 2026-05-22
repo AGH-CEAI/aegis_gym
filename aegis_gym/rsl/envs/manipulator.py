@@ -59,6 +59,7 @@ class Manipulator:
         self._ik_method: Literal["gs_ikv", "dls_ikv"] = args["ik_method"]
 
         self._setup_config()
+        self._init_pd_tensors()
 
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
@@ -84,7 +85,7 @@ class Manipulator:
                 raise RuntimeError(
                     f"Found {len(urdf_files)} URDF files in dataset {self._urdf_model_id}, expected just one"
                 )
-            return str(urdf_files[0])
+            return Path(urdf_files[0])
 
         warnings.warn(
             "There is no given ClearML dataset ID for the URDF assets! Trying to read the default directory in 5s.."
@@ -116,33 +117,38 @@ class Manipulator:
         if self._args["default_gripper_dof"] is not None:
             self._default_joint_angles += self._args["default_gripper_dof"]
 
+    def _init_pd_tensors(self) -> None:
+        """Cache default PD tensors; call once after the entity is ready."""
+        # TODO(issue#98) Move the robot calibration data into the URDF-dataset
+        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 100.0, 100.0]
+        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 10.0, 10.0]
+        FORCE_LOWER = [-87.0, -87.0, -87.0, -87.0, -87.0, -87.0, -100.0, -100.0]
+        FORCE_UPPER = [87.0, 87.0, 87.0, 87.0, 87.0, 87.0, 100.0, 100.0]
+
+        # Sanity-check against the actual robot
+        assert self._robot_entity.n_dofs == len(KP_GAINS)
+
+        n = self._num_envs
+        self._default_kp = self._build_gain_tensor(KP_GAINS, n)
+        self._default_kv = self._build_gain_tensor(KV_GAINS, n)
+        self._force_lower = self._build_gain_tensor(FORCE_LOWER, n)
+        self._force_upper = self._build_gain_tensor(FORCE_UPPER, n)
+
+    def _build_gain_tensor(self, values: list[float], n: int) -> th.Tensor:
+        return th.tensor(values, dtype=th.float32).unsqueeze(0).repeat(n, 1)
+
     def set_pd_gains(
         self,
         kp: Optional[th.Tensor] = None,
         kv: Optional[th.Tensor] = None,
     ) -> None:
-        self._kp_gains = [4500, 4500, 3500, 3500, 3500, 3500, 100, 100]
-        self._kv_gains = [350, 350, 250, 250, 250, 250, 10, 10]
-        n = self._num_envs
-        kp_t = (
-            kp
-            if kp is not None
-            else th.tensor(self._kp_gains, dtype=th.float32).unsqueeze(0).expand(n, -1)
-        )
-        kv_t = (
-            kv
-            if kv is not None
-            else th.tensor(self._kv_gains, dtype=th.float32).unsqueeze(0).expand(n, -1)
-        )
+        kp_t = kp if kp is not None else self._default_kp
+        kv_t = kv if kv is not None else self._default_kv
         self._robot_entity.set_dofs_kp(kp_t)
         self._robot_entity.set_dofs_kv(kv_t)
         self._robot_entity.set_dofs_force_range(
-            th.tensor([-87, -87, -87, -87, -87, -87, -100, -100], dtype=th.float32)
-            .unsqueeze(0)
-            .expand(n, -1),
-            th.tensor([87, 87, 87, 87, 87, 87, 100, 100], dtype=th.float32)
-            .unsqueeze(0)
-            .expand(n, -1),
+            self._force_lower,
+            self._force_upper,
         )
         # TODO(issue#57) configure armature, damping and stiffness
         # self._robot_entity.set_dofs_armature(
