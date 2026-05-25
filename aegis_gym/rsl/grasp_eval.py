@@ -13,6 +13,7 @@ from grasp_cfgs import GraspConfig, get_logger_cfg
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage, Control
 
 from envs.grasp_env import GraspEnv
+from config_types.debug import DebugCfg
 
 try:
     from envs.grasp_env_ros import GraspEnvROS
@@ -133,11 +134,30 @@ def parse_arguments() -> Namespace:
     )
 
     p.add_argument(
+        "--debug-enable",
+        action="store_true",
+        default=False,
+        help="Enable debugging tools",
+    )
+    p.add_argument(
         "--debug-swap-tool-cameras",
         action="store_true",
         default=False,
         help="Swap the sides of the tool cameras (i.e. left<->right).",
     )
+    p.add_argument(
+        "--debug-enable-vis-preview",
+        action="store_true",
+        default=False,
+        help="Show a windows with preview of the visual observations.",
+    )
+    p.add_argument(
+        "--debug-record-vis-obs",
+        action="store_true",
+        default=False,
+        help="Record visual observations to a given directory in '--debug-record-dir'.",
+    )
+    p.add_argument("--debug-record-dir", type=Path, default=Path("/tmp/aegis_vis_obs"))
 
     return p.parse_args()
 
@@ -161,6 +181,12 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     )
     episode_len_s = cfg.env_cfg["episode_length_s"]
     cfg.env_cfg["max_steps"] = int(episode_len_s / cfg.env_cfg["policy_dt"])
+
+    cfg.debug_cfg.enabled = args.debug_enable
+    cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
+    cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
+    cfg.debug_cfg.enable_record_obs = args.debug_enable_record_obs
+    cfg.debug_cfg.record_dir = args.debug_record_dir
 
     return cfg
 
@@ -341,7 +367,7 @@ def eval_policy_single(
         obs,
         device,
         record_render=record_render,
-        swap_tool_cameras=args.debug_swap_tool_cameras,
+        debug_cfg=cfg.debug_cfg,
     )
     log_metrics(task, metrics)
 
@@ -397,7 +423,7 @@ def eval_policy_sweep(
             obs,
             device,
             record_render=False,
-            swap_tool_cameras=args.debug_swap_tool_cameras,
+            debug_cfg=cfg.debug_cfg,
         )
         log_metrics(task, metrics, step=ckpt.step)
 
@@ -410,8 +436,8 @@ def run_eval(
     max_steps: int,
     obs: Any,
     device: th.device,
+    debug_cfg: DebugCfg,
     record_render: bool = False,
-    swap_tool_cameras: bool = False,
 ) -> dict[str, float]:
     total_rewards = th.zeros(env.num_envs, device=device)
     episode_lengths = th.zeros(env.num_envs, device=device)
@@ -419,15 +445,28 @@ def run_eval(
     start_time = time.perf_counter()
     total_inference_time = 0.0
 
+    def get_obs_vis() -> th.Tensor:
+        if not debug_cfg.enabled:
+            return env.get_observations_vis()
+        return env.get_observations_vis(
+            swap_tool_cameras=debug_cfg.swap_tool_cameras,
+            enable_vis_preview=debug_cfg.enable_vis_preview,
+            enable_record_obs=debug_cfg.enable_record_obs,
+            record_dir=debug_cfg.record_dir,
+        )
+
+    vis_debug_params = {}
+    if debug_cfg.enabled:
+        vis_debug_params = debug_cfg.as_dict()
+        vis_debug_params.pop("enabled")
+
     for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
         match stage:
             case Stage.RL:
                 actions = policy(obs)
             case Stage.BC:
-                rgb_obs = env.get_observations_vis(
-                    normalize=True, swap_tool_cameras=swap_tool_cameras
-                ).float()
-                ee_pose = env.robot.ee_pose.float()
+                rgb_obs = get_obs_vis()
+                ee_pose = env.robot.ee_pose
                 actions = policy(rgb_obs, ee_pose)
                 if record_render:
                     env.record_cam.render()

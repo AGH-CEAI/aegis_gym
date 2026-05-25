@@ -1,21 +1,18 @@
 import math
-import time
-from typing import Literal, Optional
-
-import os
 import tempfile
-from PIL import Image
+import time
+from pathlib import Path
+from typing import Literal, Optional
 
 import cv2
 import numpy as np
 import torch as th
+from genesis.utils.geom import transform_by_quat
+from PIL import Image
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
-from genesis.utils.geom import transform_by_quat
 
 from .manipulator_ros import ManipulatorROS
-
-GLOBALE_STEP_COUNTER = 0
 
 
 class Object:
@@ -95,6 +92,21 @@ class GraspEnvROS(VecEnv):
             num_envs=self.num_envs,
             device=self.device,
         )
+
+        # TODO(issue#41) Unify the setup of the cameras
+        # TODO(issue#121) Unify the grasp_env and grasp_env_ros cameras names
+        match self.camera_setup:
+            case "default":
+                self._cameras = ["scene", "left", "right"]
+            case "scene_dual":
+                self._cameras = ["left", "right"]
+            case _:
+                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+        self._cameras_order = {
+            "scene_cam": 0,
+            "left": 1,
+            "right": 2,
+        }
 
         self._init_reward_functions()
         self._init_buffers()
@@ -274,128 +286,88 @@ class GraspEnvROS(VecEnv):
     def get_observations_vis(
         self,
         normalize: bool = True,
-        save_frames: bool = True,
-        save_dir: Optional[str] = None,
-        show_windows: bool = True,
         swap_tool_cameras: bool = False,
+        enable_vis_preview: bool = False,
+        enable_record_obs: bool = False,
+        record_dir: Optional[Path] = None,
     ) -> th.Tensor:
-        match self.camera_setup:
-            case "default":
-                cams = ["scene", "left", "right"]
-            case "scene_dual":
-                cams = ["left", "right"]
-            case _:
-                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+        # TODO(issue#41) Unify the camera setup
+        rgb_list: list[th.Tensor] = [None] * len(self._cameras)
 
-        rgb_list = [None] * len(cams)
-        for cam_id, cam_name in enumerate(cams):
+        for cam_name in self._cameras:
             if swap_tool_cameras:
                 cam_name = {"left": "right", "right": "left"}.get(cam_name, cam_name)
+            cam_id = self._cameras_order[cam_name]
 
             rgb = self.robot.get_camera_frame(cam_name)
-            # rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             if normalize:
                 rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
 
-        # TODO implement this as an pernament feature
-        if show_windows:
-            # Convert all cameras to OpenCV format
-            opencv_images = []
-            for cam_id, cam_name in enumerate(cams):
-                # Take first image in batch (assuming B dimension)
-                img = self.robot.get_camera_frame(cam_name)
-                img = rgb_list[cam_id][0].permute(1, 2, 0).cpu().numpy()  # HWC
-                img = (
-                    (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-                )
-                # Add camera name text
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                # Resize to 256x256
-                img = cv2.resize(img, (256, 256), interpolation=cv2.INTER_AREA)
-                cv2.putText(
-                    img,
-                    str(cam_name),  # Assuming cam has a 'name' attribute
-                    org=(10, 30),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=1,
-                    color=(0, 255, 0),
-                    thickness=2,
-                )
-                opencv_images.append(img)
+        # TODO(issue#117) redesign the visualization preview
+        # TODO(issue#121) unify the code between grasp_env and grasp_env_ros
+        if enable_vis_preview or enable_record_obs:
+            preview = self._create_vis_observation_preview(
+                obs=rgb_list, normalize=normalize
+            )
 
-            # Stack images horizontally (or vertically if you prefer)
-            preview = np.hstack(opencv_images)
-
-            # Show the preview
-            cv2.imshow("Cameras Preview", preview)
-            cv2.waitKey(1)  # 1ms delay to allow GUI update
-
-            # TODO implement this as an pernament feature
-            if save_frames:
-                if save_dir is None:
-                    save_dir = os.path.join(tempfile.gettempdir(), "aegis_frames")
-                os.makedirs(save_dir, exist_ok=True)
-
-                # Convert tensor to BGR uint8
-                img = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
-
-                global GLOBALE_STEP_COUNTER
-                fname = f"frame_{GLOBALE_STEP_COUNTER:08d}.png"
-                path = os.path.join(save_dir, fname)
-                Image.fromarray(img).save(path)
-                GLOBALE_STEP_COUNTER += 1
-
-            # Visualization with OpenCV
-            if show_windows:
-                tensor = rgb
-                # if tensor.ndim == 4:
-                #     tensor = tensor[0]
-                # if tensor.shape[0] == 3:
-                #     tensor = tensor[[2, 1, 0], ...]  # RGB to BGR for OpenCV
-                np_img = tensor.detach().cpu().clamp(0.0, 1.0).mul(255).byte().numpy()
-                if np_img.shape[0] in (1, 3):
-                    np_img = np.transpose(np_img, (1, 2, 0))
-                if np_img.shape[2] == 1:
-                    np_img = np_img[:, :, 0]
-                # Larger preview window (512x512 max, maintains aspect)
-                height, width = np_img.shape[:2]
-                max_side = 512
-                scale = min(max_side / width, max_side / height)
-                new_w, new_h = int(width * scale), int(height * scale)
-                large_img = cv2.resize(
-                    np_img, (new_w, new_h), interpolation=cv2.INTER_LINEAR
-                )
-
-                cv2.imshow(f"{cam_name} (large)", large_img)
+            if enable_vis_preview:
+                cv2.imshow("Visual observation preview", preview)
                 cv2.waitKey(1)
 
-            if save_frames:
-                # Determine save directory
-                if save_dir is None:
-                    save_dir = os.path.join(tempfile.gettempdir(), "aegis_frames")
-                os.makedirs(save_dir, exist_ok=True)
-                tensor = rgb
-                if tensor.ndim == 4:
-                    tensor = tensor[0]
-                if tensor.shape[0] == 3:
-                    tensor = tensor[[2, 1, 0], ...]  # RGB to BGR for OpenCV/PIL
-                np_img = tensor.detach().cpu().clamp(0.0, 1.0).mul(255).byte().numpy()
-                if np_img.shape[0] in (1, 3):
-                    np_img = np.transpose(np_img, (1, 2, 0))
-                if np_img.shape[2] == 1:
-                    np_img = np_img[:, :, 0]
-                global GLOBALE_STEP_COUNTER
-                fname = f"frame_{GLOBALE_STEP_COUNTER:08d}_{cam_name}.png"
-                path = os.path.join(save_dir, fname)
-                Image.fromarray(np_img).save(path)
-                GLOBALE_STEP_COUNTER += 1
-        return th.cat(rgb_list, dim=1)
+            if enable_record_obs:
+                record_dir = (
+                    record_dir or Path(tempfile.gettempdir()) / "aegis_vis_obs_obs"
+                )
+                record_dir.mkdir(parents=True, exist_ok=True)
+                self._record_vis_observation(preview=preview, output_dir=record_dir)
+
+        return th.cat(rgb_list, dim=1).float()
 
         # TODO: add try catch, if it fails on dimensions probably one of the cameras is not working
-        # TODO we need a thing to selectulvy restart cameras in ROS side (just one selected camera)
-        # TODO: digitaltwin debug - move the robot in real in the same way as in simulator
-        # TODO: cameras preview in opencv (live)
+
+    def _create_vis_observation_preview(
+        self, obs: list[th.Tensor], normalize: bool
+    ) -> np.ndarray:
+
+        opencv_images: list[np.ndarray] = [None] * len(obs)
+        for cam_name in self._cameras:
+            cam_id = self._cameras_order[cam_name]
+
+            FIRST_IMG = 0
+            img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
+            img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            height, width = img.shape[:2]
+            max_side = 256
+            scale = min(max_side / width, max_side / height)
+            img = cv2.resize(
+                img,
+                (int(width * scale), int(height * scale)),
+                interpolation=cv2.INTER_AREA,
+            )
+            cv2.putText(
+                img,
+                str(cam_name),
+                org=(10, 30),
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=0.5,
+                color=(0, 255, 0),
+                thickness=2,
+            )
+            opencv_images[cam_id] = img
+
+        return np.hstack(opencv_images)
+
+    def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
+        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
+        record_step = getattr(self, "_record_step", 0)
+        fname = f"frame_{record_step:08d}.png"
+        Image.fromarray(preview).save(output_dir / fname)
+
+        self._record_step = record_step + 1
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]

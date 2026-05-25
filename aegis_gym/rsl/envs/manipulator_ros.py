@@ -306,11 +306,11 @@ class ManipulatorROS:
 
     @property
     def base_pos(self) -> th.Tensor:
-        return self.get_base_position().unsqueeze(dim=0)
+        return self.get_base_position().unsqueeze(dim=0).float()
 
     @property
     def ee_pose(self) -> th.Tensor:
-        return self.get_tcp_pose().unsqueeze(dim=0)
+        return self.get_tcp_pose().unsqueeze(dim=0).float()
 
     @property
     def camera_scene(self) -> th.Tensor:

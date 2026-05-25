@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
+from config_types.debug import DebugCfg
 from bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
@@ -60,12 +61,14 @@ class BehaviorCloning:
         self,
         env,
         cfg: dict,
+        debug_cfg: DebugCfg,
         teacher: nn.Module,
         log_dir: Path,
         device: th.device = th.device("cpu"),
     ):
         self._env = env
         self._cfg = cfg
+        self._debug_cfg = debug_cfg
         self._device = device
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
@@ -291,9 +294,20 @@ class BehaviorCloning:
         """Collect experience from environment using stereo rgb images and object poses."""
         # Get state observation
         obs = self._env.get_observations()
+
+        def get_obs_vis() -> th.Tensor:
+            if not self._debug_cfg.enabled:
+                return self._env.get_observations_vis()
+            return self._env.get_observations_vis(
+                swap_tool_cameras=self._debug_cfg.swap_tool_cameras,
+                enable_vis_preview=self._debug_cfg.enable_vis_preview,
+                enable_record_obs=self._debug_cfg.enable_record_obs,
+                record_dir=self._debug_cfg.record_dir,
+            )
+
         with th.inference_mode():
             for _ in range(self._num_steps_per_env):
-                rgb_obs = self._env.get_observations_vis(normalize=True)
+                rgb_obs = get_obs_vis()
 
                 # Get teacher action
                 teacher_action = self._teacher(obs).detach()
