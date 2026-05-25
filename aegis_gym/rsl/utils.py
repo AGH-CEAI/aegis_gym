@@ -10,6 +10,7 @@ from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
+from config_types.debug import DebugCfg
 
 
 class Stage(StrEnum):
@@ -85,6 +86,7 @@ def load_rl_policy(
 def load_bc_policy(
     env: Any,
     bc_cfg: dict,
+    debug_cfg: DebugCfg,
     device: th.device,
     load_cfg_from_clearml: bool = True,
     exp_name: Optional[str] = None,
@@ -124,7 +126,7 @@ def load_bc_policy(
     else:
         print("[Policy Loader] Keeping the current BC config")
 
-    bc_runner = BehaviorCloning(env, bc_cfg, None, log_dir, device=device)
+    bc_runner = BehaviorCloning(env, bc_cfg, debug_cfg, None, log_dir, device=device)
     bc_runner.load(last_ckpt)
     print("[Policy Loader] Loaded BC checkpoint")
     return bc_runner._policy

@@ -103,7 +103,7 @@ class GraspEnvROS(VecEnv):
             case _:
                 raise ValueError(f"Unknown camera setup {self.camera_setup}")
         self._cameras_order = {
-            "scene_cam": 0,
+            "scene": 0,
             "left": 1,
             "right": 2,
         }
@@ -295,9 +295,12 @@ class GraspEnvROS(VecEnv):
         rgb_list: list[th.Tensor] = [None] * len(self._cameras)
 
         for cam_name in self._cameras:
-            if swap_tool_cameras:
-                cam_name = {"left": "right", "right": "left"}.get(cam_name, cam_name)
             cam_id = self._cameras_order[cam_name]
+            if swap_tool_cameras:
+                cam_name_tmp = {"left": "right", "right": "left"}.get(
+                    cam_name, cam_name
+                )
+                cam_id = self._cameras_order[cam_name_tmp]
 
             rgb = self.robot.get_camera_frame(cam_name)
             if normalize:
@@ -337,7 +340,6 @@ class GraspEnvROS(VecEnv):
             FIRST_IMG = 0
             img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
             img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
             height, width = img.shape[:2]

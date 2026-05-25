@@ -661,6 +661,7 @@ class GraspEnv(VecEnv):
             FIRST_IMG = 0
             img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
             img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
             height, width = img.shape[:2]
             max_side = 256
@@ -684,7 +685,6 @@ class GraspEnv(VecEnv):
         return np.hstack(opencv_images)
 
     def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
-        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
         record_step = getattr(self, "_record_step", 0)
         fname = f"frame_{record_step:08d}.png"
         Image.fromarray(preview).save(output_dir / fname)

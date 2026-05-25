@@ -71,6 +71,7 @@ def parse_arguments() -> Namespace:
     p.add_argument("-e", "--exp-name", type=str, default="grasp")
     p.add_argument("-v", "--vis", action="store_true", default=False)
     p.add_argument("-B", "--num-envs", type=int, default=100)
+    p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument(
@@ -185,7 +186,7 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     cfg.debug_cfg.enabled = args.debug_enable
     cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
     cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
-    cfg.debug_cfg.enable_record_obs = args.debug_enable_record_obs
+    cfg.debug_cfg.enable_record_obs = args.debug_record_vis_obs
     cfg.debug_cfg.record_dir = args.debug_record_dir
 
     return cfg
@@ -264,6 +265,7 @@ def load_policy(
         policy = load_bc_policy(
             env=env,
             bc_cfg=cfg.bc_cfg,
+            debug_cfg=cfg.debug_cfg,
             device=device,
             load_cfg_from_clearml=not args.enforce_current_config,
             log_dir=log_dir,
