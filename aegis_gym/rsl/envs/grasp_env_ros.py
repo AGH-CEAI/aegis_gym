@@ -76,6 +76,7 @@ class GraspEnvROS(VecEnv):
 
         # This pose is already in the Genesi's world base
         world_box_pose = th.tensor(
+            # TODO(issue#98) move setup into URDF-dataset in ClearML
             # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
             [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],

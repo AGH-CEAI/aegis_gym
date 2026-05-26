@@ -138,10 +138,11 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
 
     cfg.debug_cfg.enabled = args.debug_enable
-    cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
-    cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
-    cfg.debug_cfg.enable_record_obs = args.debug_record_vis_obs
-    cfg.debug_cfg.record_dir = args.debug_record_dir
+    if args.debug_enable:
+        cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
+        cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
+        cfg.debug_cfg.enable_record_obs = args.debug_record_vis_obs
+        cfg.debug_cfg.record_dir = args.debug_record_dir
 
     return cfg
 
