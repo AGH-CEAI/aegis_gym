@@ -328,7 +328,6 @@ class GraspEnvROS(VecEnv):
 
         return th.cat(rgb_list, dim=1).float()
 
-        # TODO: add try catch, if it fails on dimensions probably one of the cameras is not working
 
     def _create_vis_observation_preview(
         self, obs: list[th.Tensor], normalize: bool
