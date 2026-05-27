@@ -328,7 +328,6 @@ class GraspEnvROS(VecEnv):
 
         return th.cat(rgb_list, dim=1).float()
 
-
     def _create_vis_observation_preview(
         self, obs: list[th.Tensor], normalize: bool
     ) -> np.ndarray:
