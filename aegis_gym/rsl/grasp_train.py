@@ -64,6 +64,7 @@ def parse_arguments() -> Namespace:
     p.add_argument("-e", "--exp-name", type=str, default="grasp")
     p.add_argument("-v", "--vis", action="store_true", default=False)
     p.add_argument("-B", "--num-envs", type=int, default=4096)
+    p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument("--project-name", type=str, default=default_project_name)
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=300)
@@ -83,6 +84,33 @@ def parse_arguments() -> Namespace:
     p.add_argument("--calibration-steps", type=int, default=500)
     p.add_argument("--visualize-camera", action="store_true", default=False)
     p.add_argument("--disable-vision", action="store_true", default=False)
+
+    p.add_argument(
+        "--debug-enable",
+        action="store_true",
+        default=False,
+        help="Enable debugging tools",
+    )
+    p.add_argument(
+        "--debug-swap-tool-cameras",
+        action="store_true",
+        default=False,
+        help="Swap the sides of the tool cameras (i.e. left<->right).",
+    )
+    p.add_argument(
+        "--debug-enable-vis-preview",
+        action="store_true",
+        default=False,
+        help="Show a windows with preview of the visual observations.",
+    )
+    p.add_argument(
+        "--debug-record-vis-obs",
+        action="store_true",
+        default=False,
+        help="Record visual observations to a given directory in '--debug-record-dir'.",
+    )
+    p.add_argument("--debug-record-dir", type=Path, default=Path("/tmp/aegis_vis_obs"))
+
     return p.parse_args()
 
 
@@ -108,6 +136,13 @@ def setup_config(args: Namespace, task: Task) -> GraspConfig:
     log_dir = Path("logs") / f"{args.exp_name}_{train_type}"
     log_dir.mkdir(parents=True, exist_ok=True)
     cfg.logger_cfg["local_log_dir"] = str(log_dir)
+
+    cfg.debug_cfg.enabled = args.debug_enable
+    if args.debug_enable:
+        cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
+        cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
+        cfg.debug_cfg.enable_record_obs = args.debug_record_vis_obs
+        cfg.debug_cfg.record_dir = args.debug_record_dir
 
     return cfg
 
@@ -190,7 +225,12 @@ def train_runner(env: GraspEnvironment, args: Namespace, cfg: GraspConfig) -> No
             print("[GraspTrain] > Saved config as a pickle.")
 
             runner = BehaviorCloning(
-                env, cfg.bc_cfg, teacher_policy, log_dir=log_dir, device=device
+                env=env,
+                cfg=cfg.bc_cfg,
+                debug_cfg=cfg.debug_cfg,
+                teacher=teacher_policy,
+                log_dir=log_dir,
+                device=device,
             )
             runner.learn(num_learning_iterations=args.max_iterations)
         case Stage.RL:

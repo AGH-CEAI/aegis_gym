@@ -303,7 +303,7 @@ class Manipulator:
 
     @property
     def base_pos(self):
-        return self._robot_entity.get_pos()
+        return self._robot_entity.get_pos().float()
 
     @property
     def ee_pose(self) -> th.Tensor:
@@ -311,7 +311,7 @@ class Manipulator:
         The end-effector pose (the hand pose)
         """
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
-        return th.cat([pos, quat], dim=-1)
+        return th.cat([pos, quat], dim=-1).float()
 
     @property
     def gripper_width(self) -> th.Tensor:

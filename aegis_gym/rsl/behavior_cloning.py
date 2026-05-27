@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
+from config_types.debug import DebugCfg
 from bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
@@ -57,10 +58,17 @@ class BehaviorCloning:
             return ("action_head", "pose_head")
 
     def __init__(
-        self, env, cfg: dict, teacher: nn.Module, log_dir: Path, device: str = "cpu"
+        self,
+        env,
+        cfg: dict,
+        debug_cfg: DebugCfg,
+        teacher: nn.Module,
+        log_dir: Path,
+        device: th.device = th.device("cpu"),
     ):
         self._env = env
         self._cfg = cfg
+        self._debug_cfg = debug_cfg
         self._device = device
         self._teacher = teacher
         self._num_steps_per_env = cfg["num_steps_per_env"]
@@ -102,7 +110,7 @@ class BehaviorCloning:
         action_dim = env.num_actions
 
         # Multi-task policy with action and pose heads
-        self._policy = Policy(cfg["policy"], action_dim).to(device)
+        self._policy = Policy(cfg["policy"], action_dim, device).to(device)
 
         # Initialize optimizer
         self._optimizer = th.optim.Adam(
@@ -286,9 +294,20 @@ class BehaviorCloning:
         """Collect experience from environment using stereo rgb images and object poses."""
         # Get state observation
         obs = self._env.get_observations()
+
+        def get_obs_vis() -> th.Tensor:
+            if not self._debug_cfg.enabled:
+                return self._env.get_observations_vis()
+            return self._env.get_observations_vis(
+                swap_tool_cameras=self._debug_cfg.swap_tool_cameras,
+                enable_vis_preview=self._debug_cfg.enable_vis_preview,
+                enable_record_obs=self._debug_cfg.enable_record_obs,
+                record_dir=self._debug_cfg.record_dir,
+            )
+
         with th.inference_mode():
             for _ in range(self._num_steps_per_env):
-                rgb_obs = self._env.get_observations_vis(normalize=True)
+                rgb_obs = get_obs_vis()
 
                 # Get teacher action
                 teacher_action = self._teacher(obs).detach()
@@ -577,7 +596,9 @@ class ExperienceBuffer:
 
 
 class Policy(nn.Module):
-    def __init__(self, config: dict, action_dim: int):
+    def __init__(
+        self, config: dict, action_dim: int, device: th.device = th.device("cpu")
+    ):
         super().__init__()
         self.num_cameras = config["num_cameras"]
         self.encoder_type = config["encoder_type"]
@@ -589,7 +610,7 @@ class Policy(nn.Module):
         self.use_pose_head = config.get("use_pose_head", True)
         print("Use pose head:", self.use_pose_head)
 
-        self.vision_encoder = self._build_vision_encoder(config)
+        self.vision_encoder = self._build_vision_encoder(config).to(device)
         self.feature_fusion = self._build_fusion(config)
 
         vision_obs_dim = self.feature_fusion.output_dim

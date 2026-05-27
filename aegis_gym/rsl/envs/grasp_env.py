@@ -1,4 +1,6 @@
 import math
+import tempfile
+from pathlib import Path
 from typing import Literal, Optional
 
 import cv2
@@ -6,6 +8,8 @@ import genesis as gs
 import numpy as np
 import torch as th
 import torch.nn.functional as F
+from PIL import Image
+
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import (
@@ -62,10 +66,17 @@ class GraspEnv(VecEnv):
         # TODO(issue#117) redesign the cameras preview feature
         self._debug_cameras: dict[str, gs.Camera] = {}
         self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
+
+        # TODO(issue#41) refactor the camera_setup into more modular system
         self._cameras_link_names = {
             "scene_cam": "cam_scene_rgb_camera_frame",
             "tool_left_cam": "cam_tool_left",
             "tool_right_cam": "cam_tool_right",
+        }
+        self._cameras_order = {
+            "scene_cam": 0,
+            "tool_left_cam": 1,
+            "tool_right_cam": 2,
         }
 
         self.scene.build(
@@ -134,6 +145,8 @@ class GraspEnv(VecEnv):
             ),
             vis_options=gs.options.VisOptions(
                 rendered_envs_idx=list(range(self.num_envs)),
+                shadow=True,
+                plane_reflection=False,
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
@@ -197,6 +210,7 @@ class GraspEnv(VecEnv):
         )
 
         # == add cameras ==
+        # TODO(issue#41) refactor the camera_setup into more modular system
         match self.camera_setup:
             case "default":
                 self._add_camera(name="scene_cam", fov=38)
@@ -587,24 +601,95 @@ class GraspEnv(VecEnv):
         stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
         return stereo_rgb
 
-    def get_observations_vis(self, normalize: bool = True) -> th.Tensor:
-        cams = tuple(self._cameras.values())
-        rgb_list: list[th.Tensor] = [None] * len(cams)
+    def get_observations_vis(
+        self,
+        normalize: bool = True,
+        swap_tool_cameras: bool = False,
+        enable_vis_preview: bool = False,
+        enable_record_obs: bool = False,
+        record_dir: Optional[Path] = None,
+    ) -> th.Tensor:
+        rgb_list: list[th.Tensor] = [None] * len(self._cameras)
 
-        for cam_id, cam in enumerate(cams):
+        for cam_name, cam in self._cameras.items():
+            if swap_tool_cameras:
+                # TODO(issue#121) unify cameras names
+                cam_name = {
+                    "tool_left_cam": "tool_right_cam",
+                    "tool_right_cam": "tool_left_cam",
+                }.get(cam_name, cam_name)
+            cam_id = self._cameras_order[cam_name]
+
             rgb, _, _, _ = cam.render(
                 rgb=True, depth=False, segmentation=False, normal=False
             )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]  # (B, 3, H, W)
             if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
+                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
 
             if self._dr_cfg.enabled:
                 rgb = self._apply_image_augmentation(rgb)
 
             rgb_list[cam_id] = rgb
 
-        return th.cat(rgb_list, dim=1)
+        # TODO(issue#117) redesign the visualization preview
+        # TODO(issue#121) unify the code between grasp_env and grasp_env_ros
+        if enable_vis_preview or enable_record_obs:
+            preview = self._create_vis_observation_preview(
+                obs=rgb_list, normalize=normalize
+            )
+
+            if enable_vis_preview:
+                cv2.imshow("Visual observation preview", preview)
+                cv2.waitKey(1)
+
+            if enable_record_obs:
+                record_dir = record_dir or Path(tempfile.gettempdir()) / "aegis_vis_obs"
+                record_dir.mkdir(parents=True, exist_ok=True)
+                self._record_vis_observation(preview=preview, output_dir=record_dir)
+
+        return th.cat(rgb_list, dim=1).float()
+
+    def _create_vis_observation_preview(
+        self, obs: list[th.Tensor], normalize: bool
+    ) -> np.ndarray:
+
+        opencv_images: list[np.ndarray] = [None] * len(obs)
+        for cam_name in self._cameras.keys():
+            cam_id = self._cameras_order[cam_name]
+
+            FIRST_IMG = 0
+            img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
+            img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+            height, width = img.shape[:2]
+            max_side = 256
+            scale = min(max_side / width, max_side / height)
+            img = cv2.resize(
+                img,
+                (int(width * scale), int(height * scale)),
+                interpolation=cv2.INTER_AREA,
+            )
+            cv2.putText(
+                img,
+                str(cam_name),
+                org=(10, 30),
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                fontScale=0.5,
+                color=(0, 255, 0),
+                thickness=2,
+            )
+            opencv_images[cam_id] = img
+
+        return np.hstack(opencv_images)
+
+    def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
+        record_step = getattr(self, "_record_step", 0)
+        fname = f"frame_{record_step:08d}.png"
+        Image.fromarray(preview).save(output_dir / fname)
+
+        self._record_step = record_step + 1
 
     def _reward_keypoints(self) -> th.Tensor:
         ee_pos = self.robot.ee_pose[:, :3]

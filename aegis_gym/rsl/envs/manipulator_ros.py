@@ -152,11 +152,13 @@ class ManipulatorROS:
             {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
             device=self.device,
         )
-        # We assume RGB channels instead of default BGR
+        # Convert BGR into RGB and np.ndarray into th.Tensor
         if not self._disable_vision:
             self._vision = TensorDict(
                 {
-                    k: th.from_numpy(v).to(self.device).roll(1, dims=-1)
+                    k: th.from_numpy(v[[2, 1, 0], :, :])
+                    .to(self.device)
+                    .roll(1, dims=-1)
                     for k, v in states["vision"].items()
                 },
                 device=self.device,
@@ -304,11 +306,11 @@ class ManipulatorROS:
 
     @property
     def base_pos(self) -> th.Tensor:
-        return self.get_base_position().unsqueeze(dim=0)
+        return self.get_base_position().unsqueeze(dim=0).float()
 
     @property
     def ee_pose(self) -> th.Tensor:
-        return self.get_tcp_pose().unsqueeze(dim=0)
+        return self.get_tcp_pose().unsqueeze(dim=0).float()
 
     @property
     def camera_scene(self) -> th.Tensor:

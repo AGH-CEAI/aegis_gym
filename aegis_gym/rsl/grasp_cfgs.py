@@ -6,6 +6,7 @@ from pathlib import Path
 import torch as th
 from clearml import Task
 from config_types.domain_randomization import DomainRandomizationCfg
+from config_types.debug import DebugCfg
 
 
 @dataclass(slots=True, frozen=True)
@@ -16,6 +17,7 @@ class GraspConfig:
     env_cfg: dict[str, Any]
     robot_cfg: dict[str, Any]
     dr_cfg: DomainRandomizationCfg
+    debug_cfg: DebugCfg
 
     _device: ClassVar["th.device"] = None
     _instance: ClassVar["GraspConfig | None"] = None
@@ -43,6 +45,7 @@ class GraspConfig:
             env_cfg=get_env_cfg(),
             robot_cfg=get_robot_cfg(),
             dr_cfg=DomainRandomizationCfg.from_dict(get_dr_cfg()),
+            debug_cfg=DebugCfg.from_dict({}),
         )
         return cls._instance
 
@@ -165,6 +168,7 @@ def get_bc_cfg() -> dict[str, Any]:
         "use_teacher_mixing": False,
         # network architecture
         "policy": {
+            # TODO(issue#120) load config from clearml-model-id (currently only from clearml-task-id)
             "encoder_type": "shared_cnn",  # shared_cnn, per_camera_cnn, autoencoder
             "fusion_type": "linear",  # linear, attention_vector, attention_spatial
             "use_pose_head": True,
