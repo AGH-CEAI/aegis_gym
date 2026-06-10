@@ -12,6 +12,16 @@ class CameraID(StrEnum):
     TOOL_LEFT = auto()
     TOOL_RIGHT = auto()
 
+    @classmethod
+    def from_str(cls, x: str) -> "CameraID":
+        if "left" in x.lower():
+            return CameraID.TOOL_LEFT
+        if "right" in x.lower():
+            return CameraID.TOOL_RIGHT
+        if "scene" in x.lower():
+            return CameraID.SCENE_CAMERA
+        raise ValueError(f"Could not resolve the CameraID from given string: {x}")
+
 
 class CameraModality(StrEnum):
     RGB = auto()

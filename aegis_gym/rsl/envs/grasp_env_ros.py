@@ -12,6 +12,8 @@ from PIL import Image
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
+from aegis_gym.rsl.envs.manipulator.base_manipulator import CameraID
+
 from .manipulator import RosGrpcManipulator
 
 
@@ -22,9 +24,9 @@ class Object:
         pos: th.Tensor,
         quat: th.Tensor,
         num_envs: int = 1,
-        device: th.device = th.device("cpu"),
+        device: Optional[th.device] = None,
     ):
-        self.device = device
+        self.device = device or th.device("cpu")
         self.num_envs = num_envs
         self.size = size
 
@@ -56,11 +58,11 @@ class GraspEnvROS(VecEnv):
         env_cfg: dict,
         robot_cfg: dict,
         disable_vision: bool = False,
-        device: th.device = th.device("cpu"),
+        device: Optional[th.device] = None,
     ) -> None:
+        self.device = device or th.device("cpu")
         self._cfg = env_cfg
         self.disable_vision = disable_vision
-        self.device = device
 
         self._extract_config()
         print(
@@ -179,13 +181,14 @@ class GraspEnvROS(VecEnv):
         self.extras = dict()
         self.extras["observations"] = dict()
 
-    def reset_idx(self, envs_idx: th.Tensor) -> None:
+    def reset_idx(self, envs_idx: th.IntTensor) -> None:
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
 
         # reset robot
-        self.robot.reset(envs_idx)
+        self.robot.ctrl_gripper_open(envs_idx)
+        self.robot.ctrl_go_to_home(envs_idx)
         self.object.reset(envs_idx)
 
         # fill extras
@@ -217,7 +220,7 @@ class GraspEnvROS(VecEnv):
             time.sleep(0.0001)
         self.last_step_ts = time.perf_counter()
 
-        self.robot.apply_action(actions)
+        self.robot.ctrl_apply_vel_action(actions)
         self.robot.read_state()
 
         # check termination
@@ -263,16 +266,16 @@ class GraspEnvROS(VecEnv):
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
     def get_observations(self) -> TensorDict:
-        ee_pose = self.robot.ee_pose
-        ee_pos, ee_quat = (
-            ee_pose[:, :3],
-            ee_pose[:, 3:7],
+        tcp_pose = self.robot.get_tcp_pose()
+        tcp_pos, tcp_quat = (
+            tcp_pose[:, :3],
+            tcp_pose[:, 3:],
         )
         obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
 
         obs_components = [
-            ee_pos - obj_pos,  # 3D position difference
-            ee_quat,  # current orientation (w, x, y, z)
+            tcp_pos - obj_pos,  # 3D position difference
+            tcp_quat,  # current orientation (w, x, y, z)
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
@@ -303,7 +306,7 @@ class GraspEnvROS(VecEnv):
                 )
                 cam_id = self._cameras_order[cam_name_tmp]
 
-            rgb = self.robot.get_camera_frame(cam_name)
+            rgb = self.robot.get_camera_image(CameraID.from_str(cam_name))
             if normalize:
                 rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
             rgb_list[cam_id] = rgb
@@ -371,8 +374,8 @@ class GraspEnvROS(VecEnv):
         self._record_step = record_step + 1
 
     def _reward_keypoints(self) -> th.Tensor:
-        ee_pos = self.robot.ee_pose[:, :3]
-        ee_quat = self.robot.ee_pose[:, 3:7]
+        tcp_pose = self.robot.get_tcp_pose()
+        tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         keypoints_offset = self.keypoints_offset
         object_offset = th.tensor(
             [0.0, 0.0, -0.08],
@@ -381,8 +384,8 @@ class GraspEnvROS(VecEnv):
         ).repeat(self.num_envs, 1)
 
         finger_pos_keypoints = self._to_world_frame(
-            ee_pos + object_offset,
-            ee_quat,
+            tcp_pos + object_offset,
+            tcp_quat,
             keypoints_offset,
         )
 
@@ -437,7 +440,7 @@ class GraspEnvROS(VecEnv):
         grab_height = 0.08
         min_width = 0.005
         max_width = 0.04
-        goal_pose = self.robot.ee_pose.clone()
+        goal_pose = self.robot.get_tcp_pose().clone()
         goal_pose[:, 2] -= grab_height
 
         # lift pose (above the object)
@@ -459,20 +462,20 @@ class GraspEnvROS(VecEnv):
                     if step_1:
                         continue
                     print("[GraspEnvROS][Demo] STEP 1: Going down to the grasp pose")
-                    self.robot.go_to_goal(goal_pose)
+                    self.robot.ctrl_go_to_goal(goal_pose)
                     step_1 = True
                 elif i < total_steps * 2 / 5:  # grasping
                     if step_2:
                         continue
                     print("[GraspEnvROS][Demo] STEP 2: Grasping")
-                    self.robot.gripper_close()
+                    self.robot.ctrl_gripper_close()
                     step_2 = True
                 elif i < total_steps * 3 / 5:  # lifting
                     if step_3:
                         continue
                     print("[GraspEnvROS][Demo] STEP 3: Going up to the lift pose")
-                    self.robot.go_to_goal(lift_pose)
-                    fingers_width = self.robot.gripper_width
+                    self.robot.ctrl_go_to_goal(lift_pose)
+                    fingers_width = self.robot.get_gripper_width()
                     success = (fingers_width > min_width) and (
                         fingers_width < max_width
                     )
@@ -481,15 +484,15 @@ class GraspEnvROS(VecEnv):
                     if step_4:
                         continue
                     print("[GraspEnvROS][Demo] STEP 4: Going home")
-                    self.robot._move_to_home()
-                    self.robot.gripper_open()
+                    self.robot.ctrl_go_to_home()
+                    self.robot.ctrl_gripper_open()
                     step_4 = True
         except Exception as e:
             print(f"[GraspEnvROS][Demo] Caught an exception: {e}")
             success = 0.0
             print("[GraspEnvROS][Demo] Going home")
-            self.robot._move_to_home()
-            self.robot.gripper_open()
+            self.robot.ctrl_go_to_home()
+            self.robot.ctrl_gripper_open()
 
         print(f"[GraspEnvROS][Demo] Grasp success: {success}")
         return float(success)
