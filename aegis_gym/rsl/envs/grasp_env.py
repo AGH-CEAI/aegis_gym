@@ -18,7 +18,7 @@ from genesis.utils.geom import (
 )
 
 from config_types.domain_randomization import DomainRandomizationCfg, CameraPoseCfg
-from .manipulator import Manipulator
+from .manipulator import GenesisManipulator
 from .plotjuggler_udp import PlotJugglerUDP
 
 # Further example
@@ -170,7 +170,7 @@ class GraspEnv(VecEnv):
         )
 
         # == add robot ==
-        self.robot = Manipulator(
+        self.robot = GenesisManipulator(
             num_envs=self.num_envs,
             scene=self.scene,
             args=robot_cfg,

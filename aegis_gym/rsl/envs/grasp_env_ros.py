@@ -12,7 +12,7 @@ from PIL import Image
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
-from .manipulator_ros import ManipulatorROS
+from .manipulator import RosGrpcManipulator
 
 
 class Object:
@@ -67,7 +67,7 @@ class GraspEnvROS(VecEnv):
             f"[GraspEnvROS] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 
-        self.robot = ManipulatorROS(
+        self.robot = RosGrpcManipulator(
             num_envs=self.num_envs,
             args=robot_cfg,
             disable_vision=self.disable_vision,
