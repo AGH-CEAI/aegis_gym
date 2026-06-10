@@ -18,10 +18,10 @@ class GenesisManipulator(BaseManipulator):
         scene: gs.Scene,
         args: dict,
         show_cell: bool,
-        device: str = "cpu",
+        device: Optional[th.device] = None,
     ):
         # == set members ==
-        self._device = device
+        self._device = device or "cpu"
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
@@ -63,18 +63,6 @@ class GenesisManipulator(BaseManipulator):
 
         self._setup_config()
         self._init_pd_tensors()
-
-        self._robot_entity.set_dofs_force_range(
-            self._force_lower,
-            self._force_upper,
-        )
-        # TODO(issue#57) configure armature, damping and stiffness
-        # self._robot_entity.set_dofs_armature(
-        #     th.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-        # )
-        # self._robot_entity.set_dofs_stiffness(
-        #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
-        # )
 
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
@@ -162,11 +150,26 @@ class GenesisManipulator(BaseManipulator):
         kp_gain: Optional[th.Tensor] = None,
         kv_gain: Optional[th.Tensor] = None,
     ) -> None:
+        """
+        Sets joints gains. Must be called after the build of the Genesis scene.
+        """
         kp_g = kp_gain if kp_gain is not None else 1.0
         kv_g = kv_gain if kv_gain is not None else 1.0
 
         self._robot_entity.set_dofs_kp(self._default_kp * kp_g)
         self._robot_entity.set_dofs_kv(self._default_kv * kv_g)
+
+        self._robot_entity.set_dofs_force_range(
+            self._force_lower,
+            self._force_upper,
+        )
+        # TODO(issue#57) configure armature, damping and stiffness
+        # self._robot_entity.set_dofs_armature(
+        #     th.tensor([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        # )
+        # self._robot_entity.set_dofs_stiffness(
+        #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
+        # )
 
     def ctrl_apply_vel_action(
         self,

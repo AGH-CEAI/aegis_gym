@@ -84,7 +84,7 @@ class GraspEnv(VecEnv):
             # env_spacing=(1.0, 1.0),
         )
 
-        self.robot.set_pd_gains()
+        self.robot.set_joints_pd_gains()
         self._attach_cameras()
 
         if self._dr_cfg.enabled:
@@ -298,6 +298,7 @@ class GraspEnv(VecEnv):
         ]
 
         for cam_name, link_name, offset in cams_to_attach:
+            # TODO expose links in the API
             link = self.robot._robot_entity.get_link(link_name)
             for cam_dict in (self._cameras, self._debug_cameras):
                 if cam_name in cam_dict:
@@ -341,13 +342,14 @@ class GraspEnv(VecEnv):
         self.extras = dict()
         self.extras["observations"] = dict()
 
-    def reset_idx(self, envs_idx: th.Tensor) -> None:
+    def reset_idx(self, envs_idx: th.IntTensor) -> None:
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
 
-        # reset robot
-        self.robot.reset(envs_idx)
+        # Reset the robot
+        self.robot.ctrl_gripper_open(envs_idx)
+        self.robot.ctrl_go_to_home(envs_idx)
 
         # reset object
         num_reset = len(envs_idx)
@@ -453,7 +455,7 @@ class GraspEnv(VecEnv):
         actions[:, :3] *= max_lin_speed
         actions[:, 3:] *= max_ang_speed
 
-        self.robot.apply_action(actions, open_gripper=True)
+        self.robot.ctrl_apply_vel_action(actions, open_gripper=True)
         self.scene.step()
         # TODO(issue#117) redesign the visualize-cameras feature
         if self.show_cameras_gui:
@@ -521,7 +523,7 @@ class GraspEnv(VecEnv):
 
         print(f">>> Moving to relative goal for {move_steps} steps.")
         if joints_diff is not None:
-            self.robot.apply_dof_rel_action(joints_diff)
+            self.robot.ctrl_apply_joints_diff_action(joints_diff)
         elif cart_diff is not None:
             from math import ceil
 
@@ -536,7 +538,7 @@ class GraspEnv(VecEnv):
             print(f">>> Scaled down target: {scaled_cart_diff}")
             for action_id in range(actions_num):
                 print(f">>> Applying action #{action_id + 1}")
-                self.robot.apply_action(scaled_cart_diff, open_gripper=True)
+                self.robot.ctrl_apply_vel_action(scaled_cart_diff, open_gripper=True)
                 for _ in range(steps_per_action):
                     self.scene.step()
                     self._log_state_to_plot_juggler()
@@ -564,15 +566,13 @@ class GraspEnv(VecEnv):
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
     def get_observations(self) -> TensorDict:
-        ee_pos, ee_quat = (
-            self.robot.ee_pose[:, :3],
-            self.robot.ee_pose[:, 3:7],
-        )
+        tcp_pose = self.robot.get_tcp_pose()
+        tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
 
         obs_components = [
-            ee_pos - obj_pos,  # 3D position difference
-            ee_quat,  # current orientation (w, x, y, z)
+            tcp_pos - obj_pos,  # 3D position difference
+            tcp_quat,  # current orientation (w, x, y, z)
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
@@ -692,8 +692,8 @@ class GraspEnv(VecEnv):
         self._record_step = record_step + 1
 
     def _reward_keypoints(self) -> th.Tensor:
-        ee_pos = self.robot.ee_pose[:, :3]
-        ee_quat = self.robot.ee_pose[:, 3:7]
+        tcp_pose = self.robot.get_tcp_pose()
+        tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         keypoints_offset = self.keypoints_offset
         object_offset = th.tensor(
             [0.0, 0.0, -0.08],
@@ -702,8 +702,8 @@ class GraspEnv(VecEnv):
         ).repeat(self.num_envs, 1)
 
         finger_pos_keypoints = self._to_world_frame(
-            ee_pos + object_offset,
-            ee_quat,
+            tcp_pos + object_offset,
+            tcp_quat,
             keypoints_offset,
         )
         object_pos_keypoints = self._to_world_frame(
@@ -755,7 +755,7 @@ class GraspEnv(VecEnv):
     def grasp_and_lift_demo(self) -> float:
         total_steps = self.max_episode_length
         grab_height = 0.08
-        goal_pose = self.robot.ee_pose.clone()
+        goal_pose = self.robot.get_tcp_pose().clone()
         goal_pose[:, 2] -= grab_height
         # lift pose (above the object)
         lift_height = 0.16
@@ -777,13 +777,13 @@ class GraspEnv(VecEnv):
 
         for i in range(total_steps):
             if i < total_steps / 5:  # go down
-                self.robot.go_to_goal(goal_pose, open_gripper=True)
+                self.robot.ctrl_go_to_goal(goal_pose, open_gripper=True)
             elif i < total_steps * 2 / 5:  # grasping
-                self.robot.go_to_goal(goal_pose, open_gripper=False)
+                self.robot.ctrl_go_to_goal(goal_pose, open_gripper=False)
             elif i < total_steps * 3 / 5:  # lifting
-                self.robot.go_to_goal(lift_pose, open_gripper=False)
+                self.robot.ctrl_go_to_goal(lift_pose, open_gripper=False)
             elif i < total_steps * 4 / 5:  # final
-                self.robot.go_to_goal(final_pose, open_gripper=False)
+                self.robot.ctrl_go_to_goal(final_pose, open_gripper=False)
                 obj_pos = self.object.get_pos()
                 target_pos = final_pose[:, :3]
 
@@ -792,7 +792,7 @@ class GraspEnv(VecEnv):
 
                 hold_counter[in_target] += 1
             else:  # reset
-                self.robot.go_to_goal(reset_pose, open_gripper=True)
+                self.robot.ctrl_go_to_goal(reset_pose, open_gripper=True)
             self.scene.step()
 
         success = hold_counter >= hold_steps_required
@@ -805,7 +805,7 @@ class GraspEnv(VecEnv):
         if not cfg.enabled:
             return
 
-        n_dofs = self.robot.n_dofs
+        n_dofs = self.robot.get_n_dofs()
         kp_scale = (
             1.0
             + (th.rand(self.num_envs, n_dofs, device=self.device) * 2.0 - 1.0)
@@ -817,7 +817,7 @@ class GraspEnv(VecEnv):
             * cfg.kv_noise
         )
 
-        self.robot.set_pd_gains(kp_gain=kp_scale, kv_gain=kv_scale)
+        self.robot.set_joints_pd_gains(kp_gain=kp_scale, kv_gain=kv_scale)
 
     def _cache_camera_base_offsets(self) -> None:
         self._dr_cam_base_offsets = {}
@@ -1039,6 +1039,7 @@ class GraspEnv(VecEnv):
             perturbed_offset = (base_offset @ perturb).astype(np.float32)
 
             try:
+                # TODO change API to expose robot_entity
                 link = self.robot._robot_entity.get_link(
                     self._cameras_link_names[cam_name]
                 )
@@ -1146,6 +1147,7 @@ class GraspEnv(VecEnv):
             return
 
         data = {}
+        # TODO change api to expose the robot entity
         robot = self.robot._robot_entity
         for name in self._joint_names:
             j = robot.get_joint(name=name)
