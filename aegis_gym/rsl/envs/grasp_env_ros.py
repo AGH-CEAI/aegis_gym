@@ -12,9 +12,7 @@ from PIL import Image
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
-from aegis_gym.rsl.envs.manipulator.base_manipulator import CameraID
-
-from .manipulator import RosGrpcManipulator
+from .manipulator import RosGrpcManipulator, CameraID
 
 
 class Object:

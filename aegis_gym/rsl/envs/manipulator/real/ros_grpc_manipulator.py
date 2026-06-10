@@ -208,7 +208,7 @@ class RosGrpcManipulator(BaseManipulator):
     ) -> None:
         self._servo_enable()
         # Control only one real robot
-        action_target = action.squeeze(dim=0).numpy()
+        action_target = action.squeeze(dim=0).cpu().numpy()
 
         self._run_coro(
             self._robot_client.servo_tcp(
@@ -326,14 +326,14 @@ class RosGrpcManipulator(BaseManipulator):
             - RGB:   [num_envs, H, W, 3], dtype uint8
             - DEPTH: [num_envs, H, W, 1], dtype float32, values in meters
         """
-        if not self._vision:
+        if self._vision is None:
             raise ValueError("Vision disabled.")
 
         # TODO rewrite the gRPC TensorDict output to match the camera id convention
         cam_name = {
             CameraID.SCENE_CAMERA: "scene",
             CameraID.TOOL_LEFT: "left",
-            CameraID.TOOL_LEFT: "right",
+            CameraID.TOOL_RIGHT: "right",
         }[camera_id]
         match modality:
             case CameraModality.RGB:

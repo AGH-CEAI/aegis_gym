@@ -469,8 +469,8 @@ def run_eval(
                 actions = policy(obs)
             case Stage.BC:
                 rgb_obs = get_obs_vis()
-                ee_pose = env.robot.ee_pose
-                actions = policy(rgb_obs, ee_pose)
+                tcp_pose = env.robot.get_tcp_pose()
+                actions = policy(rgb_obs, tcp_pose)
                 if record_render:
                     env.record_cam.render()
 
