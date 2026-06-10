@@ -6,6 +6,7 @@ from typing import Literal, Optional
 import torch as th
 import genesis as gs
 from clearml import Dataset
+from genesis.engine.entities import RigidEntity
 from tensordict import TensorDict
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
@@ -21,7 +22,7 @@ class GenesisManipulator(BaseManipulator):
         device: Optional[th.device] = None,
     ):
         # == set members ==
-        self._device = device or "cpu"
+        self._device = device or th.device("cpu")
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
@@ -54,7 +55,9 @@ class GenesisManipulator(BaseManipulator):
                 "cam_scene_rgb_camera_frame",
             ],
         )
-        self._robot_entity: gs.Entity = scene.add_entity(material=material, morph=morph)
+        self._robot_entity: RigidEntity = scene.add_entity(
+            material=material, morph=morph
+        )
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0

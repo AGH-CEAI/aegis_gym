@@ -43,18 +43,20 @@ class RosGrpcManipulator(BaseManipulator):
         num_envs: int,
         args: dict,
         disable_vision: bool = False,
-        device: th.device = th.device("cpu"),
+        device: Optional[th.device] = None,
     ):
+        # TODO move device and num_envs to the base interfce
+        self.device = device or th.device("cpu")
+
         if hasattr(self, "_initialized") and self._initialized:
             return
 
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
-        self.pt = PoseTransformUtils(device=device)
+        self.pt = PoseTransformUtils(device=self.device)
         self._args = args
         self._disable_vision = disable_vision
-        self.device = device
 
         # TODO get from cfg / dynamically from rsl_rl
         self.ctrl_dt = 1 / 10.0  # 1 / poliicy_f
