@@ -47,7 +47,7 @@ class BaseScene(ABC):
         """
         Return the `Manipulator` object to control the robot. The scene must be previously build.
         """
-        if not self._is_build():
+        if not self._is_build:
             raise RuntimeError(
                 "The access to the robot can not be given before calling `build()` on the scene!"
             )
