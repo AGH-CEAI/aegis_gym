@@ -332,9 +332,6 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def get_num_envs(self) -> int:
-        return self._num_envs
-
     def get_n_dofs(self) -> int:
         return self._robot_entity.n_dofs
 

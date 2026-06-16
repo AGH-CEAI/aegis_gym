@@ -278,9 +278,6 @@ class RosGrpcManipulator(BaseManipulator):
         self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = False
 
-    def get_num_envs(self) -> int:
-        return 1
-
     def get_n_dofs(self) -> int:
         # TODO get it dynamcilly (for instance, from the shape of the joints)
         return 7

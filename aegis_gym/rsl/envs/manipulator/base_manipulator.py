@@ -24,7 +24,9 @@ class CameraID(StrEnum):
 
 
 class CameraModality(StrEnum):
+    # TODO: update for RGBD
     RGB = auto()
+    RGBD = auto()
     DEPTH = auto()
 
 
@@ -120,11 +122,6 @@ class BaseManipulator(ABC):
     @abstractmethod
     def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
         """Close the gripper to its minimum width."""
-        ...
-
-    @abstractmethod
-    def get_num_envs(self) -> int:
-        """Returns the number of parallel environments (1 for real robot)."""
         ...
 
     @abstractmethod
