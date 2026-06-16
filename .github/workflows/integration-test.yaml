@@ -1,0 +1,26 @@
+name: Integration test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: [self-hosted]
+    environment: geonosis-cicd
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ClearML
+        run: pip install clearml
+
+      - name: Run pipeline and wait for result
+        run: python3 utils/pipeline_test.py
+        env:
+          CLEARML_API_HOST: http://192.168.0.100:8008
+          CLEARML_WEB_HOST: http://192.168.0.100:8080
+          CLEARML_FILES_HOST: http://192.168.0.100:8081
+          CLEARML_API_ACCESS_KEY: ${{ secrets.CLEARML_API_ACCESS_KEY }}
+          CLEARML_API_SECRET_KEY: ${{ secrets.CLEARML_API_SECRET_KEY }}
