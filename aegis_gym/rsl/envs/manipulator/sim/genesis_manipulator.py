@@ -1,124 +1,46 @@
-import time
-import warnings
-from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 
 import torch as th
-import genesis as gs
-from clearml import Dataset
 from tensordict import TensorDict
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
+from scene import BaseScene
 
 
 class GenesisManipulator(BaseManipulator):
-    def __init__(
-        self,
-        num_envs: int,
-        scene: gs.Scene,
-        args: dict,
-        show_cell: bool,
-        device: Optional[th.device] = None,
-    ):
-        # == set members ==
-        self._device = device or th.device("cpu")
-        self._scene = scene
-        self._num_envs = num_envs
-        self._args = args
-
-        # TODO(issue#99): Implement URDF model with cell collision handling
-        if show_cell:
-            self._urdf_model_id = args["urdf_model_id"]["cell"]
-        else:
-            self._urdf_model_id = args["urdf_model_id"]["no_cell"]
-
-        if self._urdf_model_id:
-            print(
-                f"[GraspEnv::Manipulator] URDF ClearML dataset ID: {self._urdf_model_id}"
-            )
-        self._urdf_path = self._resolve_aegis_urdf()
-        print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
-
-        # == Genesis configurations ==
-        material = gs.materials.Rigid(gravity_compensation=1.0)
-        morph = gs.morphs.URDF(
-            file=self._urdf_path,
-            fixed=True,
-            pos=(0.0, 0.0, 0.0),
-            quat=(1.0, 0.0, 0.0, 0.0),
-            links_to_keep=[
-                "ur_base",
-                "robotiq_hande_end",
-                "cam_tool_right",
-                "cam_tool_left",
-                "cam_scene_rgb_camera_frame",
-            ],
-        )
-        self._robot_entity = scene.add_entity(material=material, morph=morph)
-
-        self._gripper_open_dof = 0.025
-        self._gripper_close_dof = 0.0
-
-        self._ik_method: Literal["gs_ikv", "dls_ikv"] = args["ik_method"]
+    def __init__(self, robot_entity: Any, robot_cfg: dict, scene: BaseScene):
+        super().__init__(scene=scene)
+        self.device = scene.device
+        self.num_envs = scene.get_n_envs()
+        self.cfg = robot_cfg
+        self._robot_entity = robot_entity
 
         self._setup_config()
         self._init_pd_tensors()
 
-    def _resolve_aegis_urdf(self) -> Path:
-        default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
-
-        if self._urdf_model_id is not None:
-            try:
-                dataset = Dataset.get(
-                    dataset_id=self._urdf_model_id, alias="urdf_model"
-                )
-                local_path = Path(dataset.get_local_copy())
-            except ValueError:
-                warnings.warn(
-                    "Failed to obtain the dataset: `{e}`. Fallbacking to the default path..."
-                )
-                return default_path
-
-            urdf_files = list(local_path.rglob("*.urdf"))
-            if not urdf_files:
-                raise FileNotFoundError(
-                    f"No URDF file in dataset {self._urdf_model_id}"
-                )
-            if len(urdf_files) > 1:
-                raise RuntimeError(
-                    f"Found {len(urdf_files)} URDF files in dataset {self._urdf_model_id}, expected just one"
-                )
-            return Path(urdf_files[0])
-
-        warnings.warn(
-            "There is no given ClearML dataset ID for the URDF assets! Trying to read the default directory in 5s.."
-        )
-        time.sleep(5.0)
-
-        if not default_path.exists():
-            raise FileNotFoundError(
-                f"Couldn't resolve the path to the URDF file: Default file '{default_path}' doesn't exist!"
-            )
-        return default_path
-
     def _setup_config(self):
+        self._ik_method: Literal["gs_ikv", "dls_ikv"] = self.cfg["ik_method"]
+        self._gripper_open_dof = 0.025
+        self._gripper_close_dof = 0.0
+
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
         self._gripper_dim = 2  # number of gripper joints
 
-        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
+        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self.device)
         self._fingers_dof = th.arange(
             self._arm_dof_dim,
             self._arm_dof_dim + self._gripper_dim,
-            device=self._device,
+            device=self.device,
         )
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
-        self._ee_link = self._robot_entity.get_link(self._args["ee_link_name"])
+        self._ee_link = self._robot_entity.get_link(self.cfg["ee_link_name"])
+        # TODO reactivate the finger links (or cleanup them)
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
-        self._default_joint_angles = self._args["default_arm_dof"]
-        if self._args["default_gripper_dof"] is not None:
-            self._default_joint_angles += self._args["default_gripper_dof"]
+        self._default_joint_angles = self.cfg["default_arm_dof"]
+        if self.cfg["default_gripper_dof"] is not None:
+            self._default_joint_angles += self.cfg["default_gripper_dof"]
 
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
@@ -175,7 +97,7 @@ class GenesisManipulator(BaseManipulator):
         self,
         action: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
@@ -253,7 +175,7 @@ class GenesisManipulator(BaseManipulator):
 
         # Damping matrix
         lambda_matrix = (lambda_val**2) * th.eye(
-            n=jacobian_arm.shape[1], device=self._device
+            n=jacobian_arm.shape[1], device=self.device
         )  # [6, 6]
 
         # Damped least squares: q_dot = J^T (J J^T + λ^2 I)^-1 * ee_velocity
@@ -270,7 +192,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([q_vel, finger_zeros], dim=-1)
 
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.IntTensor] = None
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
     ) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
@@ -279,7 +201,7 @@ class GenesisManipulator(BaseManipulator):
         self,
         goal_pose: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
@@ -295,37 +217,37 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_go_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self.num_envs, device=self.device)
         )
 
         default_joint_angles = th.tensor(
-            self._default_joint_angles, dtype=th.float32, device=self._device
+            self._default_joint_angles, dtype=th.float32, device=self.device
         ).repeat(len(idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=idx)
         self._robot_entity.control_dofs_position(
             position=default_joint_angles, envs_idx=idx
         )
 
-    def ctrl_gripper_open(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self.num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
         q_pos[idx, self._fingers_dof] = self._gripper_open_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self.num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
         q_pos[idx, self._fingers_dof] = self._gripper_close_dof

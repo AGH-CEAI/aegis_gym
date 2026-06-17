@@ -6,6 +6,8 @@ from typing import Optional
 import torch as th
 from tensordict import TensorDict
 
+from scene import BaseScene
+
 
 class CameraID(StrEnum):
     SCENE_CAMERA = auto()
@@ -38,6 +40,9 @@ class BaseManipulator(ABC):
         ignore it or assert it is None.
     """
 
+    def __init__(self, scene: BaseScene):
+        self.scene = scene
+
     @abstractmethod
     def shutdown(self) -> None:
         """
@@ -57,8 +62,8 @@ class BaseManipulator(ABC):
     @abstractmethod
     def set_joints_pd_gains(
         self,
-        kp_gain: Optional[th.FloatTensor] = None,
-        kv_gain: Optional[th.FloatTensor] = None,
+        kp_gain: Optional[th.Tensor] = None,
+        kv_gain: Optional[th.Tensor] = None,
     ) -> None:
         """Simulation only: Sets the gains from [0..1]. Accepts sizes [n_dofs]."""
         ...
@@ -68,7 +73,7 @@ class BaseManipulator(ABC):
         self,
         action: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         """
         Apply the action (velocity servoing) to the robot.
@@ -82,7 +87,7 @@ class BaseManipulator(ABC):
 
     @abstractmethod
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.IntTensor] = None
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
     ) -> None:
         """
         Apply the action (joints difference) to the robot.
@@ -97,7 +102,7 @@ class BaseManipulator(ABC):
         self,
         goal_pose: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         """
         Apply the goal_pose (position target) to the robot.
@@ -110,17 +115,17 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
-    def ctrl_go_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
         """Move to the home joint configuration."""
         ...
 
     @abstractmethod
-    def ctrl_gripper_open(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
         """Open the gripper to its maximum width."""
         ...
 
     @abstractmethod
-    def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
         """Close the gripper to its minimum width."""
         ...
 

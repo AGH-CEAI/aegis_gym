@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import torch as th
 
+from ...config_types import EntityCfg
 from ..manipulator import BaseManipulator
 
 
@@ -20,13 +21,14 @@ class BaseScene(ABC):
         ...
 
     @abstractmethod
-    def add_entity(self, entity: str) -> None:
+    def add_entity(self, entity_cfg: EntityCfg) -> None:
         # TODO implement entity enum
         """Add a given entity to the scene."""
         ...
 
     @abstractmethod
-    def add_robot(self) -> None:
+    def add_robot(self, robot_cfg: dict) -> None:
+        # TODO: move to RobotCfg dataclass
         """Add the Aegis robot to the scene."""
         ...
 
@@ -60,3 +62,6 @@ class BaseScene(ABC):
     def read_state(self) -> None:
         """Update the internatl state with data from the scene."""
         ...
+
+    @abstractmethod
+    def get_n_envs(self) -> int: ...
