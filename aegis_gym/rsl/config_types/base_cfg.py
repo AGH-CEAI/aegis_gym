@@ -48,6 +48,22 @@ class BaseCfg(ABC):
             result[f.name] = self._serialize_value(value)
         return result
 
+    def as_list(self) -> list:
+        """
+        Recursively convert dataclass (and nested dataclasses) to list.
+        """
+        if not is_dataclass(self):
+            raise TypeError(f"{type(self).__name__} is not a dataclass")
+
+        result = [None] * len(self)
+        for idx, f in enumerate(fields(self)):
+            value = getattr(self, f.name)
+            result[idx] = self._serialize_value(value)
+        return result
+
+    def as_tuple(self) -> tuple:
+        return tuple(self.as_list())
+
     @staticmethod
     def _serialize_value(value: Any) -> Any:
         """Handle nested dataclasses, lists, tuples, and dicts."""
@@ -67,3 +83,17 @@ class BaseCfg(ABC):
 @dataclass(slots=True, frozen=True)
 class ToggleCfg(BaseCfg):
     enabled: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class ImageShape(BaseCfg):
+    c: int
+    h: int
+    w: int
+
+
+@dataclass(slots=True, frozen=True)
+class Shape3D(BaseCfg):
+    x: float
+    y: float
+    z: float
