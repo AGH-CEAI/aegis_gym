@@ -226,6 +226,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
         env = GraspEnv(
             env_cfg=cfg.env_cfg,
             robot_cfg=cfg.robot_cfg,
+            dr_cfg=cfg.dr_cfg,
             show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
