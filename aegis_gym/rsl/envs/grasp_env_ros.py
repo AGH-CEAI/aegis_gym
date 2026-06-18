@@ -12,7 +12,7 @@ from PIL import Image
 from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
-from .base_env import BaseEnv, Observation, ResetObservation
+from .base_env import BaseEnv, StepReturn, ResetReturn
 
 
 class Object:
@@ -193,13 +193,13 @@ class GraspEnvROS(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> ResetObservation:
+    def reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
-        return ResetObservation(self.get_observations(), self.extras)
+        return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> Observation:
+    def step(self, actions: th.Tensor) -> StepReturn:
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 
@@ -231,7 +231,7 @@ class GraspEnvROS(BaseEnv):
         # get observations and fill extras
         obs = self.get_observations()
         dones = self.reset_buf
-        return Observation(obs, reward, dones, self.extras)
+        return StepReturn(obs, reward, dones, self.extras)
 
     def calib_run(
         self,

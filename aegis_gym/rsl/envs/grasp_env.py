@@ -18,7 +18,7 @@ from genesis.utils.geom import (
 
 from config_types.domain_randomization import DomainRandomizationCfg, CameraPoseCfg
 from .manipulator import GenesisManipulator
-from .base_env import BaseEnv, Observation, ResetObservation
+from .base_env import BaseEnv, StepReturn, ResetReturn
 from .plotjuggler_udp import PlotJugglerUDP
 
 # Further example
@@ -432,13 +432,13 @@ class GraspEnv(BaseEnv):
         self.object.set_quat(object_quat)
         self.goal_pose[:] = pose
 
-    def reset(self) -> ResetObservation:
+    def reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
         self._log_state_to_plot_juggler()
-        return ResetObservation(self.get_observations(), self.extras)
+        return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> Observation:
+    def step(self, actions: th.Tensor) -> StepReturn:
         # Update time
         self.episode_length_buf += 1
 
@@ -474,7 +474,7 @@ class GraspEnv(BaseEnv):
         # get observations and fill extras
         obs = self.get_observations()
         dones = self.reset_buf
-        return Observation(obs, reward, dones, self.extras)
+        return StepReturn(obs, reward, dones, self.extras)
 
     def _get_max_speed_coeefs(self) -> tuple[float, float]:
         cfg = self._dr_cfg.max_speed

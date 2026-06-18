@@ -7,12 +7,12 @@ from rsl_rl.env import VecEnv
 from .scene import BaseScene
 
 
-class ResetObservation(NamedTuple):
+class ResetReturn(NamedTuple):
     observations: TensorDict
     extras: dict
 
 
-class Observation(NamedTuple):
+class StepReturn(NamedTuple):
     observations: TensorDict
     rewards: th.Tensor
     dones: th.Tensor
@@ -69,11 +69,11 @@ class BaseEnv(VecEnv):
         ...
 
     @abstractmethod
-    def reset(self) -> ResetObservation:
+    def reset(self) -> ResetReturn:
         """Resets the environment."""
         ...
 
     @abstractmethod
-    def step(self, actions: th.Tensor) -> Observation:
+    def step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv."""
         ...
