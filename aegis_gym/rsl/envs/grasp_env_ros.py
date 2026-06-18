@@ -9,10 +9,10 @@ import numpy as np
 import torch as th
 from genesis.utils.geom import transform_by_quat
 from PIL import Image
-from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
+from .base_env import BaseEnv, Observation, ResetObservation
 
 
 class Object:
@@ -50,7 +50,7 @@ class Object:
         self.quat = quat
 
 
-class GraspEnvROS(VecEnv):
+class GraspEnvROS(BaseEnv):
     def __init__(
         self,
         env_cfg: dict,
@@ -58,6 +58,7 @@ class GraspEnvROS(VecEnv):
         disable_vision: bool = False,
         device: Optional[th.device] = None,
     ) -> None:
+        super().__init__(scene=None)  # TODO: introduce Scene abstraction
         self.device = device or th.device("cpu")
         self._cfg = env_cfg
         self.disable_vision = disable_vision
@@ -142,20 +143,14 @@ class GraspEnvROS(VecEnv):
 
         self.last_step_ts: Optional[float] = None
 
-    # Required by rsl_rl
-    @property
-    def unwrapped(self) -> "GraspEnvROS":
-        return self
-
-    # Required by rsl_rl
-    @property
-    def step_dt(self) -> float:
+    def get_policy_dt(self) -> float:
         return self.policy_dt
 
-    # Required by rsl_rl
-    @property
-    def cfg(self) -> dict:
+    def get_cfg_as_dict(self) -> dict:
         return self._cfg
+
+    def get_num_envs(self) -> int:
+        return self.num_envs
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -179,7 +174,7 @@ class GraspEnvROS(VecEnv):
         self.extras = dict()
         self.extras["observations"] = dict()
 
-    def reset_idx(self, envs_idx: th.IntTensor) -> None:
+    def reset_idx(self, envs_idx: th.Tensor) -> None:
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -198,13 +193,13 @@ class GraspEnvROS(VecEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> tuple[TensorDict, dict]:
+    def reset(self) -> ResetObservation:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
-        return self.get_observations(), self.extras
+        return ResetObservation(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
+    def step(self, actions: th.Tensor) -> Observation:
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 
@@ -236,7 +231,7 @@ class GraspEnvROS(VecEnv):
         # get observations and fill extras
         obs = self.get_observations()
         dones = self.reset_buf
-        return obs, reward, dones, self.extras
+        return Observation(obs, reward, dones, self.extras)
 
     def calib_run(
         self,

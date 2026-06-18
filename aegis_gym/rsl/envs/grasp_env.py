@@ -10,7 +10,6 @@ import torch as th
 import torch.nn.functional as F
 from PIL import Image
 
-from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 from genesis.utils.geom import (
     transform_by_quat,
@@ -19,13 +18,14 @@ from genesis.utils.geom import (
 
 from config_types.domain_randomization import DomainRandomizationCfg, CameraPoseCfg
 from .manipulator import GenesisManipulator
+from .base_env import BaseEnv, Observation, ResetObservation
 from .plotjuggler_udp import PlotJugglerUDP
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
 
 
-class GraspEnv(VecEnv):
+class GraspEnv(BaseEnv):
     def __init__(
         self,
         env_cfg: dict,
@@ -34,6 +34,7 @@ class GraspEnv(VecEnv):
         show_viewer: bool = False,
         enable_plot_juggler: bool = False,
     ) -> None:
+        super().__init__(scene=None)  # TODO: introduce Scene abstraction
         if enable_plot_juggler:
             ip = "127.0.0.1"
             port = 9870
@@ -305,20 +306,14 @@ class GraspEnv(VecEnv):
                     cam_dict[cam_name].attach(link, offset)
                     cam_dict[cam_name].move_to_attach()
 
-    # Required by rsl_rl
-    @property
-    def unwrapped(self) -> "GraspEnv":
-        return self
-
-    # Required by rsl_rl
-    @property
-    def step_dt(self) -> float:
+    def get_policy_dt(self) -> float:
         return self.policy_dt
 
-    # Required by rsl_rl
-    @property
-    def cfg(self) -> dict:
+    def get_cfg_as_dict(self) -> dict:
         return self._cfg
+
+    def get_num_envs(self) -> int:
+        return self.num_envs
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -342,7 +337,7 @@ class GraspEnv(VecEnv):
         self.extras = dict()
         self.extras["observations"] = dict()
 
-    def reset_idx(self, envs_idx: th.IntTensor) -> None:
+    def reset_idx(self, envs_idx: th.Tensor) -> None:
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -437,13 +432,13 @@ class GraspEnv(VecEnv):
         self.object.set_quat(object_quat)
         self.goal_pose[:] = pose
 
-    def reset(self) -> tuple[TensorDict, dict]:
+    def reset(self) -> ResetObservation:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
         self._log_state_to_plot_juggler()
-        return self.get_observations(), self.extras
+        return ResetObservation(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> tuple[TensorDict, th.Tensor, th.Tensor, dict]:
+    def step(self, actions: th.Tensor) -> Observation:
         # Update time
         self.episode_length_buf += 1
 
@@ -479,7 +474,7 @@ class GraspEnv(VecEnv):
         # get observations and fill extras
         obs = self.get_observations()
         dones = self.reset_buf
-        return obs, reward, dones, self.extras
+        return Observation(obs, reward, dones, self.extras)
 
     def _get_max_speed_coeefs(self) -> tuple[float, float]:
         cfg = self._dr_cfg.max_speed

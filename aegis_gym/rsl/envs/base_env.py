@@ -1,9 +1,10 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import NamedTuple
 import torch as th
 from tensordict import TensorDict
+from rsl_rl.env import VecEnv
 
-from scene import BaseScene
+from .scene import BaseScene
 
 
 class ResetObservation(NamedTuple):
@@ -18,9 +19,10 @@ class Observation(NamedTuple):
     extras: dict
 
 
-class BaseEnv(ABC):
+class BaseEnv(VecEnv):
     """
-    Base class for implementing an environment compatible with rsl_rl.
+    Base class for implementing an environment compatible with rsl_rl's VecEnv.
+    See https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/env/vec_env.py
     """
 
     def __init__(self, scene: BaseScene):
@@ -28,21 +30,22 @@ class BaseEnv(ABC):
         self._scene: BaseScene = scene
 
     def __del__(self):
-        self._scene.shutdown()
+        if self._scene:
+            self._scene.shutdown()
 
     @property
     def unwrapped(self) -> "BaseEnv":
-        """Required by rsl_rl."""
+        """Required by rsl_rl logger."""
         return self
 
     @property
     def step_dt(self) -> float:
-        """Required by rsl_rl."""
+        """Required by rsl_rl logger."""
         return self.get_policy_dt()
 
     @property
     def cfg(self) -> dict:
-        """Required by rsl_rl."""
+        """Required by rsl_rl logger."""
         return self.get_cfg_as_dict()
 
     @abstractmethod
@@ -61,26 +64,16 @@ class BaseEnv(ABC):
         ...
 
     @abstractmethod
+    def get_observations(self) -> TensorDict:
+        """Returns observations at the current state. Derived from VecEnv."""
+        ...
+
+    @abstractmethod
     def reset(self) -> ResetObservation:
         """Resets the environment."""
         ...
 
     @abstractmethod
     def step(self, actions: th.Tensor) -> Observation:
-        """Perform a step in environment."""
-        ...
-
-    @abstractmethod
-    def get_observations(self) -> TensorDict:
-        """Returns observations at the current state."""
-        ...
-
-    @abstractmethod
-    def get_privileged_observations(self) -> TensorDict:
-        """Returns privileged observations at the current state."""
-        ...
-
-    @abstractmethod
-    def is_episode_complete(self) -> th.Tensor:
-        """Returns binary vector of length `n_envs` where ones indices complention."""
+        """Perform a step in environment. Derived from VecEnv."""
         ...
