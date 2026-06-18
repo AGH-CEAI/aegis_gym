@@ -20,8 +20,9 @@ class GenesisManipulator(BaseManipulator):
         show_cell: bool,
         device: Optional[th.device] = None,
     ):
+        super().__init__(device=device)
+
         # == set members ==
-        self._device = device or th.device("cpu")
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
@@ -105,11 +106,11 @@ class GenesisManipulator(BaseManipulator):
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
         self._gripper_dim = 2  # number of gripper joints
 
-        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
+        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self.device)
         self._fingers_dof = th.arange(
             self._arm_dof_dim,
             self._arm_dof_dim + self._gripper_dim,
-            device=self._device,
+            device=self.device,
         )
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
@@ -253,7 +254,7 @@ class GenesisManipulator(BaseManipulator):
 
         # Damping matrix
         lambda_matrix = (lambda_val**2) * th.eye(
-            n=jacobian_arm.shape[1], device=self._device
+            n=jacobian_arm.shape[1], device=self.device
         )  # [6, 6]
 
         # Damped least squares: q_dot = J^T (J J^T + λ^2 I)^-1 * ee_velocity
@@ -299,11 +300,11 @@ class GenesisManipulator(BaseManipulator):
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self._num_envs, device=self.device)
         )
 
         default_joint_angles = th.tensor(
-            self._default_joint_angles, dtype=th.float32, device=self._device
+            self._default_joint_angles, dtype=th.float32, device=self.device
         ).repeat(len(idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=idx)
         self._robot_entity.control_dofs_position(
@@ -314,7 +315,7 @@ class GenesisManipulator(BaseManipulator):
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self._num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
         q_pos[idx, self._fingers_dof] = self._gripper_open_dof
@@ -325,7 +326,7 @@ class GenesisManipulator(BaseManipulator):
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
-            else th.arange(self._num_envs, device=self._device)
+            else th.arange(self._num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
         q_pos[idx, self._fingers_dof] = self._gripper_close_dof

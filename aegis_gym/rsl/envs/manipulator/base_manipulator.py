@@ -38,6 +38,9 @@ class BaseManipulator(ABC):
         ignore it or assert it is None.
     """
 
+    def __init__(self, device: Optional[th.device] = None):
+        self.device: th.device = device or th.device("cpu")
+
     @abstractmethod
     def shutdown(self) -> None:
         """

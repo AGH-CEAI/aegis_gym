@@ -45,8 +45,7 @@ class RosGrpcManipulator(BaseManipulator):
         disable_vision: bool = False,
         device: Optional[th.device] = None,
     ):
-        # TODO move device and num_envs to the base interfce
-        self.device = device or th.device("cpu")
+        super().__init__(device=device)
 
         if hasattr(self, "_initialized") and self._initialized:
             return
