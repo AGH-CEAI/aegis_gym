@@ -138,7 +138,12 @@ class Manipulator:
         self._force_upper = self._build_gain_tensor(FORCE_UPPER)
 
     def _build_gain_tensor(self, values: list[float]) -> th.Tensor:
-        return th.tensor(values, dtype=th.float32)
+        return (
+            th.tensor(values, dtype=th.float32, device=self._device)
+            .unsqueeze(0)
+            .expand(self._num_envs, -1)
+            .contiguous()
+        )
 
     def set_pd_gains(
         self,

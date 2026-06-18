@@ -206,6 +206,7 @@ def train_runner(env: GraspEnvironment, args: Namespace, cfg: GraspConfig) -> No
     device = cfg.get_device()
     log_dir = Path(cfg.logger_cfg["local_log_dir"])
     cfg_pickle_path = Path(cfg.logger_cfg["local_log_dir"]) / "cfgs.pkl"
+    cfg_pickle_path.parent.mkdir(parents=True, exist_ok=True)
     match args.stage:
         case Stage.BC:
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")

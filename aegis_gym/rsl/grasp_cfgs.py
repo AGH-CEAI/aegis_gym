@@ -78,6 +78,7 @@ class GraspConfig:
         return cls._instance
 
     def to_pickle(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
         data = {field.name: getattr(self, field.name) for field in fields(self)}
         with path.open("wb") as f:
             pickle.dump(data, f)
