@@ -32,7 +32,7 @@ class BaseScene(ABC):
 
     def build(self) -> None:
         """
-        Build the scenem, based on previously added entities (`add_entity()`) and robot (`add_robot()`).
+        Build the scene, based on previously added entities (`add_entity()`) and robot (`add_robot()`).
         Must be called before any robot control.
         """
         if self._is_build:
@@ -58,5 +58,5 @@ class BaseScene(ABC):
 
     @abstractmethod
     def read_state(self) -> None:
-        """Update the internatl state with data from the scene."""
+        """Update the internal state with data from the scene."""
         ...

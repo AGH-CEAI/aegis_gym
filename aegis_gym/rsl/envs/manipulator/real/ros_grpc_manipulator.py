@@ -193,8 +193,8 @@ class RosGrpcManipulator(BaseManipulator):
 
     def set_joints_pd_gains(
         self,
-        kp_gain: Optional[th.FloatTensor] = None,
-        kv_gain: Optional[th.FloatTensor] = None,
+        kp_gain: Optional[th.Tensor] = None,
+        kv_gain: Optional[th.Tensor] = None,
     ) -> None:
         raise NotImplementedError(
             "Setting PD gains is not supported for the ROS<->gRPC bridge."
@@ -204,7 +204,7 @@ class RosGrpcManipulator(BaseManipulator):
         self,
         action: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         self._servo_enable()
         # Control only one real robot
@@ -225,7 +225,7 @@ class RosGrpcManipulator(BaseManipulator):
             self.ctrl_gripper_close()
 
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.IntTensor] = None
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
     ) -> None:
         raise NotImplementedError
 
@@ -233,7 +233,7 @@ class RosGrpcManipulator(BaseManipulator):
         self,
         goal_pose: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         self._servo_disable()
 
@@ -257,7 +257,7 @@ class RosGrpcManipulator(BaseManipulator):
         else:
             self.ctrl_gripper_close()
 
-    def ctrl_go_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
         self._servo_disable()
         self._run_coro(
             self._robot_client.goto_joints(
@@ -266,13 +266,13 @@ class RosGrpcManipulator(BaseManipulator):
             )
         )
 
-    def ctrl_gripper_open(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
         if self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_open())
         self._gripper_last_action = True
 
-    def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
         if not self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_close())

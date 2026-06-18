@@ -24,7 +24,6 @@ class CameraID(StrEnum):
 
 
 class CameraModality(StrEnum):
-    # TODO: update for RGBD
     RGB = auto()
     RGBD = auto()
     DEPTH = auto()
@@ -32,6 +31,7 @@ class CameraModality(StrEnum):
 
 class BaseManipulator(ABC):
     """
+    Interface for interacting with the robotic arm, both in real and simulated worlds.
     Note:
         The `envs_idx` parameter is meaningful only in simulation (multi-environment).
         Real robot implementations should accept it for interface compatibility but may
@@ -179,6 +179,7 @@ class BaseManipulator(ABC):
         """
         Returns image tensor for the given camera and modality:
             - RGB:   [num_envs, H, W, 3], dtype uint8
+            - RGBD:  [num_envs, H, W, 4], dtype float32, depth in meters
             - DEPTH: [num_envs, H, W, 1], dtype float32, values in meters
         """
         ...
