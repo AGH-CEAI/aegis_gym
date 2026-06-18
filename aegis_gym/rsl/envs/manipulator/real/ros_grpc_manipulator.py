@@ -1,7 +1,7 @@
 import asyncio
 import atexit
 import threading
-from typing import Optional
+from typing import Optional, Any
 from concurrent.futures import Future
 
 import torch as th
@@ -16,6 +16,8 @@ except ImportError:
     )
     raise
 
+from ..base_manipulator import BaseManipulator, CameraID, CameraModality
+
 
 class PoseTransformUtils:
     def __init__(self, device: th.device):
@@ -28,12 +30,12 @@ class PoseTransformUtils:
         return th.roll(quat, -1, dims=-1)
 
 
-class ManipulatorROS:
-    _instance: Optional["ManipulatorROS"] = None
+class RosGrpcManipulator(BaseManipulator):
+    _instance: Optional["RosGrpcManipulator"] = None
 
-    def __new__(cls, *args, **kwargs) -> "ManipulatorROS":
+    def __new__(cls, *args, **kwargs) -> "RosGrpcManipulator":
         if cls._instance is None:
-            cls._instance = super(ManipulatorROS, cls).__new__(cls)
+            cls._instance = super(RosGrpcManipulator, cls).__new__(cls)
         return cls._instance
 
     def __init__(
@@ -41,21 +43,21 @@ class ManipulatorROS:
         num_envs: int,
         args: dict,
         disable_vision: bool = False,
-        device: th.device = th.device("cpu"),
+        device: Optional[th.device] = None,
     ):
+        super().__init__(device=device)
+
         if hasattr(self, "_initialized") and self._initialized:
             return
 
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
-        self.pt = PoseTransformUtils(device=device)
-        self._num_envs = num_envs
+        self.pt = PoseTransformUtils(device=self.device)
         self._args = args
         self._disable_vision = disable_vision
-        self.device = device
 
-        # TODO get from cfg / dynamically from rsl_rl
+        # TODO(issue#111) get from cfg / dynamically from rsl_rl
         self.ctrl_dt = 1 / 10.0  # 1 / poliicy_f
 
         self.dof_home_dict = {
@@ -75,7 +77,7 @@ class ManipulatorROS:
         self._run_coro(self._robot_client.connect())
 
         self._gripper_last_action = False  # Forcing first opening
-        self.gripper_open()
+        self.ctrl_gripper_open()
 
         try:
             self._run_coro(self._robot_client.servo_disable())
@@ -92,6 +94,33 @@ class ManipulatorROS:
         atexit.register(self.shutdown)
         self._initialized = True
         print("[GraspEnvROS][ManipulatorROS] Finalized initialization")
+
+    def _run_loop(self) -> None:
+        """Run the event loop forever in a background thread."""
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+
+    def _run_coro(self, coro) -> Any:
+        """
+        Schedule a coroutine on the persistent loop and block until done.
+        Safe to call from the main (sync) thread.
+        """
+        future: Future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()  # blocks until complete
+
+    def _servo_enable(self) -> None:
+        if self._servo_enabled:
+            return
+        self._run_coro(self._robot_client.servo_enable())
+        self._servo_enabled = True
+        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
+
+    def _servo_disable(self) -> None:
+        if not self._servo_enabled:
+            return
+        self._run_coro(self._robot_client.servo_disable())
+        self._servo_enabled = False
+        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
 
     def shutdown(self) -> None:
         """
@@ -133,23 +162,15 @@ class ManipulatorROS:
 
         self._cleaned_up = True
 
-    def _run_loop(self) -> None:
-        """Run the event loop forever in a background thread."""
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_forever()
-
-    def _run_coro(self, coro) -> any:
-        """
-        Schedule a coroutine on the persistent loop and block until done.
-        Safe to call from the main (sync) thread.
-        """
-        future: Future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result()  # blocks until complete
-
     def read_state(self) -> None:
         states = self._run_coro(self._robot_client.get_all())
         self._state = TensorDict(
-            {k: th.from_numpy(v).to(self.device) for k, v in states["state"].items()},
+            {
+                k: th.from_numpy(v)
+                .to(device=self.device, dtype=th.float32)
+                .unsqueeze(dim=0)
+                for k, v in states["state"].items()
+            },
             device=self.device,
         )
         # Convert BGR into RGB and np.ndarray into th.Tensor
@@ -159,6 +180,7 @@ class ManipulatorROS:
                     k: th.from_numpy(v[[2, 1, 0], :, :])
                     .to(self.device)
                     .roll(1, dims=-1)
+                    .unsqueeze(dim=0)
                     for k, v in states["vision"].items()
                 },
                 device=self.device,
@@ -168,107 +190,49 @@ class ManipulatorROS:
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
         self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
 
-    def get_state_tensordict(self) -> TensorDict:
-        return self._state
-
-    def get_vision_tensordict(self) -> TensorDict:
-        return self._vision
-
-    def get_joints_positions(self) -> th.Tensor:
-        return self._state["joints"][:, 0].to(device=self.device, dtype=th.float32)
-
-    def get_joints_velocities(self) -> th.Tensor:
-        return self._state["joints"][:, 1].to(device=self.device, dtype=th.float32)
-
-    def get_joints_efforts(self) -> th.Tensor:
-        return self._state["joints"][:, 2].to(device=self.device, dtype=th.float32)
-
-    def get_tcp_position(self) -> th.Tensor:
-        return self.get_tcp_pose()[:3]
-
-    def get_tcp_orientation(self) -> th.Tensor:
-        return self.get_tcp_pose()[3:]
-
-    def get_tcp_pose(self) -> th.Tensor:
-        return self._state["pose"].to(device=self.device, dtype=th.float32)
-
-    def get_wrench(self) -> th.Tensor:
-        return self._state["wrench"].to(device=self.device, dtype=th.float32)
-
-    def get_base_position(self) -> th.Tensor:
-        return th.zeros(3, dtype=th.float32, device=self.device)
-
-    def get_camera_frame(self, camera_name: str) -> th.Tensor:
-        return self._vision[camera_name].unsqueeze(dim=0)
-
-    def get_camera_scene_frame(self) -> th.Tensor:
-        return self._vision["scene"].unsqueeze(dim=0)
-
-    def get_camera_tool_right_frame(self) -> th.Tensor:
-        return self._vision["right"].unsqueeze(dim=0)
-
-    def get_camera_tool_left_frame(self) -> th.Tensor:
-        return self._vision["left"].unsqueeze(dim=0)
-
-    def _servo_enable(self) -> None:
-        if self._servo_enabled:
-            return
-        self._run_coro(self._robot_client.servo_enable())
-        self._servo_enabled = True
-        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
-
-    def _servo_disable(self) -> None:
-        if not self._servo_enabled:
-            return
-        self._run_coro(self._robot_client.servo_disable())
-        self._servo_enabled = False
-        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
-
-    def reset(self, envs_idx: th.IntTensor) -> None:
-        if len(envs_idx) == 0:
-            return
-        self.reset_home(envs_idx)
-
-    def reset_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
-        print("[GraspEnvROS][ManipulatorROS] Moving to home")
-        self.gripper_open()
-        self._move_to_home()
-
-    def _move_to_home(self) -> None:
-        self._servo_disable()
-        self._run_coro(
-            self._robot_client.goto_joints(
-                names=tuple(self.dof_home_dict.keys()),
-                positions=tuple(self.dof_home_dict.values()),
-            )
+    def set_joints_pd_gains(
+        self,
+        kp_gain: Optional[th.Tensor] = None,
+        kv_gain: Optional[th.Tensor] = None,
+    ) -> None:
+        raise NotImplementedError(
+            "Setting PD gains is not supported for the ROS<->gRPC bridge."
         )
 
-    def apply_action(
-        self, action: th.Tensor, open_gripper: Optional[bool] = None
+    def ctrl_apply_vel_action(
+        self,
+        action: th.Tensor,
+        open_gripper: Optional[bool] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         self._servo_enable()
         # Control only one real robot
-        action = action.squeeze(dim=0)
+        action_target = action.squeeze(dim=0).cpu().numpy()
 
         self._run_coro(
             self._robot_client.servo_tcp(
-                linear=action[:3],
-                angular=action[3:6],
+                linear=action_target[:3],
+                angular=action_target[3:6],
             )
         )
 
         if open_gripper is None:
             return
         elif open_gripper:
-            self.gripper_open()
+            self.ctrl_gripper_open()
         else:
-            self.gripper_close()
+            self.ctrl_gripper_close()
 
-    def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
+    def ctrl_apply_joints_diff_action(
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
+    ) -> None:
         raise NotImplementedError
 
-    def go_to_goal(
-        self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None
+    def ctrl_go_to_goal(
+        self,
+        goal_pose: th.Tensor,
+        open_gripper: Optional[bool] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         self._servo_disable()
 
@@ -288,43 +252,94 @@ class ManipulatorROS:
         if open_gripper is None:
             return
         elif open_gripper:
-            self.gripper_open()
+            self.ctrl_gripper_open()
         else:
-            self.gripper_close()
+            self.ctrl_gripper_close()
 
-    def gripper_open(self) -> None:
+    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
+        self._servo_disable()
+        self._run_coro(
+            self._robot_client.goto_joints(
+                names=tuple(self.dof_home_dict.keys()),
+                positions=tuple(self.dof_home_dict.values()),
+            )
+        )
+
+    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
         if self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_open())
         self._gripper_last_action = True
 
-    def gripper_close(self) -> None:
+    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
         if not self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_close())
         self._gripper_last_action = False
 
-    @property
-    def base_pos(self) -> th.Tensor:
-        return self.get_base_position().unsqueeze(dim=0).float()
+    def get_n_dofs(self) -> int:
+        # TODO(issue#111) get it dynamcilly (for instance, from the shape of the joints)
+        return 7
 
-    @property
-    def ee_pose(self) -> th.Tensor:
-        return self.get_tcp_pose().unsqueeze(dim=0).float()
+    def get_joints_positions(self) -> th.Tensor:
+        if self._state is None:
+            raise ValueError("Call read_state() to initialize values")
+        return self._state["joints"][:, 0]
 
-    @property
-    def camera_scene(self) -> th.Tensor:
-        return self.get_camera_scene_frame()
+    def get_joints_velocities(self) -> th.Tensor:
+        if self._state is None:
+            raise ValueError("Call read_state() to initialize values")
+        return self._state["joints"][:, 1]
 
-    @property
-    def camera_tool_right(self) -> th.Tensor:
-        return self.get_camera_tool_right_frame()
+    def get_joints_efforts(self) -> th.Tensor:
+        if self._state is None:
+            raise ValueError("Call read_state() to initialize values")
+        return self._state["joints"][:, 2]
 
-    @property
-    def camera_tool_left(self) -> th.Tensor:
-        return self.get_camera_tool_left_frame()
+    def get_ft_wrench(self) -> th.Tensor:
+        if self._state is None:
+            raise ValueError("Call read_state() to initialize values")
+        return self._state["wrench"]
 
-    @property
-    def gripper_width(self) -> float:
+    def get_tcp_pose(self) -> th.Tensor:
+        if self._state is None:
+            raise ValueError("Call read_state() to initialize values")
+        return self._state["pose"]
+
+    def get_base_pose(self) -> th.Tensor:
+        return th.tensor([0, 0, 0, 1, 0, 0, 0], dtype=th.float32, device=self.device)
+
+    def get_gripper_width(self) -> th.Tensor:
         idx = AegisJointIndex.ROBOTIQ_HANDE_LEFT_FINGER_JOINT.value
-        return self.get_joints_positions()[idx] * 2
+        result = self.get_joints_positions()[idx] * 2
+        return result.unsqueeze(dim=0)
+
+    def get_camera_image(
+        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+    ) -> th.Tensor:
+        """
+        Returns image tensor for the given camera and modality:
+            - RGB:   [num_envs, H, W, 3], dtype uint8
+            - DEPTH: [num_envs, H, W, 1], dtype float32, values in meters
+        """
+        if self._vision is None:
+            raise ValueError("Vision disabled.")
+
+        # TODO(issue#125) rewrite the gRPC TensorDict output to match the camera id convention
+        cam_name = {
+            CameraID.SCENE_CAMERA: "scene",
+            CameraID.TOOL_LEFT: "left",
+            CameraID.TOOL_RIGHT: "right",
+        }[camera_id]
+        match modality:
+            case CameraModality.RGB:
+                return self._vision[cam_name]
+            case _:
+                raise ValueError(
+                    f"Not supported modality: {modality} ({modality.name})."
+                )
+
+    def get_all_cameras_images(
+        self, modality: CameraModality = CameraModality.RGB
+    ) -> TensorDict:
+        return self._vision

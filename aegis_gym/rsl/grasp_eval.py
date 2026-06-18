@@ -226,6 +226,7 @@ def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
         env = GraspEnv(
             env_cfg=cfg.env_cfg,
             robot_cfg=cfg.robot_cfg,
+            dr_cfg=cfg.dr_cfg,
             show_viewer=args.vis,
             enable_plot_juggler=args.plotjuggler,
         )
@@ -469,8 +470,8 @@ def run_eval(
                 actions = policy(obs)
             case Stage.BC:
                 rgb_obs = get_obs_vis()
-                ee_pose = env.robot.ee_pose
-                actions = policy(rgb_obs, ee_pose)
+                tcp_pose = env.robot.get_tcp_pose()
+                actions = policy(rgb_obs, tcp_pose)
                 if record_render:
                     env.record_cam.render()
 

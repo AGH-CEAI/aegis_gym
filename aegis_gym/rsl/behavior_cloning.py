@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
+from envs.manipulator import BaseManipulator
 from config_types.debug import DebugCfg
 from bc_encoders import (
     AutoencoderCNNEncoder,
@@ -313,7 +314,8 @@ class BehaviorCloning:
                 teacher_action = self._teacher(obs).detach()
 
                 # Get end-effector position
-                ee_pose = self._env.robot.ee_pose
+                robot: BaseManipulator = self._env.robot
+                ee_pose = robot.get_tcp_pose()
 
                 # Get object pose in camera frame
                 # object_pose_camera = self._get_object_pose_in_camera_frame()

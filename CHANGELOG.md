@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - Added `BaseEnv`, `BaseManipulator` and `BaseScene` abstractions for use in AegisGrasp.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `---debug-enable-vis-preview` for showing cameras preview.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-record-vis-obs` and `--debug-record-dir` arg for recording cameras preview into a given directory.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right).
@@ -31,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Created `BaseEnv` interface and loosely used it for both of the grasp env implementations.
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Refactored `Manipulator` interfaces into `BaseManipulator` abstraction and its `RosGrpcManipulator` and `GenesisManipualtor` implementations.
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Tensor operation improvements in `grasp_env.py`, `grasp_env_ros.py`, `PerCameraCNNEncoder`, `SharedCNNEncoder` and `AutoencoderCNNEncoder`.
 - [PR-109](https://github.com/AGH-CEAI/aegis_gym/pull/109) - Made pose head optional.

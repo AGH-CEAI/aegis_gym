@@ -6,19 +6,23 @@ from typing import Literal, Optional
 import torch as th
 import genesis as gs
 from clearml import Dataset
+from tensordict import TensorDict
+
+from ..base_manipulator import BaseManipulator, CameraID, CameraModality
 
 
-class Manipulator:
+class GenesisManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
         scene: gs.Scene,
         args: dict,
         show_cell: bool,
-        device: str = "cpu",
+        device: Optional[th.device] = None,
     ):
+        super().__init__(device=device)
+
         # == set members ==
-        self._device = device
         self._scene = scene
         self._num_envs = num_envs
         self._args = args
@@ -51,7 +55,7 @@ class Manipulator:
                 "cam_scene_rgb_camera_frame",
             ],
         )
-        self._robot_entity: gs.Entity = scene.add_entity(material=material, morph=morph)
+        self._robot_entity = scene.add_entity(material=material, morph=morph)
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
@@ -60,10 +64,6 @@ class Manipulator:
 
         self._setup_config()
         self._init_pd_tensors()
-
-    @property
-    def n_dofs(self) -> float:
-        return self._robot_entity.n_dofs
 
     def _resolve_aegis_urdf(self) -> Path:
         default_path = Path("~/ceai_ws/aegis_urdf/aegis.urdf").expanduser().resolve()
@@ -106,11 +106,11 @@ class Manipulator:
         self._arm_dof_dim = self._robot_entity.n_dofs - 2  # total number of arm joints
         self._gripper_dim = 2  # number of gripper joints
 
-        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self._device)
+        self._arm_dof_idx = th.arange(self._arm_dof_dim, device=self.device)
         self._fingers_dof = th.arange(
             self._arm_dof_dim,
             self._arm_dof_dim + self._gripper_dim,
-            device=self._device,
+            device=self.device,
         )
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
@@ -140,16 +140,26 @@ class Manipulator:
     def _build_gain_tensor(self, values: list[float]) -> th.Tensor:
         return th.tensor(values, dtype=th.float32)
 
-    def set_pd_gains(
+    def shutdown(self) -> None:
+        pass
+
+    def read_state(self) -> None:
+        pass
+
+    def set_joints_pd_gains(
         self,
         kp_gain: Optional[th.Tensor] = None,
         kv_gain: Optional[th.Tensor] = None,
     ) -> None:
+        """
+        Sets joints gains. Must be called after the build of the Genesis scene.
+        """
         kp_g = kp_gain if kp_gain is not None else 1.0
         kv_g = kv_gain if kv_gain is not None else 1.0
 
         self._robot_entity.set_dofs_kp(self._default_kp * kp_g)
         self._robot_entity.set_dofs_kv(self._default_kv * kv_g)
+
         self._robot_entity.set_dofs_force_range(
             self._force_lower,
             self._force_upper,
@@ -162,34 +172,12 @@ class Manipulator:
         #     th.tensor([1.0, -30, -87, -87, -12, -12, -100, -100]),
         # )
 
-    def reset(self, envs_idx: th.IntTensor):
-        if len(envs_idx) == 0:
-            return
-        self.reset_home(envs_idx)
-
-    def reset_home(self, envs_idx: Optional[th.IntTensor] = None):
-        if envs_idx is None:
-            envs_idx = th.arange(self._num_envs, device=self._device)
-        default_joint_angles = th.tensor(
-            self._default_joint_angles, dtype=th.float32, device=self._device
-        ).repeat(len(envs_idx), 1)
-        self._robot_entity.set_qpos(default_joint_angles, envs_idx=envs_idx)
-        self._robot_entity.control_dofs_position(
-            position=default_joint_angles, envs_idx=envs_idx
-        )
-
-    def apply_action(
-        self, action: th.Tensor, open_gripper: Optional[bool] = None
+    def ctrl_apply_vel_action(
+        self,
+        action: th.Tensor,
+        open_gripper: Optional[bool] = None,
+        envs_idx: Optional[th.IntTensor] = None,
     ) -> None:
-        """
-        Apply the action (velocity servoing) to the robot.
-
-        Args:
-            action: [num_envs, 6] tensor containing target end-effector velocities
-                    [vx, vy, vz, wx, wy, wz] where v is linear and w is angular velocity
-            open_gripper: Optional bool to control gripper state
-        """
-
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
             case "gs_ikv":
@@ -215,10 +203,6 @@ class Manipulator:
             self._robot_entity.control_dofs_position(position=q_pos)
 
         self._robot_entity.control_dofs_velocity(velocity=q_vel)
-
-    def apply_dof_rel_action(self, joints_diff: th.Tensor) -> None:
-        q_pos = self._robot_entity.get_qpos() + joints_diff
-        self._robot_entity.control_dofs_position(position=q_pos)
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -270,7 +254,7 @@ class Manipulator:
 
         # Damping matrix
         lambda_matrix = (lambda_val**2) * th.eye(
-            n=jacobian_arm.shape[1], device=self._device
+            n=jacobian_arm.shape[1], device=self.device
         )  # [6, 6]
 
         # Damped least squares: q_dot = J^T (J J^T + λ^2 I)^-1 * ee_velocity
@@ -286,7 +270,18 @@ class Manipulator:
         )
         return th.cat([q_vel, finger_zeros], dim=-1)
 
-    def go_to_goal(self, goal_pose: th.Tensor, open_gripper: Optional[bool] = None):
+    def ctrl_apply_joints_diff_action(
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.IntTensor] = None
+    ) -> None:
+        q_pos = self._robot_entity.get_qpos() + joints_diff
+        self._robot_entity.control_dofs_position(position=q_pos)
+
+    def ctrl_go_to_goal(
+        self,
+        goal_pose: th.Tensor,
+        open_gripper: Optional[bool] = None,
+        envs_idx: Optional[th.IntTensor] = None,
+    ) -> None:
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
             pos=goal_pose[:, :3],
@@ -301,43 +296,91 @@ class Manipulator:
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    @property
-    def base_pos(self):
-        return self._robot_entity.get_pos().float()
+    def ctrl_go_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
 
-    @property
-    def ee_pose(self) -> th.Tensor:
-        """
-        The end-effector pose (the hand pose)
-        """
+        default_joint_angles = th.tensor(
+            self._default_joint_angles, dtype=th.float32, device=self.device
+        ).repeat(len(idx), 1)
+        self._robot_entity.set_qpos(default_joint_angles, envs_idx=idx)
+        self._robot_entity.control_dofs_position(
+            position=default_joint_angles, envs_idx=idx
+        )
+
+    def ctrl_gripper_open(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        q_pos = self._robot_entity.get_qpos()
+        q_pos[idx, self._fingers_dof] = self._gripper_open_dof
+
+        self._robot_entity.control_dofs_position(position=q_pos)
+
+    def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        q_pos = self._robot_entity.get_qpos()
+        q_pos[idx, self._fingers_dof] = self._gripper_close_dof
+
+        self._robot_entity.control_dofs_position(position=q_pos)
+
+    def get_n_dofs(self) -> int:
+        return self._robot_entity.n_dofs
+
+    def get_joints_positions(self) -> th.Tensor:
+        return self._robot_entity.get_qpos()
+
+    def get_joints_velocities(self) -> th.Tensor:
+        # TODO(issue#126) get the joints vel from genesis
+        raise NotImplementedError()
+
+    def get_joints_efforts(self) -> th.Tensor:
+        # TODO(issue#126) get the joints eff from genesis
+        raise NotImplementedError()
+
+    def get_ft_wrench(self) -> th.Tensor:
+        # TODO(issue#126) get the F\T sensing from genesis
+        raise NotImplementedError()
+
+    def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
         return th.cat([pos, quat], dim=-1).float()
 
-    @property
-    def gripper_width(self) -> th.Tensor:
+    def get_tcp_position(self) -> th.Tensor:
+        return self._ee_link.get_pos()
+
+    def get_tcp_orientation(self) -> th.Tensor:
+        return self._ee_link.get_quat()
+
+    def get_base_pose(self) -> th.Tensor:
+        pos, quat = self._robot_entity.get_pos(), self._robot_entity.get_quat()
+        return th.cat([pos, quat], dim=-1).float()
+
+    def get_gripper_width(self) -> th.Tensor:
         fingers = self._robot_entity.get_qpos()[:, self._fingers_dof]
         return fingers.sum(dim=1)
 
-    # @property
-    # def left_finger_pose(self) -> th.Tensor:
-    #     pos, quat = self._left_finger_link.get_pos(), self._left_finger_link.get_quat()
-    #     return th.cat([pos, quat], dim=-1)
+    def get_camera_image(
+        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+    ) -> th.Tensor:
+        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
+        raise NotImplementedError(
+            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
+        )
 
-    # @property
-    # def right_finger_pose(self) -> th.Tensor:
-    #     pos, quat = (
-    #         self._right_finger_link.get_pos(),
-    #         self._right_finger_link.get_quat(),
-    #     )
-    #     return th.cat([pos, quat], dim=-1)
-
-    # @property
-    # def center_finger_pose(self) -> th.Tensor:
-    #     """
-    #     The center finger pose is the average of the left and right finger poses.
-    #     """
-    #     left_finger_pose = self.left_finger_pose
-    #     right_finger_pose = self.right_finger_pose
-    #     center_finger_pos = (left_finger_pose[:, :3] + right_finger_pose[:, :3]) / 2
-    #     center_finger_quat = left_finger_pose[:, 3:7]
-    #     return th.cat([center_finger_pos, center_finger_quat], dim=-1)
+    def get_all_cameras_images(
+        self, modality: CameraModality = CameraModality.RGB
+    ) -> TensorDict:
+        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
+        raise NotImplementedError(
+            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
+        )
