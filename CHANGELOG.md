@@ -8,7 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
 
+## [v202606181210]
+
+### Added
 
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `---debug-enable-vis-preview` for showing cameras preview.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-record-vis-obs` and `--debug-record-dir` arg for recording cameras preview into a given directory.
@@ -29,15 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-97](https://github.com/AGH-CEAI/aegis_gym/pull/97) - Changed BC logging to every iteration (removed `log_freq` parameter from bc_config).
 - [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - `utils/clearml_enquee_tasks.py`: Improved information for the user.
 
-### Deprecated
-### Removed
 ### Fixed
 
 - [PR-115](https://github.com/AGH-CEAI/aegis_gym/pull/115) - Fixed device mismatch in encoder shape inference.
 - [PR-114](https://github.com/AGH-CEAI/aegis_gym/pull/114) - Fixed bug with config overwrite by args.
 - [PR-96](https://github.com/AGH-CEAI/aegis_gym/pull/96) - Fixed bug with `matplotlib` dependency in  `utils/clearml_enquee_tasks.py`.
-
-### Security
 
 ## [v202605061407]
 
