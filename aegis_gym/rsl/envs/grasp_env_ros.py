@@ -58,7 +58,7 @@ class GraspEnvROS(BaseEnv):
         disable_vision: bool = False,
         device: Optional[th.device] = None,
     ) -> None:
-        super().__init__(scene=None)  # TODO: introduce Scene abstraction
+        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
         self.device = device or th.device("cpu")
         self._cfg = env_cfg
         self.disable_vision = disable_vision

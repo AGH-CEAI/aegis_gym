@@ -34,7 +34,7 @@ class GraspEnv(BaseEnv):
         show_viewer: bool = False,
         enable_plot_juggler: bool = False,
     ) -> None:
-        super().__init__(scene=None)  # TODO: introduce Scene abstraction
+        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
         if enable_plot_juggler:
             ip = "127.0.0.1"
             port = 9870
@@ -299,7 +299,7 @@ class GraspEnv(BaseEnv):
         ]
 
         for cam_name, link_name, offset in cams_to_attach:
-            # TODO expose links in the API
+            # TODO(issue#127) migrate this code into Scene/Manipulator layer
             link = self.robot._robot_entity.get_link(link_name)
             for cam_dict in (self._cameras, self._debug_cameras):
                 if cam_name in cam_dict:
@@ -1034,7 +1034,7 @@ class GraspEnv(BaseEnv):
             perturbed_offset = (base_offset @ perturb).astype(np.float32)
 
             try:
-                # TODO change API to expose robot_entity
+                # TODO(issue#127) change API to expose robot_entity
                 link = self.robot._robot_entity.get_link(
                     self._cameras_link_names[cam_name]
                 )
@@ -1142,7 +1142,7 @@ class GraspEnv(BaseEnv):
             return
 
         data = {}
-        # TODO change api to expose the robot entity
+        # TODO(issue#128) change api to expose the robot entity
         robot = self.robot._robot_entity
         for name in self._joint_names:
             j = robot.get_joint(name=name)

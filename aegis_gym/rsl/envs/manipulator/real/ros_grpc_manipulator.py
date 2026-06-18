@@ -57,7 +57,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._args = args
         self._disable_vision = disable_vision
 
-        # TODO get from cfg / dynamically from rsl_rl
+        # TODO(issue#111) get from cfg / dynamically from rsl_rl
         self.ctrl_dt = 1 / 10.0  # 1 / poliicy_f
 
         self.dof_home_dict = {
@@ -278,7 +278,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._gripper_last_action = False
 
     def get_n_dofs(self) -> int:
-        # TODO get it dynamcilly (for instance, from the shape of the joints)
+        # TODO(issue#111) get it dynamcilly (for instance, from the shape of the joints)
         return 7
 
     def get_joints_positions(self) -> th.Tensor:
@@ -325,7 +325,7 @@ class RosGrpcManipulator(BaseManipulator):
         if self._vision is None:
             raise ValueError("Vision disabled.")
 
-        # TODO rewrite the gRPC TensorDict output to match the camera id convention
+        # TODO(issue#125) rewrite the gRPC TensorDict output to match the camera id convention
         cam_name = {
             CameraID.SCENE_CAMERA: "scene",
             CameraID.TOOL_LEFT: "left",

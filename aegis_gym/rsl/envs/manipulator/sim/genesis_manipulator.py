@@ -340,15 +340,15 @@ class GenesisManipulator(BaseManipulator):
         return self._robot_entity.get_qpos()
 
     def get_joints_velocities(self) -> th.Tensor:
-        # TODO get the joints vel from genesis
+        # TODO(issue#126) get the joints vel from genesis
         raise NotImplementedError()
 
     def get_joints_efforts(self) -> th.Tensor:
-        # TODO get the joints eff from genesis
+        # TODO(issue#126) get the joints eff from genesis
         raise NotImplementedError()
 
     def get_ft_wrench(self) -> th.Tensor:
-        # TODO get the F\T sensing from genesis
+        # TODO(issue#126) get the F\T sensing from genesis
         raise NotImplementedError()
 
     def get_tcp_pose(self) -> th.Tensor:
@@ -372,7 +372,7 @@ class GenesisManipulator(BaseManipulator):
     def get_camera_image(
         self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
-        # TODO pass cameras reference to have  the same API for accessing images.
+        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
         raise NotImplementedError(
             "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
         )
@@ -380,7 +380,7 @@ class GenesisManipulator(BaseManipulator):
     def get_all_cameras_images(
         self, modality: CameraModality = CameraModality.RGB
     ) -> TensorDict:
-        # TODO pass cameras reference to have  the same API for accessing images.
+        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
         raise NotImplementedError(
             "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
         )

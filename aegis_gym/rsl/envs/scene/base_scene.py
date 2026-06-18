@@ -21,7 +21,7 @@ class BaseScene(ABC):
 
     @abstractmethod
     def add_entity(self, entity: str) -> None:
-        # TODO implement entity enum
+        # TODO(issue#37) implement entity enum
         """Add a given entity to the scene."""
         ...
 
