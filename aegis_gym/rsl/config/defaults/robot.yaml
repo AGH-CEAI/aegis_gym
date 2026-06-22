@@ -1,0 +1,9 @@
+ee_link_name: "robotiq_hande_end"
+gripper_link_names: ["robotiq_hande_left_finger", "robotiq_hande_right_finger"]
+default_arm_dof: [0.0, -2.09, 2.09, -1.57, -1.57, 0.0]
+default_gripper_dof: [0.025, 0.025]
+ik_method: "dls_ikv"
+urdf_model_id":
+    cell: "c44c56e7671d4004b120b0341fb727a4"
+    cell_collision: "0424f220ddc54091ae3b56b29854532f"
+    no_cell: "718ea536c68c4aaba79d1515ced27eeb"
