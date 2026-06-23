@@ -33,6 +33,7 @@ __all__ = [
     "CameraFovValueCfg",
     "CamerasFovCfg",
     "DomainRandomizationCfg",
+    "EnvCfg",
     "LoggerCfg",
     "BCCfg",
     "CNNLayerCfg",

@@ -7,7 +7,7 @@ from clearml import Task
 
 from .args_parser import LaunchArgs, parse_arguments
 from .types import (
-    GraspConfig,
+    ExpConfig,
     LoggerCfg,
     RLCfg,
     BCCfg,
@@ -19,10 +19,10 @@ from .types import (
 
 
 class ConfigManager:
-    _global_cfg: Optional[GraspConfig] = None
+    _global_cfg: Optional[ExpConfig] = None
 
     @classmethod
-    def get_config(cls) -> GraspConfig:
+    def get_config(cls) -> ExpConfig:
         if cls._global_cfg is None:
             raise AttributeError("Global configuration is not initialized!")
         return cls._global_cfg
@@ -54,7 +54,7 @@ class ConfigManager:
         extra_argparser: Optional[Callable],
         device: Optional[th.device],
         task: Optional[Task],
-    ) -> GraspConfig:
+    ) -> ExpConfig:
         if not isinstance(argv, LaunchArgs):
             args: LaunchArgs = parse_arguments(
                 argv=argv, extra_argparser=extra_argparser
@@ -77,7 +77,7 @@ class ConfigManager:
                 )
                 cfg_dict[cfg_sec_name] = connected
 
-        cfg = GraspConfig(
+        cfg = ExpConfig(
             logger_cfg=LoggerCfg.from_dict(cfg_dict.get("logger", None)),
             rl_cfg=RLCfg.from_dict(cfg_dict.get("rl", None)),
             bc_cfg=BCCfg.from_dict(cfg_dict.get("bc", None)),

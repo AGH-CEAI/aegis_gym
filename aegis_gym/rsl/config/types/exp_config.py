@@ -13,7 +13,7 @@ from .robot import RobotCfg
 
 
 @dataclass(slots=True, frozen=True)
-class GraspConfig:
+class ExpConfig:
     logger_cfg: LoggerCfg
     rl_cfg: RLCfg
     bc_cfg: BCCfg
