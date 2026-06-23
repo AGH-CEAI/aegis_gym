@@ -1,11 +1,10 @@
-import sys
 import ast
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from .enum_types import Stage, Control
+from .types import Stage, Control
 
 
 @dataclass(slots=True, frozen=True)
@@ -198,8 +197,3 @@ def parse_arguments(argv, extra_argparser: Optional[callable] = None) -> LaunchA
         seed=args.seed,
         _args_raw=args,
     )
-
-
-if __name__ == "__main__":
-    res = parse_arguments(sys.argv)
-    print(f"Parsedd args: {res}")
