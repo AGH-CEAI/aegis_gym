@@ -16,6 +16,9 @@ from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg
 from .env import EnvCfg
 from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
+from .enum_types import Stage, Checkpoint, Control
+
+from .grasp_cfg import GraspConfig
 
 __all__ = [
     "BaseCfg",
@@ -29,7 +32,8 @@ __all__ = [
     "CamerasExtrinsicsCfg",
     "CameraFovValueCfg",
     "CamerasFovCfg",
-    "DomainRandomizationCfgLoggerCfg",
+    "DomainRandomizationCfg",
+    "LoggerCfg",
     "BCCfg",
     "CNNLayerCfg",
     "FusionCfg",
@@ -39,4 +43,8 @@ __all__ = [
     "PolicyCfg",
     "RLCfg",
     "RobotCfg",
+    "Stage",
+    "Checkpoint",
+    "Control",
+    "GraspConfig",
 ]

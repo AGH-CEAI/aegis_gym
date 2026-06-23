@@ -11,6 +11,7 @@ from .rl import RLCfg
 from .env import EnvCfg
 from .bc import BCCfg
 from .logger import LoggerCfg
+from .robot import RobotCfg
 
 
 @dataclass(slots=True, frozen=True)
@@ -23,7 +24,7 @@ class GraspConfig:
     dr_cfg: DomainRandomizationCfg
     debug_cfg: DebugCfg
 
-    _device: ClassVar["th.device"] = None
+    _device: ClassVar["th.device"] = th.device("cpu")
     _instance: ClassVar["GraspConfig | None"] = None
 
     @classmethod
