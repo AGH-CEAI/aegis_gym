@@ -31,8 +31,8 @@ class PolicyCfg(BaseCfg):
     actor_obs_normalization: bool
     critic_obs_normalization: bool
     init_noise_std: float
-    actor_hidden_dims: list[int, ...]
-    critic_hidden_dims: list[int, ...]
+    actor_hidden_dims: list[int]
+    critic_hidden_dims: list[int]
     noise_std_type: Literal["scalar", "log"]
     state_dependent_std: bool
     detach_actor_grad: bool
@@ -43,8 +43,8 @@ class RLCfg(BaseCfg):
     class_name: str
     num_steps_per_env: int
     seed: int
-    obs_group_policy: list[str, ...]
-    obs_group_critic: list[str, ...]
+    obs_group_policy: list[str]
+    obs_group_critic: list[str]
     save_interval: int
     best_model_skip_iters: int
     experiment_name: str

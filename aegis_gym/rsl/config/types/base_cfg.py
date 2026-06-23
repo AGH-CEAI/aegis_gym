@@ -3,6 +3,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Type, TypeVar, get_type_hints
 
+
 T = TypeVar("T")
 
 

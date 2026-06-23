@@ -1,0 +1,5 @@
+enabled: False
+swap_tool_cameras: False
+enable_vis_preview: False
+enable_record_obs: False
+record_dir: "/tmp"

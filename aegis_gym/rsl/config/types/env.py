@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 from .base_cfg import BaseCfg
 
@@ -8,16 +7,15 @@ from .base_cfg import BaseCfg
 class EnvCfg(BaseCfg):
     num_envs: int
     num_obs: int
-    num_actions: 6
-    max_linear_speed: float
-    max_angulat_speed: float
+    num_actions: int
+    action_max_linear_speed: float
+    action_max_angular_speed: float
     episode_length_s: float
     ctrl_dt: float
     policy_dt: float
-    box_sizes: None
-        # TODO
-        default: list
-        symmetrical: list
+    # TODO introduce size config
+    box_size_default: list
+    box_size_symmetrical: list
     table_size: list
     workbench_size: list
     box_collision: bool

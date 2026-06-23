@@ -2,9 +2,8 @@ class_name: "OnPolicyRunner" # Number of steps per environment per iteration
 num_steps_per_env: 24  # Number of policy updates max_iterations: None
 seed: 1
 # Observations mapping
-obs_groups:
-  policy: ["policy"]
-  critic: ["policy"]
+obs_group_policy: ["policy"]
+obs_group_critic: ["policy"]
 
 # Logging parameters
 save_interval: 100  # Check for potential saves every `save_interval` iterations
@@ -34,9 +33,8 @@ algorithm:
   rnd_cfg: None
   # Symmetry augmentation
   symmetry_cfg: None
-reset_last_layer_weights:
-  interval: 0  # Set above 0 to enable
-  part: both,  # `actor`, `critic` or `both`
+reset_last_layer_weights_interval: 0 # Set above 0 to enable
+reset_last_layer_weights_part: part # `actor`, `critic` or `both`
 init_member_classes: []
 policy:
   class_name: "ActorCritic"

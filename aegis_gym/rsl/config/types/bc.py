@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal, Optional
 from .base_cfg import BaseCfg
+
 
 @dataclass(slots=True)
 class CNNLayerCfg(BaseCfg):
@@ -11,11 +11,13 @@ class CNNLayerCfg(BaseCfg):
     stride: int
     padding: int
 
+
 @dataclass(slots=True)
 class FusionCfg(BaseCfg):
-    fusion_output_dim: Optional[int]
-    pool_size: Optional[int]
-    num_heads: Optional[int]
+    fusion_output_dim: Optional[int] = None
+    pool_size: Optional[int] = None
+    num_heads: Optional[int] = None
+
 
 @dataclass(slots=True)
 class PolicyBCCfg(BaseCfg):
@@ -28,8 +30,9 @@ class PolicyBCCfg(BaseCfg):
     attention_vector_fusion: FusionCfg
     attention_spatial_fusion: FusionCfg
     action_head_state_obs_dim: int
-    action_head_hidden_dims: list[int, ...]
-    pose_head_hidden_dims: list[int, ..]
+    action_head_hidden_dims: list[int]
+    pose_head_hidden_dims: list[int]
+
 
 @dataclass(slots=True)
 class BCCfg(BaseCfg):

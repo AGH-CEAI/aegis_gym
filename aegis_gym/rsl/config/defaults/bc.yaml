@@ -60,27 +60,23 @@ policy:
         stride: 2
         padding: 1
   linear_fusion:
-      fusion_otput_dim: 512
+      fusion_output_dim: 512
       pool_size: 4
   attention_vector_fusion:
       fusion_output_dim: 512
       num_heads: 4
       pool_size: 4
-  attention_spatial_fusion":
+  attention_spatial_fusion:
       fusion_output_dim: 256
       num_heads: 4
-  action_head:
-      state_obs_dim: 7  # end-effector pose as additional state observation
-      hidden_dims: [128, 128, 64]
-  pose_head:
-      hidden_dims: [64, 64]
+  action_head_state_obs_dim: 7  # end-effector pose as additional state observation
+  action_head_hidden_dims: [128, 128, 64]
+  pose_head_hidden_dims: [64, 64]
 # training settings
 buffer_size: 1000
 save_freq: 50
 eval_freq: 50
 best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
-reset_last_layer_weights:
-  interval: 0  # Set above 0 to enable
-  part: "all"  # `action`, `pose` or `all`
-algorithm:
-  rnd_cfg: None
+reset_last_layer_weights_interval: 0  # Set above 0 to enable
+reset_last_layer_weights_part: "both"  # `action`, `pose` or `all`
+algorithm_rnd_cfg: None
