@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from enum_types import Stage, Control
+from .enum_types import Stage, Control
 
 
 @dataclass(slots=True, frozen=True)

@@ -1,6 +1,4 @@
 import re
-from dataclasses import dataclass
-from strenum import StrEnum
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -10,23 +8,8 @@ from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
-from config_types.debug import DebugCfg
-
-
-class Stage(StrEnum):
-    RL = "rl"
-    BC = "bc"
-
-
-class Control(StrEnum):
-    SIM = "sim"
-    ROS = "ros"
-
-
-@dataclass(frozen=True, order=True, slots=True)
-class Checkpoint:
-    step: int
-    path: Path
+from .config_types import DebugCfg
+from .config import Checkpoint
 
 
 def load_rl_policy(
