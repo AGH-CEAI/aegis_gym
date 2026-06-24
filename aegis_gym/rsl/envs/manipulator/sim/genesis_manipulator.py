@@ -176,7 +176,7 @@ class GenesisManipulator(BaseManipulator):
         self,
         action: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
@@ -271,7 +271,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([q_vel, finger_zeros], dim=-1)
 
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.IntTensor] = None
+        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
     ) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
@@ -280,7 +280,7 @@ class GenesisManipulator(BaseManipulator):
         self,
         goal_pose: th.Tensor,
         open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.IntTensor] = None,
+        envs_idx: Optional[th.Tensor] = None,
     ) -> None:
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
@@ -296,7 +296,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_go_to_home(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
@@ -311,7 +311,7 @@ class GenesisManipulator(BaseManipulator):
             position=default_joint_angles, envs_idx=idx
         )
 
-    def ctrl_gripper_open(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
@@ -322,7 +322,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_gripper_close(self, envs_idx: Optional[th.IntTensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
