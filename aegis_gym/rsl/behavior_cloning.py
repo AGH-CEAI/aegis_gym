@@ -15,8 +15,9 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
-from envs.manipulator import BaseManipulator
-from config_types.debug import DebugCfg
+from envs import BaseManipulator, BaseEnv
+from config import ConfigManager
+from config.types import DebugCfg, BCCfg, PolicyBCCfg
 from bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
@@ -60,72 +61,74 @@ class BehaviorCloning:
 
     def __init__(
         self,
-        env,
-        cfg: dict,
+        env: BaseEnv,
+        bc_cfg: BCCfg,
         debug_cfg: DebugCfg,
-        teacher: nn.Module,
-        log_dir: Path,
+        teacher: Optional[nn.Module],
+        log_dir: Optional[Path],
         device: th.device = th.device("cpu"),
     ):
         self._env = env
-        self._cfg = cfg
+        self._cfg_bc = bc_cfg
         self._debug_cfg = debug_cfg
-        self._device = device
         self._teacher = teacher
-        self._num_steps_per_env = cfg["num_steps_per_env"]
+        self._log_dir = log_dir or Path("/tmp/bc_logs.txt")
+        self._device = device
 
-        self._use_teacher_mixing = self._cfg.get("use_teacher_mixing", False)
-        encoder_type = self._cfg["policy"]["encoder_type"]
+        self._num_steps_per_env = bc_cfg.num_steps_per_env
+        self._use_teacher_mixing = self._cfg_bc.use_teacher_mixing
+        encoder_type = self._cfg_bc.policy.encoder_type
         self._enable_recon = encoder_type == "autoencoder"
-        self._save_recons = self._cfg.get("save_recons", False)
-        self._save_recon_freq = self._cfg.get("save_recon_freq", 100)
+        self._save_recons = self._cfg_bc.save_recons
+        self._save_recon_freq = self._cfg_bc.save_recon_freq
         self._reset_last_layer_cfg = self._resolve_reset_last_layer_cfg(
-            self._cfg.get("reset_last_layer_weights", None)
+            self._cfg_bc.reset_last_layer_weights
         )
 
         self.logger = None
         if log_dir is not None:
             self.logger = Logger(
                 log_dir=str(log_dir),
-                cfg=cfg,
+                cfg=bc_cfg.as_dict(),
                 env_cfg=getattr(env, "cfg", {}),
                 num_envs=env.num_envs,
                 is_distributed=False,
                 gpu_world_size=1,
                 gpu_global_rank=0,
-                device=device,
+                device=str(device),
             )
 
-        if env.camera_setup == "default":
+        camera_setup = env.camera_setup
+        if camera_setup == "default":
             num_cameras = 3
-        elif env.camera_setup == "scene_dual":
+        elif camera_setup == "scene_dual":
             num_cameras = 2
         else:
-            raise ValueError(f"Unknown camera_setup: {env.camera_setup}")
+            raise ValueError(f"Unknown camera_setup: {camera_setup}")
 
-        cfg["policy"]["num_cameras"] = num_cameras
-        cfg["policy"]["image_height"] = env.image_height
-        cfg["policy"]["image_width"] = env.image_width
-        cfg["policy"]["device"] = str(self._device)
+        bc_cfg["policy"]["num_cameras"] = num_cameras
+        bc_cfg["policy"]["image_height"] = env.image_height
+        bc_cfg["policy"]["image_width"] = env.image_width
+        bc_cfg["policy"]["device"] = str(self._device)
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 
         # Multi-task policy with action and pose heads
-        self._policy = Policy(cfg["policy"], action_dim, device).to(device)
+        self._policy = Policy(bc_cfg["policy"], action_dim, device).to(device)
 
         # Initialize optimizer
         self._optimizer = th.optim.Adam(
-            self._policy.parameters(), lr=cfg["learning_rate"]
+            self._policy.parameters(), lr=bc_cfg.learning_rate
         )
 
         # Experience buffer with pose data
         self._buffer = ExperienceBuffer(
             num_envs=env.num_envs,
-            max_size=self._cfg["buffer_size"],
+            max_size=self._cfg_bc.buffer_size,
             img_shape=rgb_shape,
-            state_dim=self._cfg["policy"]["action_head"]["state_obs_dim"],
+            state_dim=self._cfg_bc.policy.action_head_state_obs_dim,
             action_dim=action_dim,
-            device=device,
+            device=str(device),
             dtype=self._policy.dtype,
         )
 
@@ -161,7 +164,7 @@ class BehaviorCloning:
 
             start_time = time.time()
             generator = self._buffer.get_batches(
-                self._cfg.get("num_mini_batches", 4), self._cfg["num_epochs"]
+                self._cfg_bc.num_mini_batches, self._cfg_bc.num_epochs
             )
 
             for batch in generator:
@@ -191,7 +194,7 @@ class BehaviorCloning:
                 self._optimizer.zero_grad()
                 total_loss.backward()
                 th.nn.utils.clip_grad_norm_(
-                    self._policy.parameters(), self._cfg["max_grad_norm"]
+                    self._policy.parameters(), self._cfg_bc.max_grad_norm
                 )
                 self._optimizer.step()
 
@@ -200,7 +203,7 @@ class BehaviorCloning:
                 total_recon_loss += recon_loss
                 num_batches += 1
 
-            self._save_reconstructions(last_batch, last_recons, it)
+            self._save_reconstructions(batch=last_batch, recons=last_recons, it=it)
 
             end_time = time.time()
             backward_time = end_time - start_time
@@ -222,13 +225,11 @@ class BehaviorCloning:
                 )
 
             # Save checkpoints periodically
-            if self.logger is not None and (it + 1) % self._cfg["save_freq"] == 0:
-                ckpt_path = os.path.join(
-                    self.logger.log_dir, f"checkpoint_{it + 1:04d}.pt"
-                )
+            if self.logger is not None and (it + 1) % self._cfg_bc.save_freq == 0:
+                ckpt_path = Path(self._log_dir) / f"checkpoint_{it + 1:04d}.pt"
                 self.save(ckpt_path)
                 if self.logger is not None:
-                    self.logger.save_model(ckpt_path, it + 1)
+                    self.logger.save_model(str(ckpt_path), it + 1)
 
             # Save best model based on mean reward
             if self.logger is not None and len(self._rewbuffer) > 0:
@@ -245,17 +246,17 @@ class BehaviorCloning:
             )
 
     def _update_best_model(self, it: int, mean_reward: float) -> None:
-        skip = self._cfg.get("best_model_skip_iters", 0)
+        skip = self._cfg_bc.best_model_skip_iters
         if it < skip or mean_reward <= self._best_model_reward:
             return
 
         self._best_model_reward = mean_reward
         self._best_model_iter = it + 1
 
-        path = os.path.join(self.logger.log_dir, "checkpoint_best.pt")
+        path = Path(self._log_dir) / "checkpoint_best.pt"
         self.save(path)
         self.logger.save_model(
-            path=path,
+            path=str(path),
             it=self._best_model_iter,
             custom_name="model_best",
         )
@@ -476,13 +477,13 @@ class BehaviorCloning:
 
         print(info_str)
 
-    def save(self, path: str) -> None:
-        """Save model checkpoint."""
+    def save(self, path: Path) -> None:
+        """Save model checkpoint in given `path`."""
         checkpoint = {
             "model_state_dict": self._policy.state_dict(),
             "optimizer_state_dict": self._optimizer.state_dict(),
             "current_iter": self._current_iter,
-            "config": self._cfg,
+            "config": self._cfg_bc,
         }
         th.save(checkpoint, path)
         print(f"Model saved to {path}")
@@ -599,9 +600,11 @@ class ExperienceBuffer:
 
 class Policy(nn.Module):
     def __init__(
-        self, config: dict, action_dim: int, device: th.device = th.device("cpu")
+        self, cfg_policy: PolicyBCCfg, action_dim: int, device: th.device = th.device("cpu")
     ):
         super().__init__()
+        # TODO Conrtinue config refactor
+        
         self.num_cameras = config["num_cameras"]
         self.encoder_type = config["encoder_type"]
         self.fusion_type = config["fusion_type"]

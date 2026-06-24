@@ -404,7 +404,7 @@ def eval_policy_sweep(
     )
 
     bc_runner = BehaviorCloning(
-        env, cfg=cfg.bc_cfg, teacher=None, log_dir=log_dir, device=device
+        env, bc_cfg=cfg.bc_cfg, teacher=None, log_dir=log_dir, device=device
     )
     object_pose = env.generate_object_poses(seed=args.seed)
 
