@@ -126,3 +126,37 @@ class ConfigManager:
         # You can control only 1 real instance
         if args.control_type == Control.ROS:
             cfg_dict["env"]["num_envs"] = 1
+
+        # Add project_suffix to the logger outputs
+        # TODO rename the args.learning_method to args.train_type
+        project_suffix = f"_{str(args.learning_method)}-{str(args.control_type)}"
+        cfg_dict["logger"]["wandb_project"] += project_suffix
+        cfg_dict["logger"]["clearml_project"] += project_suffix
+        cfg_dict["logger"]["neptune_project"] += project_suffix
+
+        # Define the local_log_dir if not given
+        if not cfg_dict["logger"]["local_log_dir"]:
+            train_type = str(args.learning_method)
+            log_dir = (
+                Path("/tmp/aegis_gym_logs") / f"{args.experiment_name}_{train_type}"
+            )
+            log_dir.mkdir(parents=True, exist_ok=True)
+            cfg_dict["logger"]["local_log_dir"] = str(log_dir)
+
+        # Apply the debug flags
+        if args.debug_enable:
+            cfg_dict["debug"]["enabled"] = args.debug_enable
+            cfg_dict["debug"]["swap_tool_cameras"] = args.debug_swap_tool_cameras
+            cfg_dict["debug"]["enable_vis_preview"] = args.debug_preview_vis_obs
+            cfg_dict["debug"]["enable_receord_obs"] = args.debug_record_vis_obs
+            cfg_dict["debug"]["record_dir"] = args.debug_record_dir
+
+        # Apply launch arguments if given
+        if args.experiment_name:
+            cfg_dict["rl"]["experiment_name"] = args.experiment_name
+        if args.max_iterations:
+            cfg_dict["rl"]["max_iterations"] = args.max_iterations
+        if args.num_envs:
+            cfg_dict["env"]["num_envs"] = args.num_envs
+        if args.visualize_camera:
+            cfg_dict["env"]["visualize_camera"] = args.visualize_camera
