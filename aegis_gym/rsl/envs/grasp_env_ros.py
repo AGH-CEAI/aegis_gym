@@ -2,7 +2,7 @@ import math
 import tempfile
 import time
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -13,6 +13,8 @@ from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
 from .base_env import BaseEnv, StepReturn, ResetReturn
+
+from ..config import ExpConfig
 
 
 class Object:
@@ -33,7 +35,7 @@ class Object:
         self._init_pos = self.pos.clone()
         self._init_quat = self.quat.clone()
 
-    def reset(self, envs_idx: int) -> None:
+    def reset(self, envs_idx: th.Tensor) -> None:
         self.pos = self._init_pos.clone()
         self.quat = self._init_quat.clone()
 
@@ -53,15 +55,14 @@ class Object:
 class GraspEnvROS(BaseEnv):
     def __init__(
         self,
-        env_cfg: dict,
-        robot_cfg: dict,
-        disable_vision: bool = False,
-        device: Optional[th.device] = None,
+        cfg: ExpConfig,
     ) -> None:
         super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
-        self.device = device or th.device("cpu")
-        self._cfg = env_cfg
-        self.disable_vision = disable_vision
+        env_cfg = cfg.env_cfg
+        self.device = cfg.get_device()
+
+        self._cfg_env = env_cfg
+        self.disable_vision = cfg.args.disable_vision
 
         self._extract_config()
         print(
@@ -70,7 +71,9 @@ class GraspEnvROS(BaseEnv):
 
         self.robot = RosGrpcManipulator(
             num_envs=self.num_envs,
-            args=robot_cfg,
+            scene=self._scene,
+            robot_cfg=cfg.robot_cfg,
+            policy_dt=cfg.env_cfg.policy_dt,
             disable_vision=self.disable_vision,
             device=self.device,
         )
@@ -115,31 +118,31 @@ class GraspEnvROS(BaseEnv):
         self.reset()
 
     def _extract_config(self) -> None:
-        self.num_envs = self._cfg["num_envs"]
-        self.num_obs = self._cfg["num_obs"]
+        self.num_envs = self._cfg_env.num_envs
+        self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
-        self.num_actions = self._cfg["num_actions"]
-        self.image_width = self._cfg["image_resolution"][0]
-        self.image_height = self._cfg["image_resolution"][1]
+        self.num_actions = self._cfg_env.num_actions
+        self.image_width = self._cfg_env.image_resolution[0]
+        self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
-        self.table_size = self._cfg["table_size"]
-        self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_sizes"]["default"]
+        self.camera_setup = self._cfg_env.camera_setup
+        self.table_size = self._cfg_env.table_size
+        self.workbench_size = self._cfg_env.workbench_size
+        self.box_size = self._cfg_env.box_size_default
 
-        self.ctrl_dt = self._cfg["ctrl_dt"]
-        self.policy_dt = self._cfg["policy_dt"]
+        self.ctrl_dt = self._cfg_env.ctrl_dt
+        self.policy_dt = self._cfg_env.policy_dt
         self.sim_substeps = int(
-            math.ceil(self._cfg["policy_dt"] / self._cfg["ctrl_dt"])
+            math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
         )
         self.max_episode_length = int(
-            math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
+            math.ceil(self._cfg_env.episode_length_s / self.policy_dt)
         )
 
-        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
-        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
+        self.max_linear_speed = self._cfg_env.action_max_linear_speed
+        self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg["reward_scales"]
+        self.reward_scales = self._cfg_env.reward_scales
 
         self.last_step_ts: Optional[float] = None
 
@@ -147,7 +150,7 @@ class GraspEnvROS(BaseEnv):
         return self.policy_dt
 
     def get_cfg_as_dict(self) -> dict:
-        return self._cfg
+        return self._cfg_env.as_dict()
 
     def get_num_envs(self) -> int:
         return self.num_envs
@@ -162,7 +165,7 @@ class GraspEnvROS(BaseEnv):
             )
 
         self.keypoints_offset = self.get_keypoint_offsets(
-            batch_size=self.num_envs, device=self.device, unit_length=0.5
+            batch_size=self.num_envs, unit_length=0.5
         )
 
     def _init_buffers(self) -> None:
@@ -189,7 +192,7 @@ class GraspEnvROS(BaseEnv):
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self._cfg["episode_length_s"]
+                / self._cfg_env.episode_length_s
             )
             self.episode_sums[key][envs_idx] = 0.0
 
@@ -236,7 +239,7 @@ class GraspEnvROS(BaseEnv):
     def calib_run(
         self,
         joints_diff: Optional[th.Tensor] = None,
-        cart_diff: Optional[th.tensor] = None,
+        cart_diff: Optional[th.Tensor] = None,
         steps: int = 100,
     ) -> None:
         raise NotImplementedError
@@ -289,7 +292,7 @@ class GraspEnvROS(BaseEnv):
         record_dir: Optional[Path] = None,
     ) -> th.Tensor:
         # TODO(issue#41) Unify the camera setup
-        rgb_list: list[th.Tensor] = [None] * len(self._cameras)
+        rgb_list: list[Optional[th.Tensor]] = [None] * len(self._cameras)
 
         for cam_name in self._cameras:
             cam_id = self._cameras_order[cam_name]
@@ -328,7 +331,7 @@ class GraspEnvROS(BaseEnv):
         self, obs: list[th.Tensor], normalize: bool
     ) -> np.ndarray:
 
-        opencv_images: list[np.ndarray] = [None] * len(obs)
+        opencv_images: list[Optional[np.ndarray]] = [None] * len(obs)
         for cam_name in self._cameras:
             cam_id = self._cameras_order[cam_name]
 
@@ -401,9 +404,8 @@ class GraspEnvROS(BaseEnv):
             )
         return world
 
-    @staticmethod
     def get_keypoint_offsets(
-        batch_size: int, device: str, unit_length: float = 0.5
+        self, batch_size: int, unit_length: float = 0.5
     ) -> th.Tensor:
         """
         Get uniformly-spaced keypoints along a line of unit length, centered at body center.
@@ -419,7 +421,7 @@ class GraspEnvROS(BaseEnv):
                     [0, 0, -1.0],  # z-negative
                     [0, 0, 1.0],  # z-positive
                 ],
-                device=device,
+                device=self.device,
                 dtype=th.float32,
             )
             * unit_length

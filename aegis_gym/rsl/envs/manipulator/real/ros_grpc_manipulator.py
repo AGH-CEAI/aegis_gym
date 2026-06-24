@@ -17,16 +17,17 @@ except ImportError:
     raise
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
+from ...scene import BaseScene
+from ....config.types import RobotCfg
 
 
 class PoseTransformUtils:
-    def __init__(self, device: th.device):
-        self.device = device
-
-    def quat_xyzw_to_wxyz(self, quat: th.Tensor) -> th.Tensor:
+    @staticmethod
+    def quat_xyzw_to_wxyz(quat: th.Tensor) -> th.Tensor:
         return th.roll(quat, 1, dims=-1)
 
-    def quat_wxyz_to_xyzw(self, quat: th.Tensor) -> th.Tensor:
+    @staticmethod
+    def quat_wxyz_to_xyzw(quat: th.Tensor) -> th.Tensor:
         return th.roll(quat, -1, dims=-1)
 
 
@@ -35,38 +36,42 @@ class RosGrpcManipulator(BaseManipulator):
 
     def __new__(cls, *args, **kwargs) -> "RosGrpcManipulator":
         if cls._instance is None:
-            cls._instance = super(RosGrpcManipulator, cls).__new__(cls)
+            cls._instance = super(RosGrpcManipulator, cls).__new__(cls, *args, **kwargs)
         return cls._instance
 
     def __init__(
         self,
         num_envs: int,
-        args: dict,
+        scene: BaseScene,
+        robot_cfg: RobotCfg,
+        policy_dt: float,
         disable_vision: bool = False,
         device: Optional[th.device] = None,
     ):
-        super().__init__(device=device)
-
         if hasattr(self, "_initialized") and self._initialized:
             return
+
+        super().__init__(device=device)
+
+        self._num_envs = num_envs
+        self._scene = scene
+        self._cfg_robot = robot_cfg
+        self._policy_dt = policy_dt
+        self._disable_vision = disable_vision
+
+        self.pt = PoseTransformUtils()
 
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
-        self.pt = PoseTransformUtils(device=self.device)
-        self._args = args
-        self._disable_vision = disable_vision
-
-        # TODO(issue#111) get from cfg / dynamically from rsl_rl
-        self.ctrl_dt = 1 / 10.0  # 1 / poliicy_f
-
+        def_dofs = robot_cfg.default_arm_dof
         self.dof_home_dict = {
-            "shoulder_pan_joint": 0.0,
-            "shoulder_lift_joint": -2.09,
-            "elbow_joint": 2.09,
-            "wrist_1_joint": -1.57,
-            "wrist_2_joint": -1.57,
-            "wrist_3_joint": 0.0,
+            "shoulder_pan_joint": def_dofs[0],
+            "shoulder_lift_joint": def_dofs[1],
+            "elbow_joint": def_dofs[2],
+            "wrist_1_joint": def_dofs[3],
+            "wrist_2_joint": def_dofs[4],
+            "wrist_3_joint": def_dofs[5],
         }
 
         self._loop = asyncio.new_event_loop()

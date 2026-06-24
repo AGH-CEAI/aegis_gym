@@ -1,7 +1,7 @@
 import math
 import tempfile
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import cv2
 import genesis as gs
@@ -9,6 +9,7 @@ import numpy as np
 import torch as th
 import torch.nn.functional as F
 from PIL import Image
+from genesis.vis.camera import Camera
 
 from tensordict import TensorDict
 from genesis.utils.geom import (
@@ -16,10 +17,12 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
 )
 
-from config_types.domain_randomization import DomainRandomizationCfg, CameraPoseCfg
+from config_types.domain_randomization import CameraPoseCfg
 from .manipulator import GenesisManipulator
 from .base_env import BaseEnv, StepReturn, ResetReturn
 from .plotjuggler_udp import PlotJugglerUDP
+
+from ..config import ExpConfig
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -28,13 +31,11 @@ from .plotjuggler_udp import PlotJugglerUDP
 class GraspEnv(BaseEnv):
     def __init__(
         self,
-        env_cfg: dict,
-        robot_cfg: dict,
-        dr_cfg: DomainRandomizationCfg,
-        show_viewer: bool = False,
-        enable_plot_juggler: bool = False,
+        cfg: ExpConfig,
     ) -> None:
         super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
+
+        enable_plot_juggler = cfg.args.enable_plot_juggler
         if enable_plot_juggler:
             ip = "127.0.0.1"
             port = 9870
@@ -50,23 +51,22 @@ class GraspEnv(BaseEnv):
             print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
         self._enable_pj_logging = enable_plot_juggler
 
-        self._cfg = env_cfg
-        self.device = gs.device
+        self._cfg_env = cfg.env_cfg
+        self._cfg_dr = cfg.dr_cfg
+        self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
+        self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
+        self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
+        self.device = cfg.get_device()
 
         self._extract_config()
         print(
             f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 
-        self._dr_cfg = dr_cfg
-        self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
-        self._dr_cam_extrinsics_active: bool = self._dr_cfg.cameras_extrinsics.enabled
-        self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
-
-        self._cameras: dict[str, gs.Camera] = {}
+        self._cameras: dict[str, Camera] = {}
         # TODO(issue#117) redesign the cameras preview feature
-        self._debug_cameras: dict[str, gs.Camera] = {}
-        self._setup_genesis_scene(self._cfg, robot_cfg, show_viewer)
+        self._debug_cameras: dict[str, Camera] = {}
+        self._setup_genesis_scene(cfg=cfg)
 
         # TODO(issue#41) refactor the camera_setup into more modular system
         self._cameras_link_names = {
@@ -81,14 +81,14 @@ class GraspEnv(BaseEnv):
         }
 
         self.scene.build(
-            n_envs=env_cfg["num_envs"],
+            n_envs=self.num_envs
             # env_spacing=(1.0, 1.0),
         )
 
         self.robot.set_joints_pd_gains()
         self._attach_cameras()
 
-        if self._dr_cfg.enabled:
+        if self._cfg_dr.enabled:
             self._setup_dr_pd_gains()
             self._cache_camera_base_offsets()
 
@@ -98,38 +98,38 @@ class GraspEnv(BaseEnv):
 
     def _extract_config(self) -> None:
         # TODO(issue##117) redesign the whole camera preview system
-        self.show_cameras_gui = self._cfg["visualize_camera"]
+        self.show_cameras_gui = self._cfg_env.visualize_camera
 
-        self.num_envs = self._cfg["num_envs"]
-        self.num_obs = self._cfg["num_obs"]
+        self.num_envs = self._cfg_env.num_envs
+        self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
-        self.num_actions = self._cfg["num_actions"]
-        self.image_width = self._cfg["image_resolution"][0]
-        self.image_height = self._cfg["image_resolution"][1]
+        self.num_actions = self._cfg_env.num_actions
+        self.image_width = self._cfg_env.image_resolution[0]
+        self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = self._cfg["visualize_cell"]
-        self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
-        self.table_size = self._cfg["table_size"]
-        self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_sizes"]["default"]
+        self.show_cell = self._cfg_env.visualize_cell
+        self.camera_setup = self._cfg_env.camera_setup
+        self.table_size = self._cfg_env.table_size
+        self.workbench_size = self._cfg_env.workbench_size
+        self.box_size = self._cfg_env.box_size_default
 
-        self.ctrl_dt = self._cfg["ctrl_dt"]
-        self.policy_dt = self._cfg["policy_dt"]
+        self.ctrl_dt = self._cfg_env.ctrl_dt
+        self.policy_dt = self._cfg_env.policy_dt
         self.sim_substeps = int(
-            math.ceil(self._cfg["policy_dt"] / self._cfg["ctrl_dt"])
+            math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
         )
         self.max_episode_length = int(
-            math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
+            math.ceil(self._cfg_env.episode_length_s / self.policy_dt)
         )
 
-        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
-        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
+        self.max_linear_speed = self._cfg_env.action_max_linear_speed
+        self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg["reward_scales"]
+        self.reward_scales = self._cfg_env.reward_scales
 
-    def _setup_genesis_scene(
-        self, env_cfg: dict, robot_cfg: dict, show_viewer: bool
-    ) -> None:
+    def _setup_genesis_scene(self, cfg: ExpConfig) -> None:
+        env_cfg = cfg.env_cfg
+        show_viewer = cfg.args.show_viewer
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
@@ -158,7 +158,7 @@ class GraspEnv(BaseEnv):
             ),
             profiling_options=gs.options.ProfilingOptions(show_FPS=False),
             renderer=gs.options.renderers.BatchRenderer(
-                use_rasterizer=env_cfg["use_rasterizer"],
+                use_rasterizer=env_cfg.use_rasterizer,
             ),
             show_viewer=show_viewer,
         )
@@ -174,8 +174,8 @@ class GraspEnv(BaseEnv):
         self.robot = GenesisManipulator(
             num_envs=self.num_envs,
             scene=self.scene,
-            args=robot_cfg,
-            show_cell=self.show_cell,
+            cfg_robot=cfg.robot_cfg,
+            show_cell=cfg.args.show_viewer,
             device=gs.device,
         )
 
@@ -199,8 +199,8 @@ class GraspEnv(BaseEnv):
         self.object = self.scene.add_entity(
             gs.morphs.Box(
                 size=self.box_size,
-                fixed=env_cfg["box_fixed"],
-                collision=env_cfg["box_collision"],
+                fixed=env_cfg.box_fixed,
+                collision=env_cfg.box_collision,
             ),
             # material=gs.materials.Rigid(gravity_compensation=1),
             surface=gs.surfaces.Rough(
@@ -247,9 +247,9 @@ class GraspEnv(BaseEnv):
         self,
         name: str,
         pos: tuple = (0.0, 0.0, 0.0),
-        fov: float = 40,  # deg
+        fov: int = 40,  # deg
         lookat: tuple = (0.0, 0.0, 0.0),
-        res: tuple = None,
+        res: Optional[tuple] = None,
     ):
         if res is None:
             res = (self.image_width, self.image_height)
@@ -310,7 +310,7 @@ class GraspEnv(BaseEnv):
         return self.policy_dt
 
     def get_cfg_as_dict(self) -> dict:
-        return self._cfg
+        return self._cfg_env.as_dict()
 
     def get_num_envs(self) -> int:
         return self.num_envs
@@ -325,7 +325,7 @@ class GraspEnv(BaseEnv):
             )
 
         self.keypoints_offset = self.get_keypoint_offsets(
-            batch_size=self.num_envs, device=self.device, unit_length=0.5
+            batch_size=self.num_envs, unit_length=0.5
         )
 
     def _init_buffers(self) -> None:
@@ -383,11 +383,11 @@ class GraspEnv(BaseEnv):
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self._cfg["episode_length_s"]
+                / self._cfg_env.episode_length_s
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if self._dr_cfg.enabled:
+        if self._cfg_dr.enabled:
             self._randomize_camera_extrinsics(envs_idx)
             self._resample_aug_profile(envs_idx)
 
@@ -455,7 +455,7 @@ class GraspEnv(BaseEnv):
         # TODO(issue#117) redesign the visualize-cameras feature
         if self.show_cameras_gui:
             self.get_observations_vis()
-            if self._dr_cfg.debug_viewer:
+            if self._cfg_dr.debug_viewer:
                 self._show_augmented_debug()
         self._log_state_to_plot_juggler()
 
@@ -477,7 +477,7 @@ class GraspEnv(BaseEnv):
         return StepReturn(obs, reward, dones, self.extras)
 
     def _get_max_speed_coeefs(self) -> tuple[float, float]:
-        cfg = self._dr_cfg.max_speed
+        cfg = self._cfg_dr.max_speed
         if not cfg.enabled:
             return self.max_linear_speed, self.max_angular_speed
 
@@ -576,10 +576,10 @@ class GraspEnv(BaseEnv):
         return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
 
     def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
-        rgb_left, _, _, _ = self.scene_left_cam.render(
+        rgb_left, _, _, _ = self._cameras["scene_left_cam"].render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
-        rgb_right, _, _, _ = self.scene_right_cam.render(
+        rgb_right, _, _, _ = self._cameras["scene_right_cam"].render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
 
@@ -604,7 +604,7 @@ class GraspEnv(BaseEnv):
         enable_record_obs: bool = False,
         record_dir: Optional[Path] = None,
     ) -> th.Tensor:
-        rgb_list: list[th.Tensor] = [None] * len(self._cameras)
+        rgb_list: list[Optional[th.Tensor]] = [None] * len(self._cameras)
 
         for cam_name, cam in self._cameras.items():
             if swap_tool_cameras:
@@ -622,7 +622,7 @@ class GraspEnv(BaseEnv):
             if normalize:
                 rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
 
-            if self._dr_cfg.enabled:
+            if self._cfg_dr.enabled:
                 rgb = self._apply_image_augmentation(rgb)
 
             rgb_list[cam_id] = rgb
@@ -722,9 +722,8 @@ class GraspEnv(BaseEnv):
         world = position[:, None, :] + rotated
         return world
 
-    @staticmethod
     def get_keypoint_offsets(
-        batch_size: int, device: str, unit_length: float = 0.5
+        self, batch_size: int, unit_length: float = 0.5
     ) -> th.Tensor:
         """
         Get uniformly-spaced keypoints along a line of unit length, centered at body center.
@@ -740,7 +739,7 @@ class GraspEnv(BaseEnv):
                     [0, 0, -1.0],  # z-negative
                     [0, 0, 1.0],  # z-positive
                 ],
-                device=device,
+                device=self.device,
                 dtype=th.float32,
             )
             * unit_length
@@ -796,7 +795,7 @@ class GraspEnv(BaseEnv):
         return success_rate
 
     def _setup_dr_pd_gains(self) -> None:
-        cfg = self._dr_cfg.pd_gains
+        cfg = self._cfg_dr.pd_gains
         if not cfg.enabled:
             return
 
@@ -884,8 +883,8 @@ class GraspEnv(BaseEnv):
         return T
 
     def _init_aug_profile(self) -> dict[str, th.Tensor]:
-        aug = self._dr_cfg.image_aug
-        if not self._dr_cfg.enabled or not aug.per_episode_aug:
+        aug = self._cfg_dr.image_aug
+        if not self._cfg_dr.enabled or not aug.per_episode_aug:
             return {}
         N = self.num_envs
         return {
@@ -905,7 +904,7 @@ class GraspEnv(BaseEnv):
     def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
         if not self._aug_profile:
             return
-        aug = self._dr_cfg.image_aug
+        aug = self._cfg_dr.image_aug
         n = len(envs_idx)
         dev = self.device
 
@@ -950,7 +949,7 @@ class GraspEnv(BaseEnv):
 
     # TODO(issue#118) Extract domain randomization logic to external file
     def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
-        aug = self._dr_cfg.image_aug
+        aug = self._cfg_dr.image_aug
         if not aug.enabled:
             return rgb
 
@@ -1016,7 +1015,7 @@ class GraspEnv(BaseEnv):
         return rgb.clamp(0.0, 1.0)
 
     def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
-        cam_cfg = self._dr_cfg.cameras_extrinsics
+        cam_cfg = self._cfg_dr.cameras_extrinsics
         if not (
             cam_cfg.enabled
             and self._dr_cam_extrinsics_active
@@ -1080,7 +1079,7 @@ class GraspEnv(BaseEnv):
         else:
             if not prof:
                 return rgb  # DR disabled / no per-episode aug
-            cutout_cfg = self._dr_cfg.image_aug.cutout
+            cutout_cfg = self._cfg_dr.image_aug.cutout
             active = th.rand(N, device=device) < cutout_cfg.prob
             hs = th.randint(
                 cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
@@ -1120,7 +1119,7 @@ class GraspEnv(BaseEnv):
             )
             rgb = rgb.permute(0, 3, 1, 2)[:, :3]
             rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
-            if self._dr_cfg.enabled:
+            if self._cfg_dr.enabled:
                 rgb = self._apply_image_augmentation(rgb)
             frame = rgb[0].detach().float().cpu()
             frame_np = (frame.permute(1, 2, 0).clamp(0, 1).numpy() * 255).astype(

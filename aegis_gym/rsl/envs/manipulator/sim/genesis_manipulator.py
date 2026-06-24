@@ -1,7 +1,7 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import torch as th
 import genesis as gs
@@ -9,6 +9,7 @@ from clearml import Dataset
 from tensordict import TensorDict
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
+from ....config.types import RobotCfg
 
 
 class GenesisManipulator(BaseManipulator):
@@ -16,22 +17,21 @@ class GenesisManipulator(BaseManipulator):
         self,
         num_envs: int,
         scene: gs.Scene,
-        args: dict,
+        cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
     ):
         super().__init__(device=device)
 
-        # == set members ==
-        self._scene = scene
         self._num_envs = num_envs
-        self._args = args
+        self._scene = scene
+        self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
-            self._urdf_model_id = args["urdf_model_id"]["cell"]
+            self._urdf_model_id = cfg_robot.urdf_id_cell
         else:
-            self._urdf_model_id = args["urdf_model_id"]["no_cell"]
+            self._urdf_model_id = cfg_robot.urdf_id_no_cell
 
         if self._urdf_model_id:
             print(
@@ -60,7 +60,7 @@ class GenesisManipulator(BaseManipulator):
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
 
-        self._ik_method: Literal["gs_ikv", "dls_ikv"] = args["ik_method"]
+        self._ik_method = cfg_robot.ik_method
 
         self._setup_config()
         self._init_pd_tensors()
@@ -114,12 +114,12 @@ class GenesisManipulator(BaseManipulator):
         )
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
-        self._ee_link = self._robot_entity.get_link(self._args["ee_link_name"])
+        self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
-        self._default_joint_angles = self._args["default_arm_dof"]
-        if self._args["default_gripper_dof"] is not None:
-            self._default_joint_angles += self._args["default_gripper_dof"]
+        self._default_joint_angles = self._cfg_robot.default_arm_dof
+        if self._cfg_robot.default_gripper_dof is not None:
+            self._default_joint_angles += self._cfg_robot.default_gripper_dof
 
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
