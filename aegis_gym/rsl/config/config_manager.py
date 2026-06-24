@@ -5,6 +5,8 @@ from pathlib import Path
 import torch as th
 from clearml import Task
 
+from aegis_gym.rsl.config.types.enum_types import Control
+
 from .args_parser import LaunchArgs, parse_arguments
 from .types import (
     ExpConfig,
@@ -77,6 +79,7 @@ class ConfigManager:
                 )
                 cfg_dict[cfg_sec_name] = connected
 
+        cls._patch_config(args=args, cfg_dict=cfg_dict)
         cfg = ExpConfig(
             logger_cfg=LoggerCfg.from_dict(cfg_dict.get("logger", None)),
             rl_cfg=RLCfg.from_dict(cfg_dict.get("rl", None)),
@@ -117,3 +120,9 @@ class ConfigManager:
         with path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return data
+
+    @classmethod
+    def _patch_config(cls, args: LaunchArgs, cfg_dict: dict) -> None:
+        # You can control only 1 real instance
+        if args.control_type == Control.ROS:
+            cfg_dict["env"]["num_envs"] = 1

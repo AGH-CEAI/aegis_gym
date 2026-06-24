@@ -24,5 +24,6 @@ class EnvCfg(BaseCfg):
     use_rasterizer: bool
     visualize_camera: bool
     visualize_cell: bool
+    # TODO consider changing camera setup to cameras_num
     camera_setup: Literal["default", "scene_dual"]
     reward_scales: dict

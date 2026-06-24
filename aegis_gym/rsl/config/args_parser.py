@@ -1,8 +1,9 @@
+import sys
 import ast
 from argparse import ArgumentParser
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from .types import Stage, Control
 
@@ -19,7 +20,7 @@ class LaunchArgs:
 
     enable_plotjuggler: Optional[bool]
     max_iterations: Optional[int]
-    algorithm: Optional[Stage]
+    learning_method: Optional[Stage]
 
     # TODO think how to generalize it (multiple models for an experiments)
     # IDEA: connect model_id to somekind of architecture info/store architecture config in the model.
@@ -61,13 +62,22 @@ class LaunchArgs:
         return {slot: getattr(self, slot) for slot in self.__slots__}
 
 
-def parse_arguments(argv, extra_argparser: Optional[callable] = None) -> LaunchArgs:
+def parse_arguments(
+    argv: Optional[list[str]] = None, extra_argparser: Optional[Callable] = None
+) -> LaunchArgs:
     def str_to_list(arg: Optional[str]) -> Optional[list[float]]:
         if arg is None:
             return None
         return ast.literal_eval(arg)
 
-    p = ArgumentParser(argv, add_help=True)
+    if argv is None:
+        argv = sys.argv
+
+    p = ArgumentParser(
+        prog="DeepRL Experiment Runner",
+        description="Run a parametrized training or evaluation of a RL model.",
+        add_help=True,
+    )
 
     p.add_argument("-c", "--config", type=Path, default=None)
 
@@ -172,7 +182,7 @@ def parse_arguments(argv, extra_argparser: Optional[callable] = None) -> LaunchA
         project_name=args.project_name,
         enable_plotjuggler=args.plotjuggler,
         max_iterations=args.max_iterations,
-        algorithm=args.stage,
+        learning_method=args.stage,
         load_rl_task_id=args.load_rl_task_id,
         load_rl_model_id=args.load_rl_model_id,
         load_bc_task_id=args.load_bc_task_id,

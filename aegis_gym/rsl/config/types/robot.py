@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 from .base_cfg import BaseCfg
 
 
@@ -8,7 +9,7 @@ class RobotCfg(BaseCfg):
     gripper_link_names: list[str]
     default_arm_dof: list[float]
     default_gripper_dof: list[float]
-    ik_method: str  # TODO set a literal
+    ik_method: Literal["gs_ikv", "dls_ikv"]
     urdf_id_cell: str
     urdf_id_cell_collision: str
     urdf_id_no_cell: str
