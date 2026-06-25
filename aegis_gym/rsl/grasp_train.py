@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import genesis as gs
 import torch as th
 from rsl_rl.runners import OnPolicyRunner
@@ -10,7 +8,7 @@ from envs.grasp_env import GraspEnv
 from behavior_cloning import BehaviorCloning
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, Stage, Control
-from .utils import load_rl_policy
+from utils import load_rl_policy
 
 
 try:
@@ -37,10 +35,10 @@ def main():
     # The ClearML task must exists for connecting configuration
     task = init_clearml_task(
         # TODO setup the ClearML task in the Configmanager to avoid the problem with project_name
-        project_name=args.project_name or "TEST_PLAYGROUND/GENERIC_TEST",
-        stage=args.learning_method or Stage.RL,
-        control=args.control_type or Control.SIM,
-        exp_name=args.experiment_name or "train",
+        project_name=args.project_name,
+        stage=args.learning_method,
+        control=args.control_type,
+        exp_name=args.experiment_name,
     )
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     ConfigManager.setup_config(argv=args, device=device, task=task)
@@ -58,7 +56,7 @@ def main():
         return
 
     print("[GraspTrain] > Proceeding training")
-    train_runner(env, args, cfg)
+    train_runner(env=env, cfg=cfg)
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -110,7 +108,10 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     args = cfg.args
     device = cfg.get_device()
     # TODO consider moving local_log_dir to the config
-    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    log_dir = cfg.logger_cfg.local_log_dir
+
+    rsl_rl_cfg = cfg.rl_cfg.as_dict()
+    rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
 
     # TODO consider saving the whole config before starting training
     match args.learning_method:
@@ -119,10 +120,10 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             teacher_policy = load_rl_policy(
                 env=env,
                 rl_cfg=cfg.rl_cfg,
+                logger_cfg=cfg.logger_cfg,
                 device=device,
                 load_cfg_from_clearml=not args.enforce_current_config,
-                exp_name=args.exp_name,
-                log_dir=log_dir,
+                exp_name=args.experiment_name,
                 clearml_task_id=args.load_rl_task_id,
                 clearml_model_id=args.load_rl_model_id,
                 clearml_artifact_name="model",
@@ -132,9 +133,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             runner = BehaviorCloning(
                 env=env,
                 bc_cfg=cfg.bc_cfg,
+                logger_cfg=cfg.logger_cfg,
                 debug_cfg=cfg.debug_cfg,
                 teacher=teacher_policy,
-                log_dir=log_dir,
                 device=device,
             )
             runner.learn(num_learning_iterations=args.max_iterations)
@@ -142,7 +143,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
 
             runner = OnPolicyRunner(
-                env, cfg.rl_cfg.as_dict(), str(log_dir), device=str(device)
+                env=env, train_cfg=rsl_rl_cfg, log_dir=str(log_dir), device=str(device)
             )
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True

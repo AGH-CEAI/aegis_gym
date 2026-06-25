@@ -9,22 +9,23 @@ from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
-from config.types import DebugCfg, Checkpoint, RLCfg, BCCfg
+from config.types import DebugCfg, Checkpoint, RLCfg, BCCfg, LoggerCfg
 
 
 def load_rl_policy(
     env: Any,
     rl_cfg: RLCfg,
+    logger_cfg: LoggerCfg,
     device: th.device,
     load_cfg_from_clearml: bool = True,
     exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
     enable_logging: bool = True,
 ) -> nn.Module:
     print("[Policy Loader] Resolving RL checkpoint")
+    log_dir = logger_cfg.local_log_dir
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
         log_dir=log_dir,
@@ -59,9 +60,12 @@ def load_rl_policy(
     else:
         print("[Policy Loader] Keeping the current RL config")
 
+    rsl_rl_cfg = rl_cfg.as_dict()
+    rsl_rl_cfg.update(logger_cfg.as_dict())
+
     runner = OnPolicyRunner(
         env=env,
-        train_cfg=rl_cfg.as_dict(),
+        train_cfg=rsl_rl_cfg,
         log_dir=str(log_dir) if enable_logging else None,
         device=str(device),
     )
