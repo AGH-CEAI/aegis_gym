@@ -4,7 +4,7 @@ import torch as th
 from tensordict import TensorDict
 from rsl_rl.env import VecEnv
 
-from .scene import BaseScene
+from .scene.base_scene import BaseScene
 
 
 class ResetReturn(NamedTuple):

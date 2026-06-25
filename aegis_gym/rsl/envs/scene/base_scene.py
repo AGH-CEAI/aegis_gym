@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch as th
 
-from ..manipulator import BaseManipulator
+from ..manipulator.base_manipulator import BaseManipulator
 
 
 class BaseScene(ABC):

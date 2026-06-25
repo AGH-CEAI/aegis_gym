@@ -5,10 +5,9 @@ from pathlib import Path
 import torch as th
 from clearml import Task
 
-from aegis_gym.rsl.config.types.enum_types import Control
-
 from .args_parser import LaunchArgs, parse_arguments
 from .types import (
+    Control,
     ExpConfig,
     LoggerCfg,
     RLCfg,
@@ -160,3 +159,6 @@ class ConfigManager:
             cfg_dict["env"]["num_envs"] = args.num_envs
         if args.visualize_camera:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
+
+        # Confirm types of data
+        cfg_dict["env"]["image_resolution"] = tuple(cfg_dict["env"]["image_resolution"])

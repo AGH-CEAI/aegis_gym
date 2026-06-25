@@ -43,14 +43,14 @@ class RLCfg(BaseCfg):
     class_name: str
     num_steps_per_env: int
     seed: int
-    obs_group_policy: list[str]
-    obs_group_critic: list[str]
+    obs_groups: dict
     save_interval: int
     best_model_skip_iters: int
     experiment_name: str
     run_name: str
     algorithm: AlgorithmCfg
-    reset_last_layer_weights_interval: int
-    reset_last_layer_weights_part: Literal["actor", "critic", "both"]
-    init_member_classes: list
+    # reset_last_layer_weights_interval: int
+    # reset_last_layer_weights_part: Literal["actor", "critic", "both"]
+    reset_last_layer_weights: dict
+    init_member_classes: dict
     policy: PolicyCfg

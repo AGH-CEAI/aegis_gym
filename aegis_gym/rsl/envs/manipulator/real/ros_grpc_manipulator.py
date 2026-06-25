@@ -17,8 +17,9 @@ except ImportError:
     raise
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
-from ...scene import BaseScene
-from ....config.types import RobotCfg
+
+# from ...scene import BaseScene
+from config.types import RobotCfg
 
 
 class PoseTransformUtils:
@@ -42,7 +43,7 @@ class RosGrpcManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene: BaseScene,
+        scene,  # TODO introduce proper typing
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,

@@ -9,7 +9,7 @@ from clearml import Dataset
 from tensordict import TensorDict
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
-from ....config.types import RobotCfg
+from config.types import RobotCfg
 
 
 class GenesisManipulator(BaseManipulator):

@@ -85,10 +85,12 @@ def parse_arguments(
     p.add_argument("-v", "--vis", action="store_true", default=None)
     p.add_argument("-B", "--num-envs", type=int, default=None)
     p.add_argument("--episode-length-s", type=float, default=None)
-    p.add_argument("--project-name", type=str, default=None)
+    p.add_argument(
+        "--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp"
+    )  # TODO simplify config
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=None)
-    p.add_argument("--stage", type=Stage, choices=list(Stage), default=None)
+    p.add_argument("--stage", type=Stage, choices=list(Stage), default=Stage.RL)
     p.add_argument("--load-rl-task-id", type=str, default=None)
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument("--load-bc-task-id", type=str, default=None)
@@ -99,7 +101,9 @@ def parse_arguments(
         help="Do not load config from RL/BC checkpoint",
     )
     # changed --stage to --control
-    p.add_argument("--control", type=Control, choices=list(Control), default=None)
+    p.add_argument(
+        "--control", type=Control, choices=list(Control), default=Control.SIM
+    )
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)

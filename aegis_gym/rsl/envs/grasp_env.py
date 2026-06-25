@@ -17,12 +17,11 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
 )
 
-from config_types.domain_randomization import CameraPoseCfg
 from .manipulator import GenesisManipulator
 from .base_env import BaseEnv, StepReturn, ResetReturn
 from .plotjuggler_udp import PlotJugglerUDP
 
-from ..config import ExpConfig
+from config.types import ExpConfig, CameraPoseCfg
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -34,8 +33,9 @@ class GraspEnv(BaseEnv):
         cfg: ExpConfig,
     ) -> None:
         super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
+        self.device = cfg.get_device()
 
-        enable_plot_juggler = cfg.args.enable_plot_juggler
+        enable_plot_juggler = cfg.args.enable_plotjuggler
         if enable_plot_juggler:
             ip = "127.0.0.1"
             port = 9870
@@ -52,6 +52,7 @@ class GraspEnv(BaseEnv):
         self._enable_pj_logging = enable_plot_juggler
 
         self._cfg_env = cfg.env_cfg
+        self._extract_config()
         self._cfg_dr = cfg.dr_cfg
         self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
         self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
@@ -129,7 +130,7 @@ class GraspEnv(BaseEnv):
 
     def _setup_genesis_scene(self, cfg: ExpConfig) -> None:
         env_cfg = cfg.env_cfg
-        show_viewer = cfg.args.show_viewer
+        show_viewer = cfg.args.disable_headless
         # == setup scene ==
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
@@ -175,7 +176,7 @@ class GraspEnv(BaseEnv):
             num_envs=self.num_envs,
             scene=self.scene,
             cfg_robot=cfg.robot_cfg,
-            show_cell=cfg.args.show_viewer,
+            show_cell=self.show_cell,
             device=gs.device,
         )
 

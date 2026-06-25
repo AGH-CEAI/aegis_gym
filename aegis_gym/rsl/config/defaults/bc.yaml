@@ -79,4 +79,4 @@ eval_freq: 50
 best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
 reset_last_layer_weights_interval: 0  # Set above 0 to enable
 reset_last_layer_weights_part: "both"  # `action`, `pose` or `all`
-algorithm_rnd_cfg: None
+algorithm_rnd_cfg: null

@@ -1,14 +1,14 @@
 class_name: "OnPolicyRunner" # Number of steps per environment per iteration
-num_steps_per_env: 24  # Number of policy updates max_iterations: None
+num_steps_per_env: 24  # Number of policy updates
+max_iterations: 500
 seed: 1
 # Observations mapping
-obs_group_policy: ["policy"]
-obs_group_critic: ["policy"]
+obs_groups: {"policy": ["policy"], "critic": ["policy"]}
 
 # Logging parameters
 save_interval: 100  # Check for potential saves every `save_interval` iterations
 best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
-experiment_name: None
+experiment_name: null
 run_name: ""
 algorithm:
   class_name: "PPO"
@@ -30,12 +30,13 @@ algorithm:
   # Miscellaneous
   normalize_advantage_per_mini_batch: False
   # Random network distilation
-  rnd_cfg: None
+  rnd_cfg: null
   # Symmetry augmentation
-  symmetry_cfg: None
-reset_last_layer_weights_interval: 0 # Set above 0 to enable
-reset_last_layer_weights_part: part # `actor`, `critic` or `both`
-init_member_classes: []
+  symmetry_cfg: null
+# reset_last_layer_weights_interval: 0 # Set above 0 to enable
+# reset_last_layer_weights_part: part # `actor`, `critic` or `both`
+reset_last_layer_weights: {"interval": 0, "part": "both"}
+init_member_classes: {}
 policy:
   class_name: "ActorCritic"
   activation: "elu"  # original: "relu"

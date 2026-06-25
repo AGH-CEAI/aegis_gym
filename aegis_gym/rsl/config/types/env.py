@@ -20,7 +20,7 @@ class EnvCfg(BaseCfg):
     workbench_size: list
     box_collision: bool
     box_fixed: bool
-    image_resolution: tuple
+    image_resolution: tuple[int, int]
     use_rasterizer: bool
     visualize_camera: bool
     visualize_cell: bool
