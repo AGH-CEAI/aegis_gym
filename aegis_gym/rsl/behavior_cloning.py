@@ -1,4 +1,3 @@
-import os
 import time
 from collections import deque
 
@@ -6,7 +5,7 @@ from collections import deque
 from strenum import StrEnum
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 import numpy as np
 import torch as th
@@ -17,7 +16,7 @@ from rsl_rl.utils.logger import Logger
 
 from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
-from config.types import DebugCfg, BCCfg, PolicyBCCfg
+from config.types import DebugCfg, BCCfg, PolicyBCCfg, FusionCfg, LoggerCfg
 from bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
@@ -63,16 +62,16 @@ class BehaviorCloning:
         self,
         env: BaseEnv,
         bc_cfg: BCCfg,
+        logger_cfg: LoggerCfg,
         debug_cfg: DebugCfg,
         teacher: Optional[nn.Module],
-        log_dir: Optional[Path],
         device: th.device = th.device("cpu"),
     ):
         self._env = env
         self._cfg_bc = bc_cfg
         self._debug_cfg = debug_cfg
         self._teacher = teacher
-        self._log_dir = log_dir or Path("/tmp/bc_logs.txt")
+        self._log_dir = logger_cfg.local_log_dir 
         self._device = device
 
         self._num_steps_per_env = bc_cfg.num_steps_per_env
@@ -82,15 +81,16 @@ class BehaviorCloning:
         self._save_recons = self._cfg_bc.save_recons
         self._save_recon_freq = self._cfg_bc.save_recon_freq
         self._reset_last_layer_cfg = self._resolve_reset_last_layer_cfg(
-            self._cfg_bc.reset_last_layer_weights
+            interval=self._cfg_bc.reset_last_layer_weights_interval,
+            part=self._cfg_bc.reset_last_layer_weights_part,
         )
 
         self.logger = None
-        if log_dir is not None:
+        if self._log_dir is not None:
             self.logger = Logger(
-                log_dir=str(log_dir),
-                cfg=bc_cfg.as_dict(),
-                env_cfg=getattr(env, "cfg", {}),
+                log_dir=str(self._log_dir),
+                cfg=logger_cfg.as_dict(),
+                env_cfg=getattr(env, "cfg", {}), # TODO fix hack
                 num_envs=env.num_envs,
                 is_distributed=False,
                 gpu_world_size=1,
@@ -98,6 +98,7 @@ class BehaviorCloning:
                 device=str(device),
             )
 
+        # TODO resolve hack around the camera_setup
         camera_setup = env.camera_setup
         if camera_setup == "default":
             num_cameras = 3
@@ -106,15 +107,22 @@ class BehaviorCloning:
         else:
             raise ValueError(f"Unknown camera_setup: {camera_setup}")
 
-        bc_cfg["policy"]["num_cameras"] = num_cameras
-        bc_cfg["policy"]["image_height"] = env.image_height
-        bc_cfg["policy"]["image_width"] = env.image_width
-        bc_cfg["policy"]["device"] = str(self._device)
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
 
+        # TODO simplify config
+        cfg = ConfigManager.get_config()
+        im_h, im_w = cfg.env_cfg.image_resolution
+
         # Multi-task policy with action and pose heads
-        self._policy = Policy(bc_cfg["policy"], action_dim, device).to(device)
+        self._policy = Policy(
+            cfg_policy=bc_cfg.policy,
+            action_dim=action_dim,
+            num_cameras=num_cameras,
+            image_height=im_h,
+            image_width=im_w,
+            device=device,
+        )
 
         # Initialize optimizer
         self._optimizer = th.optim.Adam(
@@ -229,7 +237,7 @@ class BehaviorCloning:
                 ckpt_path = Path(self._log_dir) / f"checkpoint_{it + 1:04d}.pt"
                 self.save(ckpt_path)
                 if self.logger is not None:
-                    self.logger.save_model(str(ckpt_path), it + 1)
+                    self.logger.save_model(model_path=str(ckpt_path), it=it + 1)
 
             # Save best model based on mean reward
             if self.logger is not None and len(self._rewbuffer) > 0:
@@ -400,21 +408,16 @@ class BehaviorCloning:
             vutils.save_image(orig, f"reconstructions/orig_iter{it + 1:04d}_c{c}.png")
             vutils.save_image(recon, f"reconstructions/recon_iter{it + 1:04d}_c{c}.png")
 
-    def _resolve_reset_last_layer_cfg(self, cfg: dict | None) -> dict:
-        if cfg is None or cfg is False:
+    def _resolve_reset_last_layer_cfg(
+        self, interval: int, part: Literal["actor", "critic", "both"]
+    ) -> dict:
+        if interval == 0:
             return {"enabled": False, "part": "both", "interval": None}
 
-        if not isinstance(cfg, dict):
-            raise ValueError("reset_last_layer_weights must be a dict or False")
-
-        part = cfg.get("part", "all")
         target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
 
-        interval = cfg.get("interval", None)
         if interval is None or interval <= 0:
             return {"enabled": False, "target": target, "interval": None}
-        if not isinstance(interval, int):
-            raise ValueError("reset_last_layer_weights.interval must be an integer")
 
         return {"enabled": True, "target": target, "interval": interval}
 
@@ -600,26 +603,34 @@ class ExperienceBuffer:
 
 class Policy(nn.Module):
     def __init__(
-        self, cfg_policy: PolicyBCCfg, action_dim: int, device: th.device = th.device("cpu")
+        self,
+        cfg_policy: PolicyBCCfg,
+        action_dim: int,
+        num_cameras: int,
+        image_height: int,
+        image_width: int,
+        device: th.device,
     ):
         super().__init__()
-        # TODO Conrtinue config refactor
-        
-        self.num_cameras = config["num_cameras"]
-        self.encoder_type = config["encoder_type"]
-        self.fusion_type = config["fusion_type"]
+
+        self.device = device
+        self._cfg = cfg_policy
+        self.num_cameras = num_cameras
+        self.encoder_type = self._cfg.encoder_type
+        self.fusion_type = self._cfg.fusion_type
+        self.use_pose_head = self._cfg.use_pose_head
 
         print(f"Encoder type: {self.encoder_type}")
         print(f"Fusion type: {self.fusion_type}")
+        print(f"Use pose head: {self.use_pose_head}")
 
-        self.use_pose_head = config.get("use_pose_head", True)
-        print("Use pose head:", self.use_pose_head)
-
-        self.vision_encoder = self._build_vision_encoder(config).to(device)
-        self.feature_fusion = self._build_fusion(config)
+        self.vision_encoder = self._build_vision_encoder().to(device)
+        self.feature_fusion = self._build_fusion(
+            image_height=image_height, image_width=image_width
+        )
 
         vision_obs_dim = self.feature_fusion.output_dim
-        state_obs_dim = config["action_head"]["state_obs_dim"]
+        state_obs_dim = self._cfg.action_head_state_obs_dim
 
         action_input_dim = vision_obs_dim + state_obs_dim
 
@@ -629,7 +640,7 @@ class Policy(nn.Module):
         print(f"Action head input dim: {action_input_dim}")
         self.action_head = self._build_mlp(
             input_dim=action_input_dim,
-            hidden_dims=config["action_head"]["hidden_dims"],
+            hidden_dims=self._cfg.action_head_hidden_dims,
             output_dim=action_dim,
         )
 
@@ -638,11 +649,13 @@ class Policy(nn.Module):
             print(f"Pose head input dim: {pose_input_dim}")
             self.pose_head = self._build_mlp(
                 input_dim=pose_input_dim,
-                hidden_dims=config["pose_head"]["hidden_dims"],
+                hidden_dims=self._cfg.pose_head_hidden_dims,
                 output_dim=7,
             )
         else:
             self.pose_head = None
+
+        self.to(device)
 
     def forward(
         self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
@@ -667,11 +680,11 @@ class Policy(nn.Module):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
-    def _build_vision_encoder(self, config: dict) -> "BaseVisionEncoder":
+    def _build_vision_encoder(self) -> "BaseVisionEncoder":
 
-        vision_cfg = config["vision_encoder"]
+        vision_cfg = self._cfg.vision_encoder
         if self.fusion_type == "attention_spatial":
-            vision_cfg = config["vision_encoder_spatial"]
+            vision_cfg = self._cfg.vision_encoder_spatial
 
         def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)
@@ -692,54 +705,55 @@ class Policy(nn.Module):
         except IndexError:
             raise ValueError(f"Unknown vision encoder type: {self.encoder_type}")
 
-    def _build_fusion(self, config: dict) -> "BaseFusionModule":
+    def _build_fusion(self, image_height: int, image_width: int) -> "BaseFusionModule":
         c, h, w = self.vision_encoder.infer_output_shape(
-            image_height=config.get("image_height", 64),
-            image_width=config.get("image_width", 64),
+            image_height=image_height,
+            image_width=image_width,
         )
 
         match self.fusion_type:
             case "linear":
-                fusion_cfg = config["linear_fusion"]
+                fusion_cfg: FusionCfg = self._cfg.linear_fusion
 
                 # Dry-run the encoder to find how many tensors it actually returns
                 dummy = th.zeros(
                     1,
-                    config.get("num_cameras", 1) * 3,
-                    config.get("image_height", 64),
-                    config.get("image_width", 64),
-                    device=config.get("device", "cpu"),
+                    self.num_cameras * 3,
+                    image_height,
+                    image_width,
+                    device=self.device,
                 )
                 with th.no_grad():
                     num_feature_tensors = len(self.vision_encoder(dummy))
 
                 return LinearFusion(
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
+                    # vision_dim=fusion_cfg.get("fusion_output_dim", 512),
+                    vision_dim=fusion_cfg.fusion_output_dim,
                     num_cameras=self.num_cameras,
                     in_channels=c,
                     image_height=h,
                     image_width=w,
-                    pool_size=fusion_cfg.get("pool_size", 4),
+                    pool_size=fusion_cfg.pool_size,
                     num_feature_tensors=num_feature_tensors,
                 )
             case "attention_vector":
-                fusion_cfg = config["attention_vector_fusion"]
+                fusion_cfg = self._cfg.attention_vector_fusion
                 return VectorAttentionFusion(
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 512),
+                    vision_dim=fusion_cfg.fusion_output_dim,
                     num_cameras=self.num_cameras,
                     in_channels=c,
-                    num_heads=fusion_cfg.get("num_heads", 4),
-                    pool_size=fusion_cfg.get("pool_size", 4),
+                    num_heads=fusion_cfg.num_heads,
+                    pool_size=fusion_cfg.pool_size,
                 )
             case "attention_spatial":
-                fusion_cfg = config["attention_spatial_fusion"]
+                fusion_cfg = self._cfg.attention_spatial_fusion
                 return SpatialAttentionFusion(
-                    vision_dim=fusion_cfg.get("fusion_output_dim", 256),
+                    vision_dim=fusion_cfg.fusion_output_dim,
                     num_cameras=self.num_cameras,
                     in_channels=c,
                     image_height=h,
                     image_width=w,
-                    num_heads=fusion_cfg.get("num_heads", 4),
+                    num_heads=fusion_cfg.num_heads,
                 )
             case _:
                 raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
