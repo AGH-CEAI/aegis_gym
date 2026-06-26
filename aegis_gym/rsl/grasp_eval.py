@@ -110,7 +110,7 @@ def start_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
     args = cfg.args
     if not args.control_type == Control.SIM:
         print(
-            f"[GraspEval] Skipping camera setup for control type: {str(args.control)}"
+            f"[GraspEval] Skipping camera setup for control type: {str(args.control_type)}"
         )
     if not args.enable_recording:
         return

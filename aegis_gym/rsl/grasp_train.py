@@ -13,8 +13,9 @@ from utils import load_rl_policy
 
 try:
     from envs.grasp_env_ros import GraspEnvROS
-except ImportError:
+except ImportError as e:
     GraspEnvROS = None
+    print(f"[ImportError] Couldn't import GraspEnvRos: {e}")
 
 
 def init_clearml_task(
@@ -31,6 +32,7 @@ def init_clearml_task(
     )
 
 
+# TODO: Real training with BC doesn't work, mark this down
 def main():
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
