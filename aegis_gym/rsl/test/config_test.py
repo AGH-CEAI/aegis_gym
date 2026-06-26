@@ -4,7 +4,7 @@ import pytest
 
 from config import LaunchArgs, parse_arguments
 from config import ConfigManager as cm
-from config.types import Stage, Control
+from config.types import Stage, Control, CNNLayerCfg, VisionEncoderCfg
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):
@@ -48,7 +48,13 @@ def test_parse_arguments_returns_launch_args():
 def test_default_arguments():
     args = parse_arguments(argv=[""])
 
-    excluded = {"_args_raw", "control_type", "learning_method", "debug_record_dir"}
+    excluded = {
+        "_args_raw",
+        "control_type",
+        "learning_method",
+        "debug_record_dir",
+        "project_name",
+    }
     for f in fields(args):
         if f.name not in excluded:
             assert getattr(args, f.name) in (None, False), (
@@ -91,6 +97,19 @@ def test_env_config_image_resolution():
     assert len(val) == 2
     assert isinstance(val[0], int)
     assert isinstance(val[1], int)
+
+
+def test_policy_bc_cfg_vision_encoder():
+    cm.setup_config(argv=[""])
+    val1 = cm.get_config().bc_cfg.policy.vision_encoder
+    val2 = cm.get_config().bc_cfg.policy.vision_encoder_spatial
+
+    assert isinstance(val1, VisionEncoderCfg)
+    assert isinstance(val1.conv_layers, list)
+    assert isinstance(val1.conv_layers[0], CNNLayerCfg)
+    assert isinstance(val2, VisionEncoderCfg)
+    assert isinstance(val2.conv_layers, list)
+    assert isinstance(val2.conv_layers[0], CNNLayerCfg)
 
 
 def test_robot_config_parsing():

@@ -16,7 +16,14 @@ from rsl_rl.utils.logger import Logger
 
 from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
-from config.types import DebugCfg, BCCfg, PolicyBCCfg, FusionCfg, LoggerCfg
+from config.types import (
+    DebugCfg,
+    BCCfg,
+    PolicyBCCfg,
+    FusionCfg,
+    LoggerCfg,
+    VisionEncoderCfg,
+)
 from bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
@@ -71,7 +78,7 @@ class BehaviorCloning:
         self._cfg_bc = bc_cfg
         self._debug_cfg = debug_cfg
         self._teacher = teacher
-        self._log_dir = logger_cfg.local_log_dir 
+        self._log_dir = logger_cfg.local_log_dir
         self._device = device
 
         self._num_steps_per_env = bc_cfg.num_steps_per_env
@@ -85,12 +92,15 @@ class BehaviorCloning:
             part=self._cfg_bc.reset_last_layer_weights_part,
         )
 
+        # TODO simplify config
         self.logger = None
+        rsl_rl_logging_cfg = logger_cfg.as_dict()
+        rsl_rl_logging_cfg["algorithm"] = bc_cfg.algorithm.as_dict()
         if self._log_dir is not None:
             self.logger = Logger(
                 log_dir=str(self._log_dir),
-                cfg=logger_cfg.as_dict(),
-                env_cfg=getattr(env, "cfg", {}), # TODO fix hack
+                cfg=rsl_rl_logging_cfg,
+                env_cfg=getattr(env, "cfg", {}),  # TODO fix hack
                 num_envs=env.num_envs,
                 is_distributed=False,
                 gpu_world_size=1,
@@ -759,19 +769,19 @@ class Policy(nn.Module):
                 raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
 
     @staticmethod
-    def _build_cnn(config: dict) -> nn.Sequential:
+    def _build_cnn(cfg: VisionEncoderCfg) -> nn.Sequential:
         layers = []
-        for c in config["conv_layers"]:
+        for c in cfg.conv_layers:
             layers.append(
                 nn.Conv2d(
-                    c["in_channels"],
-                    c["out_channels"],
-                    kernel_size=c["kernel_size"],
-                    stride=c["stride"],
-                    padding=c["padding"],
+                    c.in_channels,
+                    c.out_channels,
+                    kernel_size=c.kernel_size,
+                    stride=c.stride,
+                    padding=c.padding,
                 )
             )
-            layers.append(nn.BatchNorm2d(c["out_channels"]))
+            layers.append(nn.BatchNorm2d(c.out_channels))
             layers.append(nn.ReLU())
         return nn.Sequential(*layers)
 

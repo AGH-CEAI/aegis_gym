@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Literal, Optional
 from .base_cfg import BaseCfg
+from .rl import AlgorithmCfg
 
 
 @dataclass(slots=True)
@@ -10,6 +11,11 @@ class CNNLayerCfg(BaseCfg):
     kernel_size: int
     stride: int
     padding: int
+
+
+@dataclass(slots=True)
+class VisionEncoderCfg(BaseCfg):
+    conv_layers: list[CNNLayerCfg]
 
 
 @dataclass(slots=True)
@@ -24,8 +30,8 @@ class PolicyBCCfg(BaseCfg):
     encoder_type: str
     fusion_type: str
     use_pose_head: bool
-    vision_encoder: dict[str, list[CNNLayerCfg]]
-    vision_encoder_spatial: dict[str, list[CNNLayerCfg]]
+    vision_encoder: VisionEncoderCfg
+    vision_encoder_spatial: VisionEncoderCfg
     linear_fusion: FusionCfg
     attention_vector_fusion: FusionCfg
     attention_spatial_fusion: FusionCfg
@@ -36,7 +42,7 @@ class PolicyBCCfg(BaseCfg):
 
 @dataclass(slots=True)
 class BCCfg(BaseCfg):
-    algorithm_rnd_cfg: Optional[dict]
+    algorithm: AlgorithmCfg
     best_model_skip_iters: int
     buffer_size: int
     eval_freq: int

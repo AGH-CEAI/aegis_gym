@@ -12,7 +12,7 @@ from .domain_randomization import (
     DomainRandomizationCfg,
 )
 from .logger import LoggerCfg
-from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg
+from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
 from .env import EnvCfg
 from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
@@ -47,4 +47,5 @@ __all__ = [
     "RobotCfg",
     "Stage",
     "ToggleCfg",
+    "VisionEncoderCfg",
 ]
