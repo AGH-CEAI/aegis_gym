@@ -93,20 +93,18 @@ class BehaviorCloning:
         )
 
         # TODO simplify config
-        self.logger = None
-        rsl_rl_logging_cfg = logger_cfg.as_dict()
-        rsl_rl_logging_cfg["algorithm"] = bc_cfg.algorithm.as_dict()
-        if self._log_dir is not None:
-            self.logger = Logger(
-                log_dir=str(self._log_dir),
-                cfg=rsl_rl_logging_cfg,
-                env_cfg=getattr(env, "cfg", {}),  # TODO fix hack
-                num_envs=env.num_envs,
-                is_distributed=False,
-                gpu_world_size=1,
-                gpu_global_rank=0,
-                device=str(device),
-            )
+        rsl_rl_bc_cfg = bc_cfg.as_dict()
+        rsl_rl_bc_cfg.update(logger_cfg.as_dict())
+        self.logger = Logger(
+            log_dir=str(self._log_dir),
+            cfg=rsl_rl_bc_cfg,
+            env_cfg=getattr(env, "cfg", {}),  # TODO fix hack
+            num_envs=env.num_envs,
+            is_distributed=False,
+            gpu_world_size=1,
+            gpu_global_rank=0,
+            device=str(device),
+        )
 
         # TODO resolve hack around the camera_setup
         camera_setup = env.camera_setup
@@ -247,7 +245,7 @@ class BehaviorCloning:
                 ckpt_path = Path(self._log_dir) / f"checkpoint_{it + 1:04d}.pt"
                 self.save(ckpt_path)
                 if self.logger is not None:
-                    self.logger.save_model(model_path=str(ckpt_path), it=it + 1)
+                    self.logger.save_model(path=str(ckpt_path), it=it + 1)
 
             # Save best model based on mean reward
             if self.logger is not None and len(self._rewbuffer) > 0:

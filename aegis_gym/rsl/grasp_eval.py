@@ -1,5 +1,4 @@
 import time
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -9,285 +8,113 @@ from tqdm import tqdm
 
 
 from behavior_cloning import BehaviorCloning
-from grasp_cfgs import GraspConfig, get_logger_cfg
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints, Stage, Control
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
-from envs.grasp_env import GraspEnv
-from config_types.debug import DebugCfg
+from config import ConfigManager, LaunchArgs, parse_arguments
+from config.types import ExpConfig, DebugCfg, Stage, Control
+from envs import BaseEnv
 
-try:
-    from envs.grasp_env_ros import GraspEnvROS
-except ImportError:
-    GraspEnvROS = None
-
-GraspEnvironment = GraspEnv | GraspEnvROS
+from grasp_train import init_clearml_task, create_env
 
 
 def main():
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
-    args = parse_arguments()
 
-    task = Task.init(
-        project_name=f"{args.project_name}_eval-{str(args.stage)}-{str(args.control)}",
-        task_name=f"{args.exp_name}_{str(args.stage)}_eval",
-        # Probably there will bo no way to control parameters from ClearML UI without reusing task
-        reuse_last_task_id=False,
+    args: LaunchArgs = parse_arguments()
+    # The ClearML task must exists for connecting configuration
+    task = init_clearml_task(
+        # TODO setup the ClearML task in the Configmanager to avoid the problem with project_name
+        project_name=args.project_name,
+        stage=args.learning_method,
+        control=args.control_type,
+        exp_name=args.experiment_name,
     )
-    cfg = setup_config(args, task)
-    cfg.set_device(th.device("cuda" if th.cuda.is_available() else "cpu"))
+    device = th.device("cuda" if th.cuda.is_available() else "cpu")
+    ConfigManager.setup_config(argv=args, device=device, task=task)
+    cfg: ExpConfig = ConfigManager.get_config()
     sweep = is_checkpoints_sweep_required(args)
 
-    env = create_env(args, cfg)
-    if env is None:
-        print("[GraspEval] > Env is not configured. Exiting...")
-        return
-
-    episode_len_s = cfg.env_cfg["episode_length_s"]
-    max_steps = cfg.env_cfg["max_steps"]
+    env = create_env(cfg)
     print(
-        f"[GraspEval] The episode length is defined as {episode_len_s} s, which corresponds to {max_steps} steps"
+        f"[GraspEval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
     )
     print("[GraspEval] Setup done")
 
     with th.no_grad():
-        start_cameras_recording(env=env, args=args, cfg=cfg)
+        start_cameras_recording(env=env, cfg=cfg)
 
         if sweep:
-            eval_policy_sweep(env=env, args=args, cfg=cfg, task=task)
+            eval_policy_sweep(env=env, cfg=cfg, task=task)
         else:
-            eval_policy_single(env=env, args=args, cfg=cfg, task=task)
+            eval_policy_single(env=env, cfg=cfg, task=task)
 
-        stop_cameras_recording(env=env, args=args, cfg=cfg)
+        stop_cameras_recording(env=env, cfg=cfg)
 
     print("[GraspEval] Finished evaluation script")
 
 
-def parse_arguments() -> Namespace:
-    # TODO(issue#101) resolve the precedence of default values
-    default_project_name = get_logger_cfg()["clearml_project"]
-
-    p = ArgumentParser()
-    p.add_argument("-e", "--exp-name", type=str, default="grasp")
-    p.add_argument("-v", "--vis", action="store_true", default=False)
-    p.add_argument("-B", "--num-envs", type=int, default=100)
-    p.add_argument("--episode-length-s", type=float, default=None)
-    p.add_argument("--project-name", type=str, default=default_project_name)
-    p.add_argument("--plotjuggler", action="store_true", default=False)
-    p.add_argument(
-        "--episode-length",
-        type=float,
-        default=None,
-        help="Overwrite the default episode length during evaluation (in seconds).",
-    )
-    p.add_argument(
-        "--stage",
-        type=Stage,
-        default=Stage.RL,
-        choices=list(Stage),
-        help=f"Model type: '{str(Stage.RL)}' for reinforcement learning, '{str(Stage.BC)}' for behavior cloning",
-    )
-    p.add_argument(
-        "--record",
-        action="store_true",
-        help="Record stereo images as video during evaluation",
-    )
-    p.add_argument(
-        "--video-path",
-        type=str,
-        default=None,
-        help="Path to save the video file (default: auto-generated)",
-    )
-    p.add_argument(
-        "--control", type=Control, choices=list(Control), default=Control.SIM
-    )
-    p.add_argument(
-        "--load-from-pickle",
-        action="store_true",
-        help="Load configs from saved pickle instead of generating them from code",
-    )
-    p.add_argument("--load-rl-task-id", type=str, default=None)
-    p.add_argument("--load-rl-model-id", type=str, default=None)
-    p.add_argument("--load-bc-task-id", type=str, default=None)
-    p.add_argument("--load-bc-model-id", type=str, default=None)
-    p.add_argument(
-        "--enforce-current-config",
-        action="store_true",
-        help="Do not load config from RL/BC checkpoint",
-    )
-    p.add_argument(
-        "--bc-all-checkpoints",
-        action="store_true",
-        default=False,
-        help="Sweep over all BC training checkpoints",
-    )
-    p.add_argument(
-        "--bc-eval-every",
-        type=int,
-        default=None,
-        help="Sweep every N-th BC checkpoint",
-    )
-    p.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Seed for box poses across checkpoints",
-    )
-
-    p.add_argument(
-        "--debug-enable",
-        action="store_true",
-        default=False,
-        help="Enable debugging tools",
-    )
-    p.add_argument(
-        "--debug-swap-tool-cameras",
-        action="store_true",
-        default=False,
-        help="Swap the sides of the tool cameras (i.e. left<->right).",
-    )
-    p.add_argument(
-        "--debug-enable-vis-preview",
-        action="store_true",
-        default=False,
-        help="Show a windows with preview of the visual observations.",
-    )
-    p.add_argument(
-        "--debug-record-vis-obs",
-        action="store_true",
-        default=False,
-        help="Record visual observations to a given directory in '--debug-record-dir'.",
-    )
-    p.add_argument("--debug-record-dir", type=Path, default=Path("/tmp/aegis_vis_obs"))
-
-    return p.parse_args()
-
-
-def setup_config(args: Namespace, task: Task) -> GraspConfig:
-    if args.load_from_pickle:
-        raise NotImplementedError(
-            "There is no mapping for loading configs from pickle. Try loading it from ClearML."
-        )
-
-    cfg = GraspConfig.create_with_clearml(task)
-
-    # TODO dynamic config variables should be grouped into other dict/object
-    stage_type = str(args.stage)
-    log_dir = Path("logs") / f"{args.exp_name}_{stage_type}_eval"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    cfg.logger_cfg["local_log_dir"] = str(log_dir)
-
-    cfg.env_cfg["episode_length_s"] = (
-        args.episode_length_s or cfg.env_cfg["episode_length_s"]
-    )
-    episode_len_s = cfg.env_cfg["episode_length_s"]
-    cfg.env_cfg["max_steps"] = int(episode_len_s / cfg.env_cfg["policy_dt"])
-
-    cfg.debug_cfg.enabled = args.debug_enable
-    if args.debug_enable:
-        cfg.debug_cfg.swap_tool_cameras = args.debug_swap_tool_cameras
-        cfg.debug_cfg.enable_vis_preview = args.debug_enable_vis_preview
-        cfg.debug_cfg.enable_record_obs = args.debug_record_vis_obs
-        cfg.debug_cfg.record_dir = args.debug_record_dir
-
-    return cfg
-
-
-def is_checkpoints_sweep_required(args: Namespace) -> bool:
-    sweep = (args.stage == Stage.BC) and (
+def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
+    sweep = (args.learning_method == Stage.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     )
-    if args.stage == Stage.RL and (
+    if args.learning_method == Stage.RL and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     ):
         print(
             "[GraspEval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
-    if sweep and args.record:
+    if sweep and args.enable_recording:
         print("[GraspEval] WARNING: record is ignored during multi-checkpoint sweep")
-        args.record = False
+        # args.enable_recording = False # TODO ensure to disable the recording
     return sweep
 
 
-def create_env(args: Namespace, cfg: GraspConfig) -> GraspEnvironment | None:
+def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
+    args: LaunchArgs = cfg.args
     device = cfg.get_device()
-    env = None
-    if args.control == Control.SIM:
-        cfg.env_cfg["max_visualize_FPS"] = 60
-        cfg.env_cfg["num_envs"] = args.num_envs
-        cfg.env_cfg["box_collision"] = True
-        cfg.env_cfg["box_fixed"] = False
-        cfg.env_cfg["visualize_camera"] = args.record
 
-        import genesis as gs
-        from envs.grasp_env import GraspEnv
-
-        gs.init(logging_level="info", precision="32")
-        env = GraspEnv(
-            env_cfg=cfg.env_cfg,
-            robot_cfg=cfg.robot_cfg,
-            dr_cfg=cfg.dr_cfg,
-            show_viewer=args.vis,
-            enable_plot_juggler=args.plotjuggler,
-        )
-    if args.control == Control.ROS:
-        cfg.env_cfg["max_visualize_FPS"] = int(1 / cfg.env_cfg["policy_dt"])
-        cfg.env_cfg["num_envs"] = 1
-
-        if GraspEnvROS is None:
-            print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
-            exit()
-
-        env = GraspEnvROS(
-            env_cfg=cfg.env_cfg,
-            robot_cfg=cfg.robot_cfg,
-            device=device,
-        )
-    return env
-
-
-def load_policy(
-    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
-) -> Callable | None:
-    device = cfg.get_device()
-    log_dir = Path(cfg.logger_cfg["local_log_dir"])
-    policy = None
-
-    if args.stage == Stage.RL:
-        policy = load_rl_policy(
+    stage = args.learning_method
+    if stage == Stage.RL:
+        return load_rl_policy(
             env=env,
             rl_cfg=cfg.rl_cfg,
+            logger_cfg=cfg.logger_cfg,
             device=device,
             load_cfg_from_clearml=not args.enforce_current_config,
-            log_dir=log_dir,
+            exp_name=args.experiment_name,
             clearml_task_id=args.load_rl_task_id,
             clearml_model_id=args.load_rl_model_id,
+            clearml_artifact_name="model",
+            enable_logging=False,
         )
-    if args.stage == Stage.BC:
+    if stage == Stage.BC:
         policy = load_bc_policy(
             env=env,
             bc_cfg=cfg.bc_cfg,
+            logger_cfg=cfg.logger_cfg,
             debug_cfg=cfg.debug_cfg,
             device=device,
             load_cfg_from_clearml=not args.enforce_current_config,
-            log_dir=log_dir,
+            exp_name=args.experiment_name,
             clearml_task_id=args.load_bc_task_id,
             clearml_model_id=args.load_bc_model_id,
+            enable_logging=False,
         )
         policy.eval()
-    return policy
+        return policy
+    raise ValueError("Unknown learning method")
 
 
-def start_cameras_recording(
-    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
-) -> None:
-    if not args.control == Control.SIM:
+def start_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
+    args = cfg.args
+    if not args.control_type == Control.SIM:
         print(
             f"[GraspEval] Skipping camera setup for control type: {str(args.control)}"
         )
-    if not args.record:
+    if not args.enable_recording:
         return
-    camera_setup = cfg.env_cfg["camera_setup"]
+    camera_setup = cfg.env_cfg.camera_setup
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
     match camera_setup:
@@ -305,17 +132,17 @@ def start_cameras_recording(
     print(f"[GraspEval] Recording video (camera setup: {camera_setup})...")
 
 
-def stop_cameras_recording(
-    env: GraspEnvironment, args: Namespace, cfg: GraspConfig
-) -> None:
-    if not args.control == Control.SIM:
+def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
+    args = cfg.args
+    if not args.control_type == Control.SIM:
         return
-    if not args.record:
+
+    if not args.enable_recording:
         return
 
     print("[GraspEval] Stopping video recording...")
-    cameras_setup = cfg.env_cfg["camera_setup"]
-    fps = cfg.env_cfg["max_visualize_FPS"]
+    cameras_setup = cfg.env_cfg.camera_setup
+    fps = int(1 / cfg.env_cfg.policy_dt)
 
     match cameras_setup:
         case "default":
@@ -352,21 +179,21 @@ def stop_cameras_recording(
 
 def eval_policy_single(
     env: Any,
-    cfg: GraspConfig,
-    args: Namespace,
+    cfg: ExpConfig,
     task: Task,
 ) -> None:
-    record_render = args.control == Control.SIM and args.record
+    args = cfg.args
+    record_render = args.control_type == Control.SIM and args.enable_recording
     device = cfg.get_device()
-    max_steps = cfg.env_cfg["max_steps"]
+    max_steps = cfg.env_cfg.max_steps
 
     # TODO(issue#101): Design arguments and config manager for policy loading
-    policy = load_policy(env, args, cfg)
+    policy = load_policy(env, cfg)
     obs, _ = env.reset()
     metrics = run_eval(
         env,
         policy,
-        args.stage,
+        args.learning_method,
         max_steps,
         obs,
         device,
@@ -378,13 +205,13 @@ def eval_policy_single(
 
 def eval_policy_sweep(
     env: Any,
-    args: Namespace,
-    cfg: GraspConfig,
+    cfg: ExpConfig,
     task: Task,
 ) -> None:
-    log_dir = Path(cfg.logger_cfg["local_log_dir"])
+    args = cfg.args
+    log_dir = Path(cfg.logger_cfg.local_log_dir)
     device = cfg.get_device()
-    max_steps = cfg.env_cfg["max_steps"]
+    max_steps = cfg.env_cfg.max_steps
 
     checkpoints = get_bc_checkpoints(
         log_dir=log_dir,
@@ -404,7 +231,12 @@ def eval_policy_sweep(
     )
 
     bc_runner = BehaviorCloning(
-        env, bc_cfg=cfg.bc_cfg, teacher=None, log_dir=log_dir, device=device
+        env,
+        bc_cfg=cfg.bc_cfg,
+        logger_cfg=cfg.logger_cfg,
+        debug_cfg=cfg.debug_cfg,
+        teacher=None,
+        device=device,
     )
     object_pose = env.generate_object_poses(seed=args.seed)
 
@@ -422,7 +254,7 @@ def eval_policy_sweep(
         metrics = run_eval(
             env,
             policy,
-            args.stage,
+            args.learning_method,
             max_steps,
             obs,
             device,

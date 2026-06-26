@@ -133,6 +133,24 @@ class ConfigManager:
         cfg_dict["logger"]["clearml_project"] += project_suffix
         cfg_dict["logger"]["neptune_project"] += project_suffix
 
+        # Apply launch arguments if given
+        if args.experiment_name:
+            cfg_dict["rl"]["experiment_name"] = args.experiment_name
+        if args.max_iterations:
+            cfg_dict["rl"]["max_iterations"] = args.max_iterations
+        if args.num_envs:
+            cfg_dict["env"]["num_envs"] = args.num_envs
+        if args.visualize_camera:
+            cfg_dict["env"]["visualize_camera"] = args.visualize_camera
+        if args.episode_length_s:
+            cfg_dict["env"]["episode_length_s"] = args.episode_length_s
+
+        # Eval: Setup max_steps
+        if not cfg_dict["env"]["max_steps"]:
+            episode_len_s = cfg_dict["env"]["episode_length_s"]
+            policy_dt = cfg_dict["env"]["policy_dt"]
+            cfg_dict["env"]["max_steps"] = int(episode_len_s / policy_dt)
+
         # Define the local_log_dir if not given
         if not cfg_dict["logger"]["local_log_dir"]:
             train_type = str(args.learning_method)
@@ -149,16 +167,6 @@ class ConfigManager:
             cfg_dict["debug"]["enable_vis_preview"] = args.debug_preview_vis_obs
             cfg_dict["debug"]["enable_receord_obs"] = args.debug_record_vis_obs
             cfg_dict["debug"]["record_dir"] = args.debug_record_dir
-
-        # Apply launch arguments if given
-        if args.experiment_name:
-            cfg_dict["rl"]["experiment_name"] = args.experiment_name
-        if args.max_iterations:
-            cfg_dict["rl"]["max_iterations"] = args.max_iterations
-        if args.num_envs:
-            cfg_dict["env"]["num_envs"] = args.num_envs
-        if args.visualize_camera:
-            cfg_dict["env"]["visualize_camera"] = args.visualize_camera
 
         # Confirm types of data
         cfg_dict["env"]["image_resolution"] = tuple(cfg_dict["env"]["image_resolution"])

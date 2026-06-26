@@ -18,8 +18,12 @@ except ImportError:
 
 
 def init_clearml_task(
-    project_name: str, stage: Stage, control: Control, exp_name: str
+    project_name: str | None,
+    stage: Stage | None,
+    control: Control | None,
+    exp_name: str | None,
 ) -> Task:
+    assert None not in (project_name, stage, control, exp_name)
     return Task.init(
         project_name=f"{project_name}_{str(stage)}-{str(control)}",
         task_name=f"{exp_name}_{str(stage)}",
@@ -148,6 +152,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
             )
+            # TODO debug why RL model in CleaRML gets model configuration as BC config
     print("[GraspTrain] > Training finished.")
 
 

@@ -87,7 +87,7 @@ def parse_arguments(
     p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument(
         "--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp"
-    )  # TODO simplify config
+    )  # TODO take it from the file if none is given
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=None)
     p.add_argument("--stage", type=Stage, choices=list(Stage), default=Stage.RL)

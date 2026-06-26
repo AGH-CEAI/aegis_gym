@@ -77,6 +77,7 @@ def load_rl_policy(
 def load_bc_policy(
     env: Any,
     bc_cfg: BCCfg,
+    logger_cfg: LoggerCfg,
     debug_cfg: DebugCfg,
     device: th.device,
     load_cfg_from_clearml: bool = True,
@@ -85,6 +86,7 @@ def load_bc_policy(
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
+    enable_logging: bool = True,
 ) -> nn.Module:
     print("[Policy Loader] Resolving BC checkpoint")
     last_ckpt = resolve_checkpoint(
@@ -120,9 +122,9 @@ def load_bc_policy(
     bc_runner = BehaviorCloning(
         env=env,
         bc_cfg=bc_cfg,
+        logger_cfg=logger_cfg,
         debug_cfg=debug_cfg,
         teacher=None,
-        log_dir=log_dir,
         device=device,
     )
     bc_runner.load(str(last_ckpt))

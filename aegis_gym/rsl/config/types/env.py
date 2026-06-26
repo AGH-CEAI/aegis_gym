@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 from .base_cfg import BaseCfg
 
 
@@ -11,6 +11,7 @@ class EnvCfg(BaseCfg):
     action_max_linear_speed: float
     action_max_angular_speed: float
     episode_length_s: float
+    max_steps: Optional[int]
     ctrl_dt: float
     policy_dt: float
     # TODO introduce size config
