@@ -8,7 +8,7 @@ save_recons: False
 save_recon_freq: 100
 use_teacher_mixing: False
 # algorithm parameters
-# TODO simplify config
+# TODO(issue#111) simplify config
 # orginaly only rnd_cfg was needed for the rsl_rl logger
 # Right now it is matrching strcutrce for AlgorithmCfg - must be simplified
 algorithm:

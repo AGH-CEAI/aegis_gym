@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclass import dataclass
 from typing import ClassVar, Any
 
 import torch as th
@@ -22,7 +22,7 @@ class ExpConfig:
     dr_cfg: DomainRandomizationCfg
     debug_cfg: DebugCfg
 
-    args: Any  # TODO fix the cycle import
+    args: Any  # TODO(issue#111) fix the cycle import
     _device: ClassVar["th.device"]
 
     @classmethod

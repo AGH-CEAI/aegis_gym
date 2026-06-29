@@ -127,7 +127,7 @@ class ConfigManager:
             cfg_dict["env"]["num_envs"] = 1
 
         # Add project_suffix to the logger outputs
-        # TODO rename the args.learning_method to args.train_type
+        # TODO(issue#111) rename the args.learning_method to args.train_type
         project_suffix = f"_{str(args.learning_method)}-{str(args.control_type)}"
         cfg_dict["logger"]["wandb_project"] += project_suffix
         cfg_dict["logger"]["clearml_project"] += project_suffix

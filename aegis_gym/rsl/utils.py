@@ -44,10 +44,10 @@ def load_rl_policy(
             )
         task = Task.get_task(task_id=clearml_task_id)
 
-        # TODO: somehow migrate this feature to the ConfigManager
+        # TODO(issue#120) somehow migrate this feature to the ConfigManager
         cfg_from_clearml = task.get_configuration_object_as_dict("rl_cfg")
         if cfg_from_clearml:
-            # TODO this is wrong: we could not apply patches from ConfigManager
+            # TODO(issue#120) this is wrong: we can not apply patches from ConfigManager
             # if ANY kind of extra modificiation is performed, the ConfigManager should be involved
             rl_cfg = RLCfg.from_dict(cfg_from_clearml)
             print(

@@ -43,7 +43,7 @@ class RosGrpcManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene,  # TODO introduce proper typing
+        scene,  # TODO(issue#128) introduce proper typing
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,

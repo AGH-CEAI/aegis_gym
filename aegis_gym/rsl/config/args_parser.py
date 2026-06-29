@@ -22,7 +22,7 @@ class LaunchArgs:
     max_iterations: Optional[int]
     learning_method: Optional[Stage]
 
-    # TODO think how to generalize it (multiple models for an experiments)
+    # TODO(issue#111) think how to generalize it (multiple models for an experiments)
     # IDEA: connect model_id to somekind of architecture info/store architecture config in the model.
     # IDEA: move rl/bc model passing to a configuration file:
     load_rl_task_id: Optional[str]
@@ -87,7 +87,7 @@ def parse_arguments(
     p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument(
         "--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp"
-    )  # TODO take it from the file if none is given
+    )  # TODO(issue#111) take it from the file if none is given
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=None)
     p.add_argument("--stage", type=Stage, choices=list(Stage), default=Stage.RL)

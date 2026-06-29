@@ -32,7 +32,7 @@ def init_clearml_task(
     )
 
 
-# TODO: Real training with BC doesn't work, mark this down
+# TODO(issue#130) Real training with BC doesn't work, mark this down
 def main():
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
@@ -40,7 +40,7 @@ def main():
     args: LaunchArgs = parse_arguments()
     # The ClearML task must exists for connecting configuration
     task = init_clearml_task(
-        # TODO setup the ClearML task in the Configmanager to avoid the problem with project_name
+        # TODO(issue#120) setup the ClearML task in the Configmanager to avoid the problem with project_name
         project_name=args.project_name,
         stage=args.learning_method,
         control=args.control_type,
@@ -95,7 +95,7 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
         joints_diff = th.tensor(joints_diff, device=device)
         joints_diff[:6] *= th.pi / 180.0
         joints_diff.unsqueeze(dim=0)
-        # TODO introduce a calibration feature for the BaseEnv
+        # TODO(issue#128) introduce a calibration feature for the BaseEnv
         env.calib_run(joints_diff=joints_diff, steps=steps)
 
     if args.calibration_move_cartesian:
@@ -104,7 +104,7 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
         print(f"[GraspTrain] >>> Starting relative cartesian movement of {cart_diff}")
         cart_diff = th.tensor([cart_diff], device=device)
         cart_diff.unsqueeze(dim=0)
-        # TODO introduce a calibration feature for the BaseEnv
+        # TODO(issue#128) introduce a calibration feature for the BaseEnv
         env.calib_run(cart_diff=cart_diff, steps=steps)
 
     print("[GraspTrain] >>> Finished relative joints movement.")
@@ -113,13 +113,12 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
 def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     args = cfg.args
     device = cfg.get_device()
-    # TODO consider moving local_log_dir to the config
     log_dir = cfg.logger_cfg.local_log_dir
 
     rsl_rl_cfg = cfg.rl_cfg.as_dict()
     rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
 
-    # TODO consider saving the whole config before starting training
+    # TODO(issue#120) consider saving the whole config before starting training
     match args.learning_method:
         case Stage.BC:
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
@@ -154,7 +153,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
             )
-            # TODO debug why RL model in CleaRML gets model configuration as BC config
+            # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     print("[GraspTrain] > Training finished.")
 
 

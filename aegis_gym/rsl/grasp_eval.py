@@ -147,7 +147,7 @@ def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
     match cameras_setup:
         case "default":
             env.record_cam.stop_recording(
-                save_to_filename=args.video_path,
+                save_to_filename=str(args.video_path),
                 fps=fps,
             )
             env._cameras["scene_cam"].stop_recording(
@@ -164,7 +164,7 @@ def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
             )
         case "scene_dual":
             env.record_cam.stop_recording(
-                save_to_filename=args.video_path,
+                save_to_filename=str(args.video_path),
                 fps=fps,
             )
             env._cameras["scene_right_cam"].stop_recording(
