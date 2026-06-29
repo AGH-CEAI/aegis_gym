@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-129](https://github.com/AGH-CEAI/aegis_gym/pull/129) - Config total makeover into `ConfigManager` and `LaunchArgs` classes. Added strcit config creation control (via frozen dataclasses).
 - [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Created `BaseEnv` interface and loosely used it for both of the grasp env implementations.
 - [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Refactored `Manipulator` interfaces into `BaseManipulator` abstraction and its `RosGrpcManipulator` and `GenesisManipualtor` implementations.
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
