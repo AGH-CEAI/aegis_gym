@@ -59,7 +59,6 @@ class GraspEnv(BaseEnv):
         self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
         self.device = cfg.get_device()
 
-        self._extract_config()
         print(
             f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
