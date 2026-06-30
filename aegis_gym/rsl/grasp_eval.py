@@ -11,7 +11,7 @@ from behavior_cloning import BehaviorCloning
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, DebugCfg, Algorithm, Control
+from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
 from envs import BaseEnv
 
 from grasp_train import init_clearml_task, create_env
@@ -114,22 +114,20 @@ def start_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
         )
     if not args.enable_recording:
         return
-    camera_setup = cfg.env_cfg.camera_setup
+    cameras_setup = cfg.env_cfg.cameras_setup
 
     # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
-    match camera_setup:
-        case "default":
+    match cameras_setup:
+        case CamerasSetup.DEFAULT:
             env.record_cam.start_recording()
             env._cameras["scene_cam"].start_recording()
             env._cameras["tool_left_cam"].start_recording()
             env._cameras["tool_right_cam"].start_recording()
-        case "scene_dual":
+        case CamerasSetup.SCENE_DUAL:
             env.record_cam.start_recording()
             env._cameras["scene_left_cam"].start_recording()
             env._cameras["scene_right_cam"].start_recording()
-        case _:
-            raise RuntimeError(f"Unknown camera_setup: {camera_setup}")
-    print(f"[GraspEval] Recording video (camera setup: {camera_setup})...")
+    print(f"[GraspEval] Recording video (camera setup: {cameras_setup})...")
 
 
 def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
@@ -141,11 +139,11 @@ def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
         return
 
     print("[GraspEval] Stopping video recording...")
-    cameras_setup = cfg.env_cfg.camera_setup
+    cameras_setup = cfg.env_cfg.cameras_setup
     fps = int(1 / cfg.env_cfg.policy_dt)
 
     match cameras_setup:
-        case "default":
+        case CamerasSetup.DEFAULT:
             env.record_cam.stop_recording(
                 save_to_filename=str(args.video_path),
                 fps=fps,
@@ -162,7 +160,7 @@ def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
                 save_to_filename="tool_right_cam.mp4",
                 fps=fps,
             )
-        case "scene_dual":
+        case CamerasSetup.SCENE_DUAL:
             env.record_cam.stop_recording(
                 save_to_filename=str(args.video_path),
                 fps=fps,

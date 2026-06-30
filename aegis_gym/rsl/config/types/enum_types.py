@@ -12,6 +12,10 @@ class Control(StrEnum):
     SIM = "sim"
     ROS = "ros"
 
+class CamerasSetup(StrEnum):
+    DEFAULT = "default"
+    SCENE_DUAL = "scene_dual"
+
 
 @dataclass(frozen=True, order=True, slots=True)
 class Checkpoint:

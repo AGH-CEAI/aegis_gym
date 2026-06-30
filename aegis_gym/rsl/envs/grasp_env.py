@@ -21,7 +21,7 @@ from .manipulator import GenesisManipulator
 from .base_env import BaseEnv, StepReturn, ResetReturn
 from .plotjuggler_udp import PlotJugglerUDP
 
-from config.types import ExpConfig, CameraPoseCfg
+from config.types import ExpConfig, CameraPoseCfg, Control, CamerasSetup
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -108,7 +108,7 @@ class GraspEnv(BaseEnv):
         self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.show_cell = self._cfg_env.visualize_cell
-        self.camera_setup = self._cfg_env.camera_setup
+        self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
         self.box_size = self._cfg_env.box_size_default
@@ -210,9 +210,8 @@ class GraspEnv(BaseEnv):
             ),
         )
 
-        # == add cameras ==
         # TODO(issue#41) refactor the camera_setup into more modular system
-        match self.camera_setup:
+        match self.cameras_setup:
             case "default":
                 self._add_camera(name="scene_cam", fov=38)
                 self._add_camera(name="tool_left_cam", fov=30)
@@ -270,7 +269,7 @@ class GraspEnv(BaseEnv):
             )
 
     def _attach_cameras(self):
-        if self.camera_setup != "default":
+        if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
         scene_offset_T = np.array(
@@ -815,7 +814,7 @@ class GraspEnv(BaseEnv):
 
     def _cache_camera_base_offsets(self) -> None:
         self._dr_cam_base_offsets = {}
-        if self.camera_setup != "default":
+        if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
         self._dr_cam_base_offsets = {

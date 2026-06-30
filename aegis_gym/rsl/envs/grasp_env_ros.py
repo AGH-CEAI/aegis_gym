@@ -15,6 +15,7 @@ from .manipulator import RosGrpcManipulator, CameraID
 from .base_env import BaseEnv, StepReturn, ResetReturn
 
 from config import ExpConfig
+from config.types import Control, CamerasSetup
 
 
 class Object:
@@ -100,13 +101,12 @@ class GraspEnvROS(BaseEnv):
 
         # TODO(issue#41) Unify the setup of the cameras
         # TODO(issue#121) Unify the grasp_env and grasp_env_ros cameras names
-        match self.camera_setup:
-            case "default":
+        match self.cameras_setup:
+            case CamerasSetup.DEFAULT:
                 self._cameras = ["scene", "left", "right"]
-            case "scene_dual":
+            case CamerasSetup.SCENE_DUAL:
                 self._cameras = ["left", "right"]
-            case _:
-                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+
         self._cameras_order = {
             "scene": 0,
             "left": 1,
@@ -125,7 +125,7 @@ class GraspEnvROS(BaseEnv):
         self.image_width = self._cfg_env.image_resolution[0]
         self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.camera_setup = self._cfg_env.camera_setup
+        self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
         self.box_size = self._cfg_env.box_size_default
