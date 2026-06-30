@@ -143,7 +143,7 @@ def parse_arguments(
     )
     p.add_argument(
         "--video-path",
-        type=str,
+        type=Path,
         default=None,
         help="Path to save the video file (default: auto-generated)",
     )
