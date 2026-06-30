@@ -13,52 +13,16 @@ from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
 from .base_env import BaseEnv, StepReturn, ResetReturn
+from .objects import BaseBox, ObjectsFactory
+from ...scene import BaseScene
 
 from config import ExpConfig
 from config.types import Control, CamerasSetup
 
 
-class Object:
-    def __init__(
-        self,
-        size: th.Tensor,
-        pos: th.Tensor,
-        quat: th.Tensor,
-        num_envs: int = 1,
-        device: Optional[th.device] = None,
-    ):
-        self.device = device or th.device("cpu")
-        self.num_envs = num_envs
-        self.size = size
-
-        self.pos = pos.repeat(self.num_envs, 1)
-        self.quat = quat.repeat(self.num_envs, 1)
-        self._init_pos = self.pos.clone()
-        self._init_quat = self.quat.clone()
-
-    def reset(self, envs_idx: th.Tensor) -> None:
-        self.pos = self._init_pos.clone()
-        self.quat = self._init_quat.clone()
-
-    def get_pos(self) -> th.Tensor:
-        return self.pos
-
-    def get_quat(self) -> th.Tensor:
-        return self.quat
-
-    def set_pos(self, pos: th.Tensor, envs_idx: int) -> None:
-        self.pos = pos
-
-    def set_quat(self, quat: th.Tensor, envs_idx: int) -> None:
-        self.quat = quat
-
-
 class GraspEnvROS(BaseEnv):
-    def __init__(
-        self,
-        cfg: ExpConfig,
-    ) -> None:
-        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
+    def __init__(self, cfg: ExpConfig, scene: Optional[BaseScene] = None) -> None:
+        super().__init__(scene=scene)  # TODO(issue#128) introduce Scene abstraction
         env_cfg = cfg.env_cfg
         self.device = cfg.get_device()
 
@@ -80,24 +44,20 @@ class GraspEnvROS(BaseEnv):
         )
 
         # This pose is already in the Genesi's world base
-        world_box_pose = th.tensor(
-            # TODO(issue#98) move setup into URDF-dataset in ClearML
-            # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            device=self.device,
-        )
-        world_box_pose[2] += 0.00  # m
+        # world_box_pose = th.tensor(
+        #     # TODO(issue#98) move setup into URDF-dataset in ClearML
+        #     # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     device=self.device,
+        # )
+        # world_box_pose[2] += 0.00  # m
+        self.box_pose = (0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0)
 
-        self.box_position = world_box_pose[:3]
-        self.box_grasp_orientation = world_box_pose[3:]
-        self.object = Object(
-            size=self.box_size,
-            pos=self.box_position,
-            quat=self.box_grasp_orientation,
-            num_envs=self.num_envs,
-            device=self.device,
+        self.object: BaseBox = ObjectsFactory.create_box(
+            scene=self._scene, ctrl=Control.ROS, device=self.device
         )
+        self.object.create(dims=self.box_size, pose=self.box_pose)
 
         # TODO(issue#41) Unify the setup of the cameras
         # TODO(issue#121) Unify the grasp_env and grasp_env_ros cameras names
@@ -128,7 +88,7 @@ class GraspEnvROS(BaseEnv):
         self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
-        self.box_size = self._cfg_env.box_size_default
+        self.box_size = tuple(self._cfg_env.box_size_default)
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
@@ -185,7 +145,7 @@ class GraspEnvROS(BaseEnv):
         # reset robot
         self.robot.ctrl_gripper_open(envs_idx)
         self.robot.ctrl_go_to_home(envs_idx)
-        self.object.reset(envs_idx)
+        self.object.set_pose(pose=th.Tensor(self.box_pose, device=self.device))
 
         # fill extras
         self.extras["episode"] = {}
@@ -267,7 +227,8 @@ class GraspEnvROS(BaseEnv):
             tcp_pose[:, :3],
             tcp_pose[:, 3:],
         )
-        obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
+        obj_pose = self.object.get_pose()
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
 
         obs_components = [
             tcp_pos - obj_pos,  # 3D position difference
@@ -385,9 +346,9 @@ class GraspEnvROS(BaseEnv):
             keypoints_offset,
         )
 
-        object_pos_keypoints = self._to_world_frame(
-            self.object.get_pos(), self.object.get_quat(), keypoints_offset
-        )
+        obj_pose = self.object.get_pose()
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
+        object_pos_keypoints = self._to_world_frame(obj_pos, obj_quat, keypoints_offset)
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
 
