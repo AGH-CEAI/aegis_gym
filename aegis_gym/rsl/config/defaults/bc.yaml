@@ -9,27 +9,27 @@ save_recon_freq: 100
 use_teacher_mixing: False
 # algorithm parameters
 # TODO(issue#111) simplify config
-# orginaly only rnd_cfg was needed for the rsl_rl logger
+# originally only rnd_cfg was needed for the rsl_rl logger
 # Right now it is matrching strcutrce for AlgorithmCfg - must be simplified
 algorithm:
-  class_name: "OIL"
+  class_name: null
   # Training
-  learning_rate: 0.0003
-  num_learning_epochs: 5
-  num_mini_batches: 4
-  schedule: "adaptive"  # adaptive, fixed
+  learning_rate: null
+  num_learning_epochs: null
+  num_mini_batches: null
+  schedule: null
   # Value function
-  value_loss_coef: 1.0
-  clip_param: 0.2
-  use_clipped_value_loss: True
+  value_loss_coef: null
+  clip_param: null
+  use_clipped_value_loss: null
   # Surrogate loss
-  desired_kl: 0.01
-  entropy_coef: 0.0
-  gamma: 0.99
-  lam: 0.95
-  max_grad_norm: 1.0
+  desired_kl: null
+  entropy_coef: null
+  gamma: null
+  lam: null
+  max_grad_norm: null
   # Miscellaneous
-  normalize_advantage_per_mini_batch: False
+  normalize_advantage_per_mini_batch: null
   # Random network distilation
   rnd_cfg: null
   # Symmetry augmentation
@@ -106,4 +106,3 @@ eval_freq: 50
 best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
 reset_last_layer_weights_interval: 0  # Set above 0 to enable
 reset_last_layer_weights_part: "both"  # `action`, `pose` or `all`
-algorithm_rnd_cfg: null

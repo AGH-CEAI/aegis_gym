@@ -1,4 +1,4 @@
-from dataclass import dataclass
+from dataclasses import dataclass
 from typing import ClassVar, Any
 
 import torch as th
