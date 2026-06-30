@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Callable
 
-from .types import Stage, Control
+from .types import Algorithm, Control
 
 
 @dataclass(slots=True, frozen=True)
@@ -20,7 +20,7 @@ class LaunchArgs:
 
     enable_plotjuggler: Optional[bool]
     max_iterations: Optional[int]
-    learning_method: Optional[Stage]
+    algorithm: Optional[Algorithm]
 
     # TODO(issue#111) think how to generalize it (multiple models for an experiments)
     # IDEA: connect model_id to somekind of architecture info/store architecture config in the model.
@@ -90,7 +90,13 @@ def parse_arguments(
     )  # TODO(issue#111) take it from the file if none is given
     p.add_argument("--plotjuggler", action="store_true", default=False)
     p.add_argument("--max-iterations", type=int, default=None)
-    p.add_argument("--stage", type=Stage, choices=list(Stage), default=Stage.RL)
+    p.add_argument(
+        "-a",
+        "--algorithm",
+        type=Algorithm,
+        choices=list(Algorithm),
+        default=Algorithm.RL,
+    )
     p.add_argument("--load-rl-task-id", type=str, default=None)
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument("--load-bc-task-id", type=str, default=None)
@@ -186,7 +192,7 @@ def parse_arguments(
         project_name=args.project_name,
         enable_plotjuggler=args.plotjuggler,
         max_iterations=args.max_iterations,
-        learning_method=args.stage,
+        algorithm=args.algorithm,
         load_rl_task_id=args.load_rl_task_id,
         load_rl_model_id=args.load_rl_model_id,
         load_bc_task_id=args.load_bc_task_id,

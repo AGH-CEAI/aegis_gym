@@ -4,7 +4,7 @@ import pytest
 
 from config import LaunchArgs, parse_arguments
 from config import ConfigManager as cm
-from config.types import Stage, Control, CNNLayerCfg, VisionEncoderCfg
+from config.types import Algorithm, Control, CNNLayerCfg, VisionEncoderCfg
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):
@@ -51,7 +51,7 @@ def test_default_arguments():
     excluded = {
         "_args_raw",
         "control_type",
-        "learning_method",
+        "algorithm",
         "debug_record_dir",
         "project_name",
     }
@@ -62,7 +62,7 @@ def test_default_arguments():
             )
 
     assert args.control_type == Control.SIM
-    assert args.learning_method == Stage.RL
+    assert args.algorithm == Algorithm.RL
     assert str(args.debug_record_dir).startswith("/tmp/")
 
 

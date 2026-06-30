@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-class Stage(StrEnum):
+class Algorithm(StrEnum):
     RL = "rl"
     BC = "bc"
 

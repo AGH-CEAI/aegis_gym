@@ -11,7 +11,7 @@ from behavior_cloning import BehaviorCloning
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, DebugCfg, Stage, Control
+from config.types import ExpConfig, DebugCfg, Algorithm, Control
 from envs import BaseEnv
 
 from grasp_train import init_clearml_task, create_env
@@ -26,7 +26,7 @@ def main():
     task = init_clearml_task(
         # TODO setup the ClearML task in the Configmanager to avoid the problem with project_name
         project_name=args.project_name,
-        stage=args.learning_method,
+        algorithm=args.algorithm,
         control=args.control_type,
         exp_name=args.experiment_name,
     )
@@ -55,10 +55,10 @@ def main():
 
 
 def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
-    sweep = (args.learning_method == Stage.BC) and (
+    sweep = (args.algorithm == Algorithm.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     )
-    if args.learning_method == Stage.RL and (
+    if args.algorithm == Algorithm.RL and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     ):
         print(
@@ -74,8 +74,8 @@ def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
     args: LaunchArgs = cfg.args
     device = cfg.get_device()
 
-    stage = args.learning_method
-    if stage == Stage.RL:
+    algorithm = args.algorithm
+    if algorithm == Algorithm.RL:
         return load_rl_policy(
             env=env,
             rl_cfg=cfg.rl_cfg,
@@ -88,7 +88,7 @@ def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
             clearml_artifact_name="model",
             enable_logging=False,
         )
-    if stage == Stage.BC:
+    if algorithm == Algorithm.BC:
         policy = load_bc_policy(
             env=env,
             bc_cfg=cfg.bc_cfg,
@@ -193,7 +193,7 @@ def eval_policy_single(
     metrics = run_eval(
         env,
         policy,
-        args.learning_method,
+        args.algorithm,
         max_steps,
         obs,
         device,
@@ -254,7 +254,7 @@ def eval_policy_sweep(
         metrics = run_eval(
             env,
             policy,
-            args.learning_method,
+            args.algorithm,
             max_steps,
             obs,
             device,
@@ -268,7 +268,7 @@ def eval_policy_sweep(
 def run_eval(
     env: Any,
     policy: Callable,
-    stage: Stage,
+    stage: Algorithm,
     max_steps: int,
     obs: Any,
     device: th.device,
@@ -298,9 +298,9 @@ def run_eval(
 
     for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
         match stage:
-            case Stage.RL:
+            case Algorithm.RL:
                 actions = policy(obs)
-            case Stage.BC:
+            case Algorithm.BC:
                 rgb_obs = get_obs_vis()
                 tcp_pose = env.robot.get_tcp_pose()
                 actions = policy(rgb_obs, tcp_pose)

@@ -7,7 +7,7 @@ from envs.base_env import BaseEnv
 from envs.grasp_env import GraspEnv
 from behavior_cloning import BehaviorCloning
 from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, Stage, Control
+from config.types import ExpConfig, Algorithm, Control
 from utils import load_rl_policy
 
 
@@ -20,14 +20,14 @@ except ImportError as e:
 
 def init_clearml_task(
     project_name: str | None,
-    stage: Stage | None,
+    algorithm: Algorithm | None,
     control: Control | None,
     exp_name: str | None,
 ) -> Task:
-    assert None not in (project_name, stage, control, exp_name)
+    assert None not in (project_name, algorithm, control, exp_name)
     return Task.init(
-        project_name=f"{project_name}_{str(stage)}-{str(control)}",
-        task_name=f"{exp_name}_{str(stage)}",
+        project_name=f"{project_name}_{str(algorithm)}-{str(control)}",
+        task_name=f"{exp_name}_{str(algorithm)}",
         reuse_last_task_id=True,
     )
 
@@ -42,7 +42,7 @@ def main():
     task = init_clearml_task(
         # TODO(issue#120) setup the ClearML task in the Configmanager to avoid the problem with project_name
         project_name=args.project_name,
-        stage=args.learning_method,
+        algorithm=args.algorithm,
         control=args.control_type,
         exp_name=args.experiment_name,
     )
@@ -119,8 +119,8 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
 
     # TODO(issue#120) consider saving the whole config before starting training
-    match args.learning_method:
-        case Stage.BC:
+    match args.algorithm:
+        case Algorithm.BC:
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
             teacher_policy = load_rl_policy(
                 env=env,
@@ -144,7 +144,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 device=device,
             )
             runner.learn(num_learning_iterations=args.max_iterations)
-        case Stage.RL:
+        case Algorithm.RL:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
 
             runner = OnPolicyRunner(

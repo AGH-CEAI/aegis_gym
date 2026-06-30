@@ -127,8 +127,7 @@ class ConfigManager:
             cfg_dict["env"]["num_envs"] = 1
 
         # Add project_suffix to the logger outputs
-        # TODO(issue#111) rename the args.learning_method to args.train_type
-        project_suffix = f"_{str(args.learning_method)}-{str(args.control_type)}"
+        project_suffix = f"_{str(args.algorithm)}-{str(args.control_type)}"
         cfg_dict["logger"]["wandb_project"] += project_suffix
         cfg_dict["logger"]["clearml_project"] += project_suffix
         cfg_dict["logger"]["neptune_project"] += project_suffix
@@ -153,7 +152,7 @@ class ConfigManager:
 
         # Define the local_log_dir if not given
         if not cfg_dict["logger"]["local_log_dir"]:
-            train_type = str(args.learning_method)
+            train_type = str(args.algorithm)
             log_dir = (
                 Path("/tmp/aegis_gym_logs") / f"{args.experiment_name}_{train_type}"
             )
