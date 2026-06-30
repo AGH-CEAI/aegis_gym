@@ -1,0 +1,108 @@
+# basic training parameters
+num_steps_per_env: 24
+learning_rate: 0.001
+num_epochs: 5
+num_mini_batches: 10
+max_grad_norm: 1.0
+save_recons: False
+save_recon_freq: 100
+use_teacher_mixing: False
+# algorithm parameters
+# TODO(issue#111) simplify config
+# originally only rnd_cfg was needed for the rsl_rl logger
+# Right now it is matrching strcutrce for AlgorithmCfg - must be simplified
+algorithm:
+  class_name: null
+  # Training
+  learning_rate: null
+  num_learning_epochs: null
+  num_mini_batches: null
+  schedule: null
+  # Value function
+  value_loss_coef: null
+  clip_param: null
+  use_clipped_value_loss: null
+  # Surrogate loss
+  desired_kl: null
+  entropy_coef: null
+  gamma: null
+  lam: null
+  max_grad_norm: null
+  # Miscellaneous
+  normalize_advantage_per_mini_batch: null
+  # Random network distilation
+  rnd_cfg: null
+  # Symmetry augmentation
+  symmetry_cfg: null
+# network architecture
+policy:
+  # TODO(issue#120) load config from clearml-model-id (currently only from clearml-task-id)
+  encoder_type: "shared_cnn"  # shared_cnn, per_camera_cnn, autoencoder
+  fusion_type: "linear"  # linear, attention_vector, attention_spatial
+  use_pose_head: True
+  vision_encoder:
+      conv_layers:
+        0:
+          in_channels: 3
+          out_channels: 8
+          kernel_size: 3
+          stride: 1
+          padding: 1
+        1:
+          in_channels: 8
+          out_channels: 16
+          kernel_size: 3
+          stride: 2
+          padding: 1
+        2:
+          in_channels: 16
+          out_channels: 32
+          kernel_size: 3
+          stride: 2
+          padding: 1
+  vision_encoder_spatial:
+    conv_layers:
+      0:
+        in_channels: 3
+        out_channels: 8
+        kernel_size: 3
+        stride: 1
+        padding: 1
+      1:
+        in_channels: 8
+        out_channels: 16
+        kernel_size: 3
+        stride: 2
+        padding: 1
+      2:
+        in_channels: 16
+        out_channels: 32
+        kernel_size: 3
+        stride: 2
+        padding: 1
+      3:
+        in_channels: 32
+        out_channels: 64
+        kernel_size: 3
+        stride: 2
+        padding: 1
+  linear_fusion:
+      fusion_output_dim: 512
+      pool_size: 4
+  attention_vector_fusion:
+      fusion_output_dim: 512
+      num_heads: 4
+      pool_size: 4
+  attention_spatial_fusion:
+      fusion_output_dim: 256
+      num_heads: 4
+  action_head_state_obs_dim: 7  # end-effector pose as additional state observation
+  action_head_hidden_dims: [128, 128, 64]
+  pose_head_hidden_dims: [64, 64]
+# training settings
+buffer_size: 1000
+save_freq: 50
+eval_freq: 50
+best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
+reset_last_layer_weights_interval: 0  # Set above 0 to enable
+reset_last_layer_weights_part: "both"  # `action`, `pose` or `all`

@@ -1,7 +1,8 @@
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Type, TypeVar, get_type_hints
+from typing import Any, Type, TypeVar, get_type_hints, get_args, get_origin
+
 
 T = TypeVar("T")
 
@@ -14,26 +15,43 @@ class BaseCfg(ABC):
         Missing values use dataclass defaults.
         """
         data = data or {}
-
-        kwargs = {}
         hints = get_type_hints(cls)
-
+        kwargs = {}
         for f in fields(cls):
-            field_type = hints[f.name]
-
             if f.name not in data:
                 continue
-
-            value = data[f.name]
-
-            if is_dataclass(field_type):
-                kwargs[f.name] = field_type.from_dict(value)
-            elif isinstance(field_type, Path):
-                kwargs[f.name] = Path(value)
-            else:
-                kwargs[f.name] = value
-
+            kwargs[f.name] = BaseCfg._deserialize(data[f.name], hints[f.name])
         return cls(**kwargs)
+
+    @classmethod
+    def _deserialize(cls, value: Any, typ: Any) -> Any:
+        origin = get_origin(typ)
+
+        # BaseCfg derivatives
+        if is_dataclass(typ):
+            return typ.from_dict(value)
+
+        # pathlib.Path
+        if typ is Path:
+            return Path(value)
+
+        # list[T]: YAML may give {0: ..., 1: ..., 2: ...} instead of a real list
+        if origin is list:
+            (elem_type,) = get_args(typ)
+            if isinstance(value, dict):  # numeric-keyed dict -> sorted list
+                value = [v for _, v in sorted(value.items())]
+
+            return [BaseCfg._deserialize(v, elem_type) for v in value]
+
+        # dict[K, V]
+        if origin is dict:
+            key_type, val_type = get_args(typ)
+            return {
+                key_type(k): BaseCfg._deserialize(v, val_type) for k, v in value.items()
+            }
+
+        # Any other (base) type
+        return value
 
     def as_dict(self) -> dict:
         """

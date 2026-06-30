@@ -1,47 +1,31 @@
 import re
-from dataclasses import dataclass
-from strenum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import torch as th
+import torch.nn as nn
 from clearml import Task, Model, InputModel
 from natsort import natsorted
 from rsl_rl.runners import OnPolicyRunner
 
 from behavior_cloning import BehaviorCloning
-from config_types.debug import DebugCfg
-
-
-class Stage(StrEnum):
-    RL = "rl"
-    BC = "bc"
-
-
-class Control(StrEnum):
-    SIM = "sim"
-    ROS = "ros"
-
-
-@dataclass(frozen=True, order=True, slots=True)
-class Checkpoint:
-    step: int
-    path: Path
+from config.types import DebugCfg, Checkpoint, RLCfg, BCCfg, LoggerCfg
 
 
 def load_rl_policy(
     env: Any,
-    rl_cfg: dict,
+    rl_cfg: RLCfg,
+    logger_cfg: LoggerCfg,
     device: th.device,
     load_cfg_from_clearml: bool = True,
     exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
     enable_logging: bool = True,
-) -> Callable:
+) -> nn.Module:
     print("[Policy Loader] Resolving RL checkpoint")
+    log_dir = logger_cfg.local_log_dir
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
         log_dir=log_dir,
@@ -59,9 +43,13 @@ def load_rl_policy(
                 "Cannot load RL config from ClearML: provide either clearml_task_id or clearml_model_id"
             )
         task = Task.get_task(task_id=clearml_task_id)
+
+        # TODO(issue#120) somehow migrate this feature to the ConfigManager
         cfg_from_clearml = task.get_configuration_object_as_dict("rl_cfg")
         if cfg_from_clearml:
-            rl_cfg = cfg_from_clearml
+            # TODO(issue#120) this is wrong: we can not apply patches from ConfigManager
+            # if ANY kind of extra modificiation is performed, the ConfigManager should be involved
+            rl_cfg = RLCfg.from_dict(cfg_from_clearml)
             print(
                 f"[Policy Loader] Overwritten the RL config by the configuration from task: {clearml_task_id}"
             )
@@ -72,20 +60,24 @@ def load_rl_policy(
     else:
         print("[Policy Loader] Keeping the current RL config")
 
+    rsl_rl_cfg = rl_cfg.as_dict()
+    rsl_rl_cfg.update(logger_cfg.as_dict())
+
     runner = OnPolicyRunner(
-        env,
-        rl_cfg,
-        log_dir if enable_logging else None,
-        device=device,
+        env=env,
+        train_cfg=rsl_rl_cfg,
+        log_dir=str(log_dir) if enable_logging else None,
+        device=str(device),
     )
-    runner.load(last_ckpt)
+    runner.load(str(last_ckpt))
     print("[Policy Loader] Loaded RL checkpoint")
-    return runner.get_inference_policy(device=device)
+    return runner.get_inference_policy(device=str(device))
 
 
 def load_bc_policy(
     env: Any,
-    bc_cfg: dict,
+    bc_cfg: BCCfg,
+    logger_cfg: LoggerCfg,
     debug_cfg: DebugCfg,
     device: th.device,
     load_cfg_from_clearml: bool = True,
@@ -94,7 +86,8 @@ def load_bc_policy(
     clearml_task_id: Optional[str] = None,
     clearml_model_id: Optional[str] = None,
     clearml_artifact_name: str = "model",
-) -> Callable:
+    enable_logging: bool = True,
+) -> nn.Module:
     print("[Policy Loader] Resolving BC checkpoint")
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
@@ -115,7 +108,7 @@ def load_bc_policy(
         task = Task.get_task(task_id=clearml_task_id)
         cfg_from_clearml = task.get_configuration_object_as_dict("bc_cfg")
         if cfg_from_clearml:
-            bc_cfg = cfg_from_clearml
+            bc_cfg = BCCfg.from_dict(cfg_from_clearml)
             print(
                 f"[Policy Loader] Overwritten the BC config by the configuration from task: {clearml_task_id}"
             )
@@ -126,8 +119,15 @@ def load_bc_policy(
     else:
         print("[Policy Loader] Keeping the current BC config")
 
-    bc_runner = BehaviorCloning(env, bc_cfg, debug_cfg, None, log_dir, device=device)
-    bc_runner.load(last_ckpt)
+    bc_runner = BehaviorCloning(
+        env=env,
+        bc_cfg=bc_cfg,
+        logger_cfg=logger_cfg,
+        debug_cfg=debug_cfg,
+        teacher=None,
+        device=device,
+    )
+    bc_runner.load(str(last_ckpt))
     print("[Policy Loader] Loaded BC checkpoint")
     return bc_runner._policy
 
