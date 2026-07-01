@@ -16,17 +16,19 @@ from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
 from .env import EnvCfg
 from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
-from .enum_types import Algorithm, Checkpoint, Control
+from .enum_types import Algorithm, Checkpoint, Control, CamerasSetup
 
 from .exp_config import ExpConfig
 
 __all__ = [
+    "Algorithm",
     "AlgorithmCfg",
     "BCCfg",
     "BaseCfg",
     "CNNLayerCfg",
     "CameraFovValueCfg",
     "CameraPoseCfg",
+    "CamerasSetup",
     "CamerasExtrinsicsCfg",
     "CamerasFovCfg",
     "Checkpoint",
@@ -45,7 +47,6 @@ __all__ = [
     "PolicyCfg",
     "RLCfg",
     "RobotCfg",
-    "Algorithm",
     "ToggleCfg",
     "VisionEncoderCfg",
 ]

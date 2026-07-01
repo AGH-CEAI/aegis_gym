@@ -1,6 +1,8 @@
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
+
 from .base_cfg import BaseCfg
+from .enum_types import CamerasSetup
 
 
 @dataclass(slots=True)
@@ -26,5 +28,5 @@ class EnvCfg(BaseCfg):
     visualize_camera: bool
     visualize_cell: bool
     # TODO(issue#111) consider changing camera setup to cameras_num
-    camera_setup: Literal["default", "scene_dual"]
+    cameras_setup: CamerasSetup
     reward_scales: dict

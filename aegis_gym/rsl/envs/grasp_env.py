@@ -19,9 +19,10 @@ from genesis.utils.geom import (
 
 from .manipulator import GenesisManipulator
 from .base_env import BaseEnv, StepReturn, ResetReturn
+from .objects import BaseBox, ObjectsFactory
 from .plotjuggler_udp import PlotJugglerUDP
 
-from config.types import ExpConfig, CameraPoseCfg
+from config.types import ExpConfig, CameraPoseCfg, Control, CamerasSetup
 
 # Further example
 # https://github.com/isaac-sim/IsaacLab/blob/857da263c08fa78664e40ab957f996b22153d181/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py
@@ -59,7 +60,6 @@ class GraspEnv(BaseEnv):
         self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
         self.device = cfg.get_device()
 
-        self._extract_config()
         print(
             f"[GraspEnv] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
@@ -109,7 +109,7 @@ class GraspEnv(BaseEnv):
         self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
         self.show_cell = self._cfg_env.visualize_cell
-        self.camera_setup = self._cfg_env.camera_setup
+        self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
         self.box_size = self._cfg_env.box_size_default
@@ -196,24 +196,12 @@ class GraspEnv(BaseEnv):
                 material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
             )
 
-        # == add object ==
-        self.object = self.scene.add_entity(
-            gs.morphs.Box(
-                size=self.box_size,
-                fixed=env_cfg.box_fixed,
-                collision=env_cfg.box_collision,
-            ),
-            # material=gs.materials.Rigid(gravity_compensation=1),
-            surface=gs.surfaces.Rough(
-                diffuse_texture=gs.textures.ColorTexture(
-                    color=(0.8, 0.0, 0.0),
-                ),
-            ),
+        self.object: BaseBox = ObjectsFactory.create_box(
+            scene=self.scene, ctrl=Control.SIM, device=th.device(self.device)
         )
 
-        # == add cameras ==
         # TODO(issue#41) refactor the camera_setup into more modular system
-        match self.camera_setup:
+        match self.cameras_setup:
             case "default":
                 self._add_camera(name="scene_cam", fov=38)
                 self._add_camera(name="tool_left_cam", fov=30)
@@ -271,7 +259,7 @@ class GraspEnv(BaseEnv):
             )
 
     def _attach_cameras(self):
-        if self.camera_setup != "default":
+        if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
         scene_offset_T = np.array(
@@ -375,9 +363,9 @@ class GraspEnv(BaseEnv):
         )
         goal_yaw = transform_quat_by_quat(q_yaw, q_downward)
 
-        self.goal_pose[envs_idx] = th.cat([random_pos, goal_yaw], dim=-1)
-        self.object.set_pos(random_pos, envs_idx=envs_idx)
-        self.object.set_quat(goal_yaw, envs_idx=envs_idx)
+        goal_pose = th.cat([random_pos, goal_yaw], dim=-1)
+        self.goal_pose[envs_idx] = goal_pose
+        self.object.set_pose(pose=goal_pose, envs_idx=envs_idx)
 
         # fill extras
         self.extras["episode"] = {}
@@ -428,9 +416,7 @@ class GraspEnv(BaseEnv):
         return th.cat([object_pos, object_quat], dim=-1)
 
     def apply_object_poses(self, pose: th.Tensor) -> None:
-        object_pos, object_quat = pose[:, :3], pose[:, 3:]
-        self.object.set_pos(object_pos)
-        self.object.set_quat(object_quat)
+        self.object.set_pose(pose=pose)
         self.goal_pose[:] = pose
 
     def reset(self) -> ResetReturn:
@@ -564,7 +550,8 @@ class GraspEnv(BaseEnv):
     def get_observations(self) -> TensorDict:
         tcp_pose = self.robot.get_tcp_pose()
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
-        obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
+        obj_pose = self.object.get_pose()
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
 
         obs_components = [
             tcp_pos - obj_pos,  # 3D position difference
@@ -702,8 +689,9 @@ class GraspEnv(BaseEnv):
             tcp_quat,
             keypoints_offset,
         )
+        obj_pose = self.object.get_pose()
         object_pos_keypoints = self._to_world_frame(
-            self.object.get_pos(), self.object.get_quat(), keypoints_offset
+            obj_pose[:, :3], obj_pose[:, 3:], keypoints_offset
         )
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
@@ -779,7 +767,7 @@ class GraspEnv(BaseEnv):
                 self.robot.ctrl_go_to_goal(lift_pose, open_gripper=False)
             elif i < total_steps * 4 / 5:  # final
                 self.robot.ctrl_go_to_goal(final_pose, open_gripper=False)
-                obj_pos = self.object.get_pos()
+                obj_pos = self.object.get_pose()[:, :3]
                 target_pos = final_pose[:, :3]
 
                 dist = th.norm(obj_pos - target_pos, dim=-1)
@@ -816,7 +804,7 @@ class GraspEnv(BaseEnv):
 
     def _cache_camera_base_offsets(self) -> None:
         self._dr_cam_base_offsets = {}
-        if self.camera_setup != "default":
+        if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
         self._dr_cam_base_offsets = {

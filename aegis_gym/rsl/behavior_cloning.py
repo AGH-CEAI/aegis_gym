@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
+from aegis_gym.rsl.config.types.enum_types import CamerasSetup
 from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
 from config.types import (
@@ -106,14 +107,12 @@ class BehaviorCloning:
             device=str(device),
         )
 
-        # TODO resolve hack around the camera_setup
-        camera_setup = env.camera_setup
-        if camera_setup == "default":
-            num_cameras = 3
-        elif camera_setup == "scene_dual":
-            num_cameras = 2
-        else:
-            raise ValueError(f"Unknown camera_setup: {camera_setup}")
+        # TODO(issue#128) resolve hack around the camera_setup
+        match env.cameras_setup:
+            case CamerasSetup.DEFAULT:
+                num_cameras = 3
+            case CamerasSetup.SCENE_DUAL:
+                num_cameras = 2
 
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
