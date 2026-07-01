@@ -56,7 +56,7 @@ class BaseObject(ABC):
 
 class BaseBox(BaseObject):
     """
-    The interface for implementinc generic box object.
+    The interface for implementing generic box object.
     """
 
     def __init__(self, *args, **kwargs):
