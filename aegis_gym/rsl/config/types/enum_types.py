@@ -12,6 +12,7 @@ class Control(StrEnum):
     SIM = "sim"
     ROS = "ros"
 
+
 class CamerasSetup(StrEnum):
     DEFAULT = "default"
     SCENE_DUAL = "scene_dual"
