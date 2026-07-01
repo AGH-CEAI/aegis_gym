@@ -14,15 +14,15 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
-from aegis_gym.rsl.config.types.enum_types import CamerasSetup
 from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
 from config.types import (
-    DebugCfg,
     BCCfg,
-    PolicyBCCfg,
+    CamerasSetup,
+    DebugCfg,
     FusionCfg,
     LoggerCfg,
+    PolicyBCCfg,
     VisionEncoderCfg,
 )
 from bc_encoders import (
@@ -35,8 +35,8 @@ from bc_encoders import (
 from bc_fusions import (
     BaseFusionModule,
     LinearFusion,
-    VectorAttentionFusion,
     SpatialAttentionFusion,
+    VectorAttentionFusion,
 )
 
 
@@ -335,13 +335,7 @@ class BehaviorCloning:
 
                 # Get object pose in camera frame
                 # object_pose_camera = self._get_object_pose_in_camera_frame()
-                object_pose = th.cat(
-                    [
-                        self._env.object.get_pos(),
-                        self._env.object.get_quat(),
-                    ],
-                    dim=-1,
-                )
+                object_pose = self._env.object.get_pose()
 
                 # Store in buffer
                 self._buffer.add(rgb_obs, ee_pose, object_pose, teacher_action)

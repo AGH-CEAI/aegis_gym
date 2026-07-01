@@ -14,7 +14,7 @@ class GenesisBox(BaseBox):
     def create(
         self,
         dims: tuple[float, float, float],
-        pose: tuple,
+        pose: Optional[tuple],
         fixed: bool = False,
         collision: bool = False,
         color: tuple[float, float, float] = (1.0, 0.0, 0.0),
@@ -22,8 +22,8 @@ class GenesisBox(BaseBox):
         self._obj = self._scene.add_entity(
             gs.morphs.Box(
                 size=dims,
-                pos=pose[:3],
-                quat=pose[3:],
+                pos=(0, 0, 0) if not pose else pose[:3],
+                quat=None if not pose else pose[3:],
                 fixed=fixed,
                 collision=collision,
             ),
@@ -46,5 +46,5 @@ class GenesisBox(BaseBox):
     def set_pose(
         self, pose: th.Tensor, envs_idx: Optional[th.Tensor | int] = None
     ) -> None:
-        self._obj.set_pos(pos=pose[:3], envs_idx=envs_idx)
-        self._obj.set_quat(quat=pose[3:], envs_idx=envs_idx)
+        self._obj.set_pos(pos=pose[:, :3], envs_idx=envs_idx)
+        self._obj.set_quat(quat=pose[:, 3:], envs_idx=envs_idx)

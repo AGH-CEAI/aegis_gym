@@ -199,6 +199,13 @@ class GraspEnv(BaseEnv):
         self.object: BaseBox = ObjectsFactory.create_box(
             scene=self.scene, ctrl=Control.SIM, device=th.device(self.device)
         )
+        self.object.create(
+            dims=self.box_size,
+            pose=None,
+            fixed=env_cfg.box_fixed,
+            collision=env_cfg.box_collision,
+            color=(0.8, 0.0, 0.0),
+        )
 
         # TODO(issue#41) refactor the camera_setup into more modular system
         match self.cameras_setup:

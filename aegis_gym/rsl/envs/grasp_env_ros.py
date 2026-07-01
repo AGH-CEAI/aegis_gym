@@ -14,7 +14,7 @@ from tensordict import TensorDict
 from .manipulator import RosGrpcManipulator, CameraID
 from .base_env import BaseEnv, StepReturn, ResetReturn
 from .objects import BaseBox, ObjectsFactory
-from ...scene import BaseScene
+from .scene import BaseScene
 
 from config import ExpConfig
 from config.types import Control, CamerasSetup
