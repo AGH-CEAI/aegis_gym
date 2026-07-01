@@ -1,5 +1,6 @@
 from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Type, TypeVar, get_type_hints, get_args, get_origin
 
@@ -34,6 +35,10 @@ class BaseCfg(ABC):
         # pathlib.Path
         if typ is Path:
             return Path(value)
+
+        # Enums
+        if isinstance(typ, type) and issubclass(typ, Enum):
+            return typ(value)
 
         # list[T]: YAML may give {0: ..., 1: ..., 2: ...} instead of a real list
         if origin is list:
@@ -78,6 +83,8 @@ class BaseCfg(ABC):
             return type(value)(serialized)
         elif isinstance(value, Path):
             return str(value)
+        elif isinstance(value, Enum):
+            return value.value
         else:
             return value
 

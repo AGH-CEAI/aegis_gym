@@ -4,7 +4,7 @@ import pytest
 
 from config import LaunchArgs, parse_arguments
 from config import ConfigManager as cm
-from config.types import Algorithm, Control, CNNLayerCfg, VisionEncoderCfg
+from config.types import Algorithm, Control, CNNLayerCfg, VisionEncoderCfg, CamerasSetup
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):
@@ -99,6 +99,18 @@ def test_env_config_image_resolution():
     assert isinstance(val[1], int)
 
 
+def test_env_config_cameras_setup():
+    cm.setup_config(argv=[""])
+    val = cm.get_config().env_cfg.cameras_setup
+    default_val = cm._get_default_config_dict()["env"]["cameras_setup"]
+
+    val_serialized = cm.get_config().env_cfg.as_dict()["cameras_setup"]
+
+    assert isinstance(val, CamerasSetup)
+    assert isinstance(val_serialized, type(default_val))
+    assert val_serialized == default_val
+
+
 def test_policy_bc_cfg_vision_encoder():
     cm.setup_config(argv=[""])
     val1 = cm.get_config().bc_cfg.policy.vision_encoder
@@ -116,8 +128,8 @@ def test_robot_config_parsing():
     cm.setup_config(argv=[""])
     cfg = cm.get_config()
 
-    env_dict = cfg.robot_cfg.as_dict()
+    robot_dict = cfg.robot_cfg.as_dict()
     def_dict = cm._get_default_config_dict()["robot"]
 
-    diffs = dict_diff(env_dict, def_dict)
+    diffs = dict_diff(robot_dict, def_dict)
     assert not diffs, "\n".join(diffs)

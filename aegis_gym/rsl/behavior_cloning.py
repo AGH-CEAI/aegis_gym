@@ -17,11 +17,12 @@ from rsl_rl.utils.logger import Logger
 from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
 from config.types import (
-    DebugCfg,
     BCCfg,
-    PolicyBCCfg,
+    CamerasSetup,
+    DebugCfg,
     FusionCfg,
     LoggerCfg,
+    PolicyBCCfg,
     VisionEncoderCfg,
 )
 from bc_encoders import (
@@ -34,8 +35,8 @@ from bc_encoders import (
 from bc_fusions import (
     BaseFusionModule,
     LinearFusion,
-    VectorAttentionFusion,
     SpatialAttentionFusion,
+    VectorAttentionFusion,
 )
 
 
@@ -106,14 +107,12 @@ class BehaviorCloning:
             device=str(device),
         )
 
-        # TODO resolve hack around the camera_setup
-        camera_setup = env.camera_setup
-        if camera_setup == "default":
-            num_cameras = 3
-        elif camera_setup == "scene_dual":
-            num_cameras = 2
-        else:
-            raise ValueError(f"Unknown camera_setup: {camera_setup}")
+        # TODO(issue#128) resolve hack around the camera_setup
+        match env.cameras_setup:
+            case CamerasSetup.DEFAULT:
+                num_cameras = 3
+            case CamerasSetup.SCENE_DUAL:
+                num_cameras = 2
 
         rgb_shape = (num_cameras * 3, env.image_height, env.image_width)
         action_dim = env.num_actions
@@ -336,13 +335,7 @@ class BehaviorCloning:
 
                 # Get object pose in camera frame
                 # object_pose_camera = self._get_object_pose_in_camera_frame()
-                object_pose = th.cat(
-                    [
-                        self._env.object.get_pos(),
-                        self._env.object.get_quat(),
-                    ],
-                    dim=-1,
-                )
+                object_pose = self._env.object.get_pose()
 
                 # Store in buffer
                 self._buffer.add(rgb_obs, ee_pose, object_pose, teacher_action)

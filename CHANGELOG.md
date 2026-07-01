@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - Added `CamerasSetup` enum in the config.
 - [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - Added `BaseEnv`, `BaseManipulator` and `BaseScene` abstractions for use in AegisGrasp.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `---debug-enable-vis-preview` for showing cameras preview.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-record-vis-obs` and `--debug-record-dir` arg for recording cameras preview into a given directory.
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - Extracted objects into `BaseObject` interface.
 - [PR-129](https://github.com/AGH-CEAI/aegis_gym/pull/129) - Config total makeover into `ConfigManager` and `LaunchArgs` classes. Added strcit config creation control (via frozen dataclasses).
 - [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Created `BaseEnv` interface and loosely used it for both of the grasp env implementations.
 - [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Refactored `Manipulator` interfaces into `BaseManipulator` abstraction and its `RosGrpcManipulator` and `GenesisManipualtor` implementations.
