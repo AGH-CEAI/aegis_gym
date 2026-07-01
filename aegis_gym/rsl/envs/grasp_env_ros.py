@@ -145,7 +145,7 @@ class GraspEnvROS(BaseEnv):
         # reset robot
         self.robot.ctrl_gripper_open(envs_idx)
         self.robot.ctrl_go_to_home(envs_idx)
-        self.object.set_pose(pose=th.Tensor(self.box_pose, device=self.device))
+        self.object.set_pose(pose=th.tensor(self.box_pose, device=self.device))
 
         # fill extras
         self.extras["episode"] = {}

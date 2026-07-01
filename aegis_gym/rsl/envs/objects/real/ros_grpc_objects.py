@@ -20,7 +20,9 @@ class RosGrpcBox(BaseBox):
         self.pose = th.tensor(pose, device=self.device).repeat(1, 1)
 
     def get_pose(self, envs_idx: Optional[th.Tensor | int] = None) -> th.Tensor:
-        return self.pose
+        return self.pose.unsqueeze(0)
 
-    def set_pose(self, pose: th.Tensor, envs_idx: Optional[th.Tensor | int]) -> None:
-        self.pose = pose
+    def set_pose(
+        self, pose: th.Tensor, envs_idx: Optional[th.Tensor | int] = None
+    ) -> None:
+        self.pose = pose.squeeze(0)
