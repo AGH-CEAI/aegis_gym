@@ -37,6 +37,15 @@ class Modality(StrEnum):
     OBJECT_POSE = auto()
 
 
+IMAGE_MODALITIES: frozenset[Modality] = frozenset(
+    {
+        Modality.CAMERA_SCENE_RGB,
+        Modality.CAMERA_TOOL_LEFT_RGB,
+        Modality.CAMERA_TOOL_RIGHT_RGB,
+    }
+)
+
+
 class BaseEnv(VecEnv):
     """
     Base class for implementing an environment compatible with rsl_rl's VecEnv.
