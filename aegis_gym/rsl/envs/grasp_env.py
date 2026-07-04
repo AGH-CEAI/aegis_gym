@@ -410,6 +410,7 @@ class GraspEnv(BaseEnv):
             self.episode_sums[key][envs_idx] = 0.0
 
         if self._cfg_dr.enabled:
+            self._setup_dr_pd_gains()
             self._randomize_camera_extrinsics(envs_idx)
 
     def generate_object_poses(self, seed: int) -> th.Tensor:
