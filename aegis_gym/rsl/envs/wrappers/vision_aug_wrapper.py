@@ -32,7 +32,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         self, modalities: Optional[Collection[Modality]] = None
     ) -> TensorDict:
         obs = self._env.get_modality_observations(modalities)
-        # TODO: We will call multiple augumentations calls for a single modality - there is no cache
+        # Warning: env wrappers doesn't use cache - every call to the _augument() probably will result in different results.
         return self._augment(obs)
 
     def _augment(self, obs: TensorDict) -> TensorDict:
@@ -47,14 +47,12 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
 
     def reset(self) -> ResetReturn:
         res = self._env.reset()
-        # TODO previously it was called in the reset_idx()
+        # TODO(issue#121) Previously it was called in the reset_idx()
         self._resample_aug_profile(th.arange(self.num_envs, device=self.device))
         return res
 
     def step(self, actions: th.Tensor) -> StepReturn:
         res = self._env.step(actions)
-        # TODO previously it was called in the reset_idx()
-        self._resample_aug_profile(th.arange(self.num_envs, device=self.device))
         return res
 
     def _init_aug_profile(self) -> dict[str, th.Tensor]:

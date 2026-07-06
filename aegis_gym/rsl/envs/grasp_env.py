@@ -474,10 +474,6 @@ class GraspEnv(BaseEnv):
         self.robot.ctrl_apply_vel_action(actions, open_gripper=True)
         self.scene.step()
 
-        # TODO(issue#117) redesign the visualize-cameras feature
-        # if self.show_cameras_gui:
-        # self.get_observations_vis()
-
         self._log_state_to_plot_juggler()
 
         # check termination

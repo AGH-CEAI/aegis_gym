@@ -312,7 +312,7 @@ class BehaviorCloning:
         # Get state observation
         obs = self._env.get_observations()
 
-        # TODO: observation should be created only in the environment code!
+        # TODO(issue#134) observation should be created only in the environment code!
         def get_obs_vis() -> th.Tensor:
             obs = self._env.get_modality_observations(modalities=IMAGE_MODALITIES)
 

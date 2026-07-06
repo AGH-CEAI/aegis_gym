@@ -260,9 +260,9 @@ class GraspEnvROS(BaseEnv):
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
-        # TODO checkout if the self.extras was actually needed
-        return th.cat(obs_components, dim=-1)
-        # return TensorDict({"policy": res}, batch_size=self._num_envs, device=self.device)
+        obs_tensor = th.cat(obs_components, dim=-1)
+        self.extras["observations"]["critic"] = obs_tensor
+        return obs_tensor
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()

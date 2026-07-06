@@ -286,7 +286,7 @@ def run_eval(
     start_time = time.perf_counter()
     total_inference_time = 0.0
 
-    # TODO: This shouldn't be defined in the eval code!
+    # TODO(issue#135) This shouldn't be defined in the eval code!
     def get_obs_vis() -> th.Tensor:
         obs = env.get_modality_observations(modalities=IMAGE_MODALITIES)
         return th.cat([obs[m] for m in IMAGE_MODALITIES], dim=1).float()
