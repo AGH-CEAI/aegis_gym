@@ -62,7 +62,7 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         normalize: bool,
     ) -> np.ndarray:
         max_side = self._cfg.vis_preview_side
-        num_envs = mm_obs.batch_size[0]
+        num_envs = min(mm_obs.batch_size[0], self._cfg.vis_preview_max_envs)
         GRID_LINE_COLOR = (80, 80, 80)  # BGR, subtle gray
 
         rows: list[np.ndarray] = []
