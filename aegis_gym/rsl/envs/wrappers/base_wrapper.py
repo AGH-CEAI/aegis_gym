@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Collection, Any
 
 import torch as th
 from tensordict import TensorDict
@@ -12,9 +12,14 @@ class BaseEnvWrapper(BaseEnv):
     """
 
     def __init__(self, env: BaseEnv):
-        super().__init__(scene=None)
+        super().__init__(scene=None, num_envs=env.num_envs)
         self._env = env
         del self._obs_cache
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_env":
+            raise AttributeError(name)
+        return getattr(self._env, name)
 
     @property
     def unwrapped(self) -> "BaseEnv":
@@ -26,16 +31,16 @@ class BaseEnvWrapper(BaseEnv):
     def get_cfg_as_dict(self) -> dict:
         return self._env.get_cfg_as_dict()
 
-    def get_num_envs(self) -> int:
-        return self._env.get_num_envs()
-
-    def get_observations(
-        self, modalities: Optional[frozenset[Modality]] = None
+    def get_modality_observations(
+        self, modalities: Optional[Collection[Modality]] = None
     ) -> TensorDict:
-        return self._env.get_observations(modalities=modalities)
+        return self._env.get_modality_observations(modalities=modalities)
 
-    def get_agent_observations(self) -> TensorDict:
-        return self._env.get_agent_observations()
+    def get_observations(self) -> TensorDict:
+        return self._env.get_observations()
+
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
+        return self._env._build_agent_observations(obs)
 
     def reset(self) -> ResetReturn:
         return self._env.reset()

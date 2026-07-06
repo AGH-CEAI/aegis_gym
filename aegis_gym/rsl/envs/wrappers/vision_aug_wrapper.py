@@ -1,16 +1,16 @@
-from typing import Optional
+from typing import Optional, Collection
 
 import torch as th
 import torch.nn.functional as F
 from tensordict import TensorDict
 
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, Modality, VISUAL_MODALITIES, ResetReturn
+from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
 
 from config.types import ImageAugCfg, EnvCfg
 
 
-class VisionAugWrapper(BaseEnvWrapper):
+class VisionAugEnvWrapper(BaseEnvWrapper):
     """
     The wrapper to augment visual observations from the environment.
     """
@@ -19,17 +19,24 @@ class VisionAugWrapper(BaseEnvWrapper):
         super().__init__(env=env)
         self._cfg = cfg_image_aug
         self.image_resolution = cfg_env.image_resolution
+        self.device = env.device
         self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
 
-    # TODO somehow apply augumentation to the env.get_obsevartions() to propagate the aug through the whole system
-    def get_observations(
-        self, modalities: Optional[frozenset[Modality]] = None
+    def get_observations(self) -> TensorDict:
+        obs = self.get_modality_observations()
+        obs = self._augment(obs)
+        agent_obs = self._build_agent_observations(obs)
+        return self._format_rsl_observation(agent_obs)
+
+    def get_modality_observations(
+        self, modalities: Optional[Collection[Modality]] = None
     ) -> TensorDict:
-        obs = self._env.get_observations(modalities=modalities)
+        obs = self._env.get_modality_observations(modalities)
+        # TODO: We will call multiple augumentations calls for a single modality - there is no cache
         return self._augment(obs)
 
     def _augment(self, obs: TensorDict) -> TensorDict:
-        image_keys = [m for m in obs.keys() if Modality(m) in VISUAL_MODALITIES]
+        image_keys = [m for m in obs.keys() if Modality(m) in IMAGE_MODALITIES]
         if not image_keys:
             return obs
 
