@@ -147,9 +147,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
                 print("[GraspTrain] >>> (BC) Wrapping env with ObsPreviewEnvWrapper")
-                env = ObsPreviewEnvWrapper(
-                    env=env, cfg_debug=cfg.debug_cfg, cfg_env=cfg.env_cfg
-                )
+                env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
             print("[GraspTrain] >>> (BC) Preparing policy runner")
             runner = BehaviorCloning(
@@ -168,9 +166,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
                 print("[GraspTrain] >>> (RL) Wrapping env with ObsPreviewEnvWrapper")
-                env = ObsPreviewEnvWrapper(
-                    env=env, cfg_debug=cfg.debug_cfg, cfg_env=cfg.env_cfg
-                )
+                env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
             print("[GraspTrain] >>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(

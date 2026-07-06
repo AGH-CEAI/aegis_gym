@@ -8,10 +8,9 @@ import numpy as np
 import torch as th
 from tensordict import TensorDict
 
+from config.types import DebugCfg
 from .base_wrapper import BaseEnvWrapper
 from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
-
-from config.types import EnvCfg, DebugCfg
 
 
 class ObsPreviewEnvWrapper(BaseEnvWrapper):
@@ -19,10 +18,9 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
     The debug wrapper to preview observations (e.g. visual) from the environment.
     """
 
-    def __init__(self, env: BaseEnv, cfg_debug: DebugCfg, cfg_env: EnvCfg):
+    def __init__(self, env: BaseEnv, cfg_debug: DebugCfg):
         super().__init__(env=env)
         self._cfg = cfg_debug
-        self.image_resolution = cfg_env.image_resolution
         self._modalities = self._env.available_modalities
         self._record_dir: Optional[Path] = None
         self._frame_count: int = 0
