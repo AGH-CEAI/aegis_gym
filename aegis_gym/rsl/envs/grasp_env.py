@@ -3,9 +3,9 @@ from typing import Optional
 
 import genesis as gs
 import numpy as np
+from tensordict import TensorDict
 import torch as th
 from genesis.vis.camera import Camera
-
 from genesis.utils.geom import (
     transform_by_quat,
     transform_quat_by_quat,
@@ -29,7 +29,9 @@ class GraspEnv(BaseEnv):
         self,
         cfg: ExpConfig,
     ) -> None:
-        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
+        super().__init__(
+            scene=None, num_envs=cfg.env_cfg.num_envs
+        )  # TODO(issue#128) introduce Scene abstraction
         self.device = cfg.get_device()
 
         self._observation_fns = {
@@ -104,7 +106,6 @@ class GraspEnv(BaseEnv):
         # TODO(issue##117) redesign the whole camera preview system
         self.show_cameras_gui = self._cfg_env.visualize_camera
 
-        self.num_envs = self._cfg_env.num_envs
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
         self.num_actions = self._cfg_env.num_actions
@@ -456,7 +457,7 @@ class GraspEnv(BaseEnv):
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
         self._log_state_to_plot_juggler()
-        return ResetReturn(self.get_agent_observations(), self.extras)
+        return ResetReturn(self.get_observations(), self.extras)
 
     def step(self, actions: th.Tensor) -> StepReturn:
         # Update time
@@ -492,7 +493,7 @@ class GraspEnv(BaseEnv):
             self.episode_sums[name] += rew
 
         # get observations and fill extras
-        obs = self.get_agent_observations()
+        obs = self.get_observations()
         dones = self.reset_buf
         return StepReturn(obs, reward, dones, self.extras)
 
@@ -577,8 +578,7 @@ class GraspEnv(BaseEnv):
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def _agent_observations_mapping(self) -> th.Tensor:
-        obs = self.get_observations()
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
         tcp_pose = obs[Modality.TCP_POSE]
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         obj_pose = obs[Modality.OBJECT_POSE]
@@ -591,6 +591,7 @@ class GraspEnv(BaseEnv):
             obj_quat,  # goal orientation (w, x, y, z)
         ]
         return th.cat(obs_components, dim=-1)
+        # return TensorDict({"policy": res}, batch_size=self._num_envs, device=self.device)
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()

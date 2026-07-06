@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from tensordict import TensorDict
 
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
+from ..base_env import BaseEnv, StepReturn, Modality, VISUAL_MODALITIES, ResetReturn
 
 from config.types import ImageAugCfg, EnvCfg
 
@@ -29,7 +29,7 @@ class VisionAugWrapper(BaseEnvWrapper):
         return self._augment(obs)
 
     def _augment(self, obs: TensorDict) -> TensorDict:
-        image_keys = [m for m in obs.keys() if Modality(m) in IMAGE_MODALITIES]
+        image_keys = [m for m in obs.keys() if Modality(m) in VISUAL_MODALITIES]
         if not image_keys:
             return obs
 

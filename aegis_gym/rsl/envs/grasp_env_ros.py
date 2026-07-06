@@ -2,6 +2,7 @@ import math
 import time
 from typing import Optional
 
+from tensordict import TensorDict
 import torch as th
 from genesis.utils.geom import transform_by_quat
 
@@ -18,7 +19,9 @@ class GraspEnvROS(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
 
     def __init__(self, cfg: ExpConfig, scene: Optional[BaseScene] = None) -> None:
-        super().__init__(scene=scene)  # TODO(issue#128) introduce Scene abstraction
+        super().__init__(
+            scene=scene, num_envs=cfg.env_cfg.num_envs
+        )  # TODO(issue#128) introduce Scene abstraction
 
         self._observation_fns = {
             Modality.TCP_POSE: self._observe_tcp_pose,
@@ -83,7 +86,6 @@ class GraspEnvROS(BaseEnv):
         self.reset()
 
     def _extract_config(self) -> None:
-        self.num_envs = self._cfg_env.num_envs
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
         self.num_actions = self._cfg_env.num_actions
@@ -185,7 +187,7 @@ class GraspEnvROS(BaseEnv):
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
-        return ResetReturn(self.get_agent_observations(), self.extras)
+        return ResetReturn(self.get_observations(), self.extras)
 
     def step(self, actions: th.Tensor) -> StepReturn:
         if not self.last_step_ts:
@@ -217,7 +219,7 @@ class GraspEnvROS(BaseEnv):
             self.episode_sums[name] += rew
 
         # get observations and fill extras
-        obs = self.get_agent_observations()
+        obs = self.get_observations()
         dones = self.reset_buf
         return StepReturn(obs, reward, dones, self.extras)
 
@@ -243,8 +245,7 @@ class GraspEnvROS(BaseEnv):
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def _agent_observations_mapping(self) -> th.Tensor:
-        obs = self.get_observations()
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
         tcp_pose = obs[Modality.TCP_POSE]
         tcp_pos, tcp_quat = (
             tcp_pose[:, :3],
@@ -261,6 +262,7 @@ class GraspEnvROS(BaseEnv):
         ]
         # TODO checkout if the self.extras was actually needed
         return th.cat(obs_components, dim=-1)
+        # return TensorDict({"policy": res}, batch_size=self._num_envs, device=self.device)
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()

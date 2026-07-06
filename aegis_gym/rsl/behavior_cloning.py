@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
-from envs import BaseManipulator, BaseEnv
+from envs import BaseManipulator, BaseEnv, IMAGE_MODALITIES
 from config import ConfigManager
 from config.types import (
     BCCfg,
@@ -312,15 +312,11 @@ class BehaviorCloning:
         # Get state observation
         obs = self._env.get_observations()
 
+        # TODO: observation should be created only in the environment code!
         def get_obs_vis() -> th.Tensor:
-            if not self._debug_cfg.enabled:
-                return self._env.get_observations_vis()
-            return self._env.get_observations_vis(
-                swap_tool_cameras=self._debug_cfg.swap_tool_cameras,
-                enable_vis_preview=self._debug_cfg.enable_vis_preview,
-                enable_record_obs=self._debug_cfg.enable_record_obs,
-                record_dir=self._debug_cfg.record_dir,
-            )
+            obs = self._env.get_modality_observations(modalities=IMAGE_MODALITIES)
+
+            return th.cat([obs[m] for m in IMAGE_MODALITIES], dim=1).float()
 
         with th.inference_mode():
             for _ in range(self._num_steps_per_env):

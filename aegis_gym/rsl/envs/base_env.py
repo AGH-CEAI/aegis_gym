@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from enum import auto
-from typing import NamedTuple, Optional, Callable
+from typing import NamedTuple, Optional, Callable, Collection
 
 
 import torch as th
@@ -37,12 +37,10 @@ class Modality(StrEnum):
     OBJECT_POSE = auto()
 
 
-IMAGE_MODALITIES: frozenset[Modality] = frozenset(
-    {
-        Modality.CAMERA_SCENE_RGB,
-        Modality.CAMERA_TOOL_LEFT_RGB,
-        Modality.CAMERA_TOOL_RIGHT_RGB,
-    }
+IMAGE_MODALITIES: tuple[Modality, ...] = (
+    Modality.CAMERA_SCENE_RGB,
+    Modality.CAMERA_TOOL_LEFT_RGB,
+    Modality.CAMERA_TOOL_RIGHT_RGB,
 )
 
 
@@ -56,10 +54,11 @@ class BaseEnv(VecEnv):
     DEFAULT_MODALITIES: frozenset[Modality]
     _observation_fns: dict[Modality, Callable[[], th.Tensor]]
 
-    def __init__(self, scene: Optional[BaseScene]):
+    def __init__(self, scene: Optional[BaseScene], num_envs: int):
         super().__init__()
         self._scene: Optional[BaseScene] = scene
-        self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.get_num_envs()])
+        self.num_envs = num_envs
+        self._obs_cache: TensorDict = TensorDict({}, batch_size=[num_envs])
 
     def __del__(self):
         if self._scene:
@@ -75,7 +74,7 @@ class BaseEnv(VecEnv):
         return frozenset(Modality(k) for k in self._obs_cache.keys())
 
     def _obs_cache_clear(self) -> None:
-        self._obs_cache = TensorDict({}, batch_size=[self.get_num_envs()])
+        self._obs_cache = TensorDict({}, batch_size=[self.num_envs])
 
     @property
     def unwrapped(self) -> "BaseEnv":
@@ -107,16 +106,11 @@ class BaseEnv(VecEnv):
         """Return the environment config as dict."""
         ...
 
-    @abstractmethod
-    def get_num_envs(self) -> int:
-        """Returns the number of parallel environments (1 for real robot)."""
-        ...
-
-    def get_observations(
-        self, modalities: Optional[frozenset[Modality]] = None
+    def get_modality_observations(
+        self, modalities: Optional[Collection[Modality]] = None
     ) -> TensorDict:
         """
-        Returns observations at the current state. Derived from rsl_rl's `VecEnv`.
+        Returns observations at the current state. Not implicitly compatible with rsl_rl.
         Different `modalities` can be obtained in the result `TensorDict`.
         """
         modalities = self._resolve_modalities(modalities)
@@ -125,27 +119,40 @@ class BaseEnv(VecEnv):
         return self._obs_cache_get(modalities)
 
     def _resolve_modalities(
-        self, modalities: Optional[frozenset[Modality]]
+        self, modalities: Optional[Collection[Modality]]
     ) -> frozenset[Modality]:
         if modalities is None:
             return self.DEFAULT_MODALITIES
+        modalities = frozenset(modalities)
         unknown = modalities - self.available_modalities
         if unknown:
             raise ValueError(f"Unsupported modalities: {unknown}")
         return modalities
 
-    def get_agent_observations(self) -> TensorDict:
-        """Adapter: produces (policy_obs, extras) in the shape rsl_rl's `OnPolicyRunner` expects."""
+    def get_observations(self) -> TensorDict:
+        """
+        Adapter: produces (policy_obs, extras) in the shape rsl_rl's `OnPolicyRunner` expects.
 
-        policy_obs = self._agent_observations_mapping()
-        # TODO: incorporate more rsl_rl group obs
-        return TensorDict({"policy": policy_obs}, batch_size=self.get_num_envs())
+        Returns observations at the current state. Derived from rsl_rl's `VecEnv`.
+        """
+
+        obs = self.get_modality_observations()
+        agent_obs = self._build_agent_observations(obs)
+        return self._format_rsl_observation(agent_obs)
+
+    def _format_rsl_observation(self, agent_obs: th.Tensor) -> TensorDict:
+        """
+        Formats the `th.Tensor` observation into rsl_rl's TensorDict format.
+        """
+        return TensorDict(
+            {"policy": agent_obs}, batch_size=self.num_envs, device=self.device
+        )
 
     @abstractmethod
-    def _agent_observations_mapping(self) -> th.Tensor:
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
         """
-        Maps default modalities from `get_observations()` into agent observation.
-        Should be configured via given config.
+        Maps default modalities from `get_modality_observations()` into an agent observation.
+        The result `TensorDict` must match the observation groups from the rsl_rl's configuration file.
         """
         ...
 
