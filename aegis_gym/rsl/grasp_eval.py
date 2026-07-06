@@ -13,6 +13,7 @@ from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
 from envs import BaseEnv, IMAGE_MODALITIES
+from envs.wrappers import ObsPreviewEnvWrapper
 
 from grasp_train import init_clearml_task, create_env
 
@@ -36,6 +37,12 @@ def main():
     sweep = is_checkpoints_sweep_required(args)
 
     env = create_env(cfg)
+    if cfg.debug_cfg.enabled and (
+        cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+    ):
+        print("[EvalTrain] >>> Wrapping env with ObsPreviewEnvWrapper")
+        env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+
     print(
         f"[GraspEval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
     )
