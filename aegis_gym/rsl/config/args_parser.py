@@ -41,7 +41,6 @@ class LaunchArgs:
     disable_vision: Optional[bool]
 
     debug_enable: Optional[bool]
-    debug_swap_tool_cameras: Optional[bool]
     debug_preview_vis_obs: Optional[bool]
     debug_record_vis_obs: Optional[bool]
     debug_record_dir: Optional[Path]
@@ -123,12 +122,6 @@ def parse_arguments(
         help="Enable debugging tools",
     )
     p.add_argument(
-        "--debug-swap-tool-cameras",
-        action="store_true",
-        default=False,
-        help="Swap the sides of the tool cameras (i.e. left<->right).",
-    )
-    p.add_argument(
         "--debug-vis-preview",
         action="store_true",
         default=False,
@@ -205,7 +198,6 @@ def parse_arguments(
         visualize_camera=args.visualize_camera,
         disable_vision=args.disable_vision,
         debug_enable=args.debug_enable,
-        debug_swap_tool_cameras=args.debug_swap_tool_cameras,
         debug_preview_vis_obs=args.debug_vis_preview,
         debug_record_vis_obs=args.debug_record_vis_obs,
         debug_record_dir=args.debug_record_dir,
