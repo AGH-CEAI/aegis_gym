@@ -9,5 +9,6 @@ class DebugCfg(BaseCfg):
     enabled: bool = False
     swap_tool_cameras: bool = False
     enable_vis_preview: bool = False
+    vis_preview_side: int = 256
     enable_record_obs: bool = False
     record_dir: Path = Path("/tmp")

@@ -183,13 +183,13 @@ class GraspEnvROS(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> ResetReturn:
+    def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> StepReturn:
+    def _step(self, actions: th.Tensor) -> StepReturn:
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 

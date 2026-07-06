@@ -45,5 +45,11 @@ class BaseEnvWrapper(BaseEnv):
     def reset(self) -> ResetReturn:
         return self._env.reset()
 
+    def _reset(self) -> ResetReturn:
+        return self._env._reset()
+
     def step(self, actions: th.Tensor) -> StepReturn:
         return self._env.step(actions)
+
+    def _step(self, actions: th.Tensor) -> StepReturn:
+        return self._env._step(actions)

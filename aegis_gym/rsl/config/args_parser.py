@@ -129,7 +129,7 @@ def parse_arguments(
         help="Swap the sides of the tool cameras (i.e. left<->right).",
     )
     p.add_argument(
-        "--debug-enable-vis-preview",
+        "--debug-vis-preview",
         action="store_true",
         default=False,
         help="Show a windows with preview of the visual observations.",
@@ -206,7 +206,7 @@ def parse_arguments(
         disable_vision=args.disable_vision,
         debug_enable=args.debug_enable,
         debug_swap_tool_cameras=args.debug_swap_tool_cameras,
-        debug_preview_vis_obs=args.debug_enable_vis_preview,
+        debug_preview_vis_obs=args.debug_vis_preview,
         debug_record_vis_obs=args.debug_record_vis_obs,
         debug_record_dir=args.debug_record_dir,
         enable_recording=args.record,

@@ -4,7 +4,7 @@ from rsl_rl.runners import OnPolicyRunner
 from clearml import Task
 
 from envs import BaseEnv
-from envs.wrappers import VisionAugWrapper
+from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
 from envs.grasp_env import GraspEnv
 from behavior_cloning import BehaviorCloning
@@ -141,8 +141,14 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             if cfg.dr_cfg.enabled:
                 print("[GraspTrain] >>> (BC) Wrapping env with VisionAugWrapper")
-                env = VisionAugWrapper(
+                env = VisionAugEnvWrapper(
                     env=env, cfg_image_aug=cfg.dr_cfg.image_aug, cfg_env=cfg.env_cfg
+                )
+
+            if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
+                print("[GraspTrain] >>> (BC) Wrapping env with ObsPreviewEnvWrapper")
+                env = ObsPreviewEnvWrapper(
+                    env=env, cfg_debug=cfg.debug_cfg, cfg_env=cfg.env_cfg
                 )
 
             print("[GraspTrain] >>> (BC) Preparing policy runner")
@@ -160,9 +166,17 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
         case Algorithm.RL:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
 
+            if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
+                print("[GraspTrain] >>> (RL) Wrapping env with ObsPreviewEnvWrapper")
+                env = ObsPreviewEnvWrapper(
+                    env=env, cfg_debug=cfg.debug_cfg, cfg_env=cfg.env_cfg
+                )
+
+            print("[GraspTrain] >>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(
                 env=env, train_cfg=rsl_rl_cfg, log_dir=str(log_dir), device=str(device)
             )
+            print("[GraspTrain] >>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
             )

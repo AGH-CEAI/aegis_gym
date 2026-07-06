@@ -156,12 +156,22 @@ class BaseEnv(VecEnv):
         """
         ...
 
-    @abstractmethod
     def reset(self) -> ResetReturn:
+        """Resets the environment. Derived from VecEnv. Needs the `_reset()` implementation."""
+        self._obs_cache_clear()
+        return self._reset()
+
+    @abstractmethod
+    def _reset(self) -> ResetReturn:
         """Resets the environment."""
         ...
 
-    @abstractmethod
     def step(self, actions: th.Tensor) -> StepReturn:
+        """Perform a step in environment. Derived from VecEnv. Needs the `_step()` implementation."""
+        self._obs_cache_clear()
+        return self._step(actions=actions)
+
+    @abstractmethod
+    def _step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv."""
         ...

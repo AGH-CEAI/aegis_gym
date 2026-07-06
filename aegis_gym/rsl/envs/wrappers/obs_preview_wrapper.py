@@ -1,0 +1,124 @@
+import cv2
+import numpy as np
+
+import torch as th
+from tensordict import TensorDict
+
+from .base_wrapper import BaseEnvWrapper
+from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
+
+from config.types import EnvCfg, DebugCfg
+
+
+class ObsPreviewEnvWrapper(BaseEnvWrapper):
+    """
+    The debug wrapper to preview observations (e.g. visual) from the environment.
+    """
+
+    def __init__(self, env: BaseEnv, cfg_debug: DebugCfg, cfg_env: EnvCfg):
+        super().__init__(env=env)
+        self._cfg = cfg_debug
+        self.image_resolution = cfg_env.image_resolution
+        self._modalities = self._env.available_modalities
+
+        if not self._cfg.enabled:
+            raise ValueError(
+                "Activate the debugging mode to use the ObsPreviewEnvWrapper (`--debug-enable`)."
+            )
+
+    def step(self, actions: th.Tensor) -> StepReturn:
+        res = self._env.step(actions)
+        mm_obs = self._env.get_modality_observations(self._modalities)
+        self._preview(mm_obs)
+        return res
+
+    def reset(self) -> ResetReturn:
+        res = self._env.reset()
+        mm_obs = self._env.get_modality_observations(self._modalities)
+        self._preview(mm_obs)
+        return res
+
+    def _preview(self, multimodal_obs: TensorDict) -> None:
+        if self._cfg.enable_vis_preview:
+            self._show_visual_obs(multimodal_obs)
+
+    def _show_visual_obs(self, mm_obs: TensorDict) -> None:
+        present_keys = frozenset(mm_obs.keys())
+        ordered_image_modalities = [m for m in IMAGE_MODALITIES if m in present_keys]
+        if not ordered_image_modalities:
+            return
+
+        images = mm_obs.select(*(m for m in ordered_image_modalities))
+        preview = self._format_visual_obs(
+            mm_obs=images, ordered_modalities=ordered_image_modalities, normalize=True
+        )
+        cv2.imshow("[DEBUG] Visual observation preview", preview)
+        cv2.waitKey(1)
+
+    def _format_visual_obs(
+        self,
+        mm_obs: TensorDict,
+        ordered_modalities: list[Modality],
+        normalize: bool,
+    ) -> np.ndarray:
+        max_side = self._cfg.vis_preview_side
+        num_envs = mm_obs.batch_size[0]
+        GRID_LINE_COLOR = (80, 80, 80)  # BGR, subtle gray
+
+        rows: list[np.ndarray] = []
+        for env_idx in range(num_envs):
+            row_images: list[np.ndarray] = []
+            for col_idx, modality in enumerate(ordered_modalities):
+                img = (
+                    mm_obs[modality.value][env_idx].permute(1, 2, 0).cpu().numpy()
+                )  # CHW -> HWC
+                img = (
+                    (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
+                )
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+                height, width = img.shape[:2]
+                scale = min(max_side / width, max_side / height)
+                img = cv2.resize(
+                    img,
+                    (int(width * scale), int(height * scale)),
+                    interpolation=cv2.INTER_AREA,
+                )
+                if env_idx == 0:
+                    cv2.putText(
+                        img,
+                        modality.value,
+                        org=(10, 30),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.5,
+                        color=(0, 255, 0),
+                        thickness=2,
+                    )
+                if col_idx == 0:
+                    img_height = img.shape[0]
+                    cv2.putText(
+                        img,
+                        f"env {env_idx}",
+                        org=(10, img_height - 10),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.5,
+                        color=(0, 255, 0),
+                        thickness=2,
+                    )
+
+                # 1px separator on right and bottom edges (skip last col/row to avoid a double-thick outer border)
+                right = 1 if col_idx < len(ordered_modalities) - 1 else 0
+                bottom = 1 if env_idx < num_envs - 1 else 0
+                img = cv2.copyMakeBorder(
+                    img,
+                    top=0,
+                    bottom=bottom,
+                    left=0,
+                    right=right,
+                    borderType=cv2.BORDER_CONSTANT,
+                    value=GRID_LINE_COLOR,
+                )
+                row_images.append(img)
+            rows.append(np.hstack(row_images))
+
+        return np.vstack(rows)

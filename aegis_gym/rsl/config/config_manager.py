@@ -165,7 +165,7 @@ class ConfigManager:
             cfg_dict["debug"]["swap_tool_cameras"] = args.debug_swap_tool_cameras
             cfg_dict["debug"]["enable_vis_preview"] = args.debug_preview_vis_obs
             cfg_dict["debug"]["enable_receord_obs"] = args.debug_record_vis_obs
-            cfg_dict["debug"]["record_dir"] = args.debug_record_dir
+            cfg_dict["debug"]["record_dir"] = str(args.debug_record_dir)
 
         # Confirm types of data
         cfg_dict["env"]["image_resolution"] = tuple(cfg_dict["env"]["image_resolution"])

@@ -453,13 +453,13 @@ class GraspEnv(BaseEnv):
         self.object.set_pose(pose=pose)
         self.goal_pose[:] = pose
 
-    def reset(self) -> ResetReturn:
+    def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
         self._log_state_to_plot_juggler()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> StepReturn:
+    def _step(self, actions: th.Tensor) -> StepReturn:
         # Update time
         self.episode_length_buf += 1
 
