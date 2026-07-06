@@ -1,3 +1,7 @@
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
 import cv2
 import numpy as np
 
@@ -20,6 +24,8 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         self._cfg = cfg_debug
         self.image_resolution = cfg_env.image_resolution
         self._modalities = self._env.available_modalities
+        self._record_dir: Optional[Path] = None
+        self._frame_count: int = 0
 
         if not self._cfg.enabled:
             raise ValueError(
@@ -39,8 +45,9 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         return res
 
     def _preview(self, multimodal_obs: TensorDict) -> None:
-        if self._cfg.enable_vis_preview:
-            self._show_visual_obs(multimodal_obs)
+        if not (self._cfg.enable_vis_preview or self._cfg.enable_record_obs):
+            return
+        self._show_visual_obs(multimodal_obs)
 
     def _show_visual_obs(self, mm_obs: TensorDict) -> None:
         present_keys = frozenset(mm_obs.keys())
@@ -52,8 +59,29 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         preview = self._format_visual_obs(
             mm_obs=images, ordered_modalities=ordered_image_modalities, normalize=True
         )
-        cv2.imshow("[DEBUG] Visual observation preview", preview)
-        cv2.waitKey(1)
+
+        if self._cfg.enable_vis_preview:
+            cv2.imshow("[DEBUG] Visual observation preview", preview)
+            cv2.waitKey(1)
+
+        if self._cfg.enable_record_obs:
+            self._write_frame(preview)
+
+    def _write_frame(self, frame: np.ndarray) -> None:
+        if self._record_dir is None:
+            self._record_dir = self._create_record_dir()
+        out_path = self._record_dir / f"frame_{self._frame_count:06d}.png"
+        cv2.imwrite(str(out_path), frame)
+        self._frame_count += 1
+
+    def _create_record_dir(self) -> Path:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        record_dir = self._cfg.record_dir / f"obs_preview_{timestamp}"
+        record_dir.mkdir(parents=True, exist_ok=True)
+        print(
+            f"[ObsPreviewEnvWrapper] Recording observation preview frames to {record_dir}"
+        )
+        return record_dir
 
     def _format_visual_obs(
         self,
