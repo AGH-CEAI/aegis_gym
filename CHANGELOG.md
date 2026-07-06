@@ -8,18 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Introducing observation cache in the `BaseEnv`class, which allows to query the same observation multiple times without re-calculating the observation.
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Added `Modality` enum for indicating all available and default modalities in `BaseEnv` specializations.
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Added `RandomizationTypes` enum for flagging `BaseScene` specialization available domain randomization capabilities.
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Added `BaseEnvWrapper` with an implementation for visual observations `VisualAugEnvWrapper` and for debugging preview & recording `ObsPreviewEnvWrapper`.
+- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - AegisGrasp cleanup p.3: Added `CamerasSetup` enum in the config.
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.2: Added `BaseEnv`, `BaseManipulator` and `BaseScene` abstractions for use in AegisGrasp.
+
 ### Changed
+
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all debug preview code from the `grasp_env.py` into a new env-wrapper: `ObsPreviewEnvWrapper`.
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all visual augumentation from the domain randomization (PR #116) from the `grasp_env.py` into a new env-wrapper: `VisualAugEnvWrapper`.
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Totally makeover of the `get_observations()` and `get_observations_vis()` API into `get_modality_observations()`, `_build_agent_observations()` and `_format_rslrl_observations()`.
+- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - AegisGrasp cleanup p.3: Extracted objects into `BaseObject` interface.
+- [PR-129](https://github.com/AGH-CEAI/aegis_gym/pull/129) - AegisGrasp cleanup p.2: Config total makeover into `ConfigManager` and `LaunchArgs` classes. Added strcit config creation control (via frozen dataclasses).
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Created `BaseEnv` interface and loosely used it for both of the grasp env implementations.
+- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Refactored `Manipulator` interfaces into `BaseManipulator` abstraction and its `RosGrpcManipulator` and `GenesisManipualtor` implementations.
+
+
 ### Deprecated
 ### Removed
+
+- [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
+
 ### Fixed
+- [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Fixed a typo in `genesis_manipulator.py` in `ctrl_gripper_X()` methods which was blocking more than 2 envs from running.
+
+
 ### Security
 
 ## [v202606181210]
 
 ### Added
 
-- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - Added `CamerasSetup` enum in the config.
-- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - Added `BaseEnv`, `BaseManipulator` and `BaseScene` abstractions for use in AegisGrasp.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `---debug-enable-vis-preview` for showing cameras preview.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-record-vis-obs` and `--debug-record-dir` arg for recording cameras preview into a given directory.
 - [PR-113](https://github.com/AGH-CEAI/aegis_gym/pull/113) - Added flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right).
@@ -33,10 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-132](https://github.com/AGH-CEAI/aegis_gym/pull/132) - Extracted objects into `BaseObject` interface.
-- [PR-129](https://github.com/AGH-CEAI/aegis_gym/pull/129) - Config total makeover into `ConfigManager` and `LaunchArgs` classes. Added strcit config creation control (via frozen dataclasses).
-- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Created `BaseEnv` interface and loosely used it for both of the grasp env implementations.
-- [PR-123](https://github.com/AGH-CEAI/aegis_gym/pull/123) - AegisGrasp cleanup p.1: Refactored `Manipulator` interfaces into `BaseManipulator` abstraction and its `RosGrpcManipulator` and `GenesisManipualtor` implementations.
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Parametrized the decoder builder in `AutoencoderCNNEncoder` (resolved issue #79).
 - [PR-103](https://github.com/AGH-CEAI/aegis_gym/pull/103) - Tensor operation improvements in `grasp_env.py`, `grasp_env_ros.py`, `PerCameraCNNEncoder`, `SharedCNNEncoder` and `AutoencoderCNNEncoder`.
 - [PR-109](https://github.com/AGH-CEAI/aegis_gym/pull/109) - Made pose head optional.
