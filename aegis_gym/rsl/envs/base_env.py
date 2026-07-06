@@ -138,9 +138,9 @@ class BaseEnv(VecEnv):
 
         obs = self.get_modality_observations()
         agent_obs = self._build_agent_observations(obs)
-        return self._format_rsl_observation(agent_obs)
+        return self._format_rslrl_observations(agent_obs)
 
-    def _format_rsl_observation(self, agent_obs: th.Tensor) -> TensorDict:
+    def _format_rslrl_observations(self, agent_obs: th.Tensor) -> TensorDict:
         """
         Formats the `th.Tensor` observation into rsl_rl's TensorDict format.
         """

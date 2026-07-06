@@ -26,7 +26,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         obs = self.get_modality_observations()
         obs = self._augment(obs)
         agent_obs = self._build_agent_observations(obs)
-        return self._format_rsl_observation(agent_obs)
+        return self._format_rslrl_observations(agent_obs)
 
     def get_modality_observations(
         self, modalities: Optional[Collection[Modality]] = None

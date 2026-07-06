@@ -145,7 +145,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                     env=env, cfg_image_aug=cfg.dr_cfg.image_aug, cfg_env=cfg.env_cfg
                 )
 
-            if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
+            if cfg.debug_cfg.enabled and (
+                cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+            ):
                 print("[GraspTrain] >>> (BC) Wrapping env with ObsPreviewEnvWrapper")
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
@@ -164,7 +166,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
         case Algorithm.RL:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
 
-            if cfg.debug_cfg.enabled and cfg.debug_cfg.enable_vis_preview:
+            if cfg.debug_cfg.enabled and (
+                cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+            ):
                 print("[GraspTrain] >>> (RL) Wrapping env with ObsPreviewEnvWrapper")
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
