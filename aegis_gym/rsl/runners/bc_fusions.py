@@ -2,6 +2,8 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+# TODO(enc_mem_dec): Remove this file and source it from the enc_mem_dec package.
+
 
 class BaseFusionModule(nn.Module):
     def __init__(self):
