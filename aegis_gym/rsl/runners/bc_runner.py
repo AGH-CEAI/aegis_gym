@@ -158,7 +158,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 action_loss = F.mse_loss(pred_action, batch["actions"])
 
                 # Compute pose estimation loss (position + orientation)
-                pose_loss = th.tensor(0.0, device=self.device)
+                pose_loss = th.tensor(0.0, device=self._device)
                 for pred_pose in pred_poses:
                     pose_loss += self._compute_pose_loss(
                         pred_pose, batch["object_poses"]
@@ -329,12 +329,12 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self, batch: dict[str, th.Tensor]
     ) -> tuple[th.Tensor, tuple[th.Tensor, ...] | None]:
         if not self._enable_recon:
-            return th.tensor(0.0, device=self.device), None
+            return th.tensor(0.0, device=self._device), None
 
         enc = self._policy.get_encoder()
         recons = enc.reconstruct(batch["rgb_obs"])
 
-        recon_loss = th.tensor(0.0, device=self.device)
+        recon_loss = th.tensor(0.0, device=self._device)
 
         for c in range(self._policy.num_cameras):
             target = batch["rgb_obs"][:, c * 3 : (c + 1) * 3]
@@ -378,7 +378,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         if interval == 0:
             return {"enabled": False, "part": "both", "interval": None}
 
-        target = ResetLastLayerTarget.from_value(part)
+        target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
 
         if interval is None or interval <= 0:
             return {"enabled": False, "target": target, "interval": None}
@@ -457,7 +457,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
     def load(self, path: Path) -> None:
         """Load model checkpoint."""
-        checkpoint = th.load(path, map_location=self.device, weights_only=False)
+        checkpoint = th.load(path, map_location=self._device, weights_only=False)
         self._policy.load_state_dict(checkpoint["model_state_dict"])
         self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.current_iter = checkpoint["current_iter"]
