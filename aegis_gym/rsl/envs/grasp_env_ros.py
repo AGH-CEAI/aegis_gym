@@ -1,18 +1,13 @@
 import math
-import tempfile
 import time
-from pathlib import Path
 from typing import Optional
 
-import cv2
-import numpy as np
+from tensordict import TensorDict
 import torch as th
 from genesis.utils.geom import transform_by_quat
-from PIL import Image
-from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
-from .base_env import BaseEnv, StepReturn, ResetReturn
+from .base_env import BaseEnv, StepReturn, ResetReturn, Modality
 from .objects import BaseBox, ObjectsFactory
 from .scene import BaseScene
 
@@ -21,8 +16,21 @@ from config.types import Control, CamerasSetup
 
 
 class GraspEnvROS(BaseEnv):
+    DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+
     def __init__(self, cfg: ExpConfig, scene: Optional[BaseScene] = None) -> None:
-        super().__init__(scene=scene)  # TODO(issue#128) introduce Scene abstraction
+        super().__init__(
+            scene=scene, num_envs=cfg.env_cfg.num_envs
+        )  # TODO(issue#128) introduce Scene abstraction
+
+        self._observation_fns = {
+            Modality.TCP_POSE: self._observe_tcp_pose,
+            Modality.OBJECT_POSE: self._observe_object_pose,
+            Modality.CAMERA_SCENE_RGB: self._observe_camera_scene,
+            Modality.CAMERA_TOOL_LEFT_RGB: self._observe_camera_tool_left,
+            Modality.CAMERA_TOOL_RIGHT_RGB: self._observe_camera_tool_right,
+        }
+
         env_cfg = cfg.env_cfg
         self.device = cfg.get_device()
 
@@ -78,7 +86,6 @@ class GraspEnvROS(BaseEnv):
         self.reset()
 
     def _extract_config(self) -> None:
-        self.num_envs = self._cfg_env.num_envs
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
         self.num_actions = self._cfg_env.num_actions
@@ -114,6 +121,26 @@ class GraspEnvROS(BaseEnv):
 
     def get_num_envs(self) -> int:
         return self.num_envs
+
+    def _observe_tcp_pose(self) -> th.Tensor:
+        return self.robot.get_tcp_pose()
+
+    def _observe_object_pose(self) -> th.Tensor:
+        return self.object.get_pose()
+
+    def _observe_camera_scene(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.SCENE_CAMERA)
+
+    def _observe_camera_tool_left(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.TOOL_LEFT)
+
+    def _observe_camera_tool_right(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.TOOL_RIGHT)
+
+    def _read_rgb_camera(self, camera: CameraID) -> th.Tensor:
+        rgb = self.robot.get_camera_image(camera_id=camera)
+        rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
+        return rgb
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -156,13 +183,13 @@ class GraspEnvROS(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> ResetReturn:
+    def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> StepReturn:
+    def _step(self, actions: th.Tensor) -> StepReturn:
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 
@@ -180,7 +207,7 @@ class GraspEnvROS(BaseEnv):
         self.robot.read_state()
 
         # check termination
-        env_reset_idx = self.is_episode_complete()
+        env_reset_idx = self._is_episode_complete()
         if len(env_reset_idx) > 0:
             self.reset_idx(env_reset_idx)
 
@@ -204,10 +231,7 @@ class GraspEnvROS(BaseEnv):
     ) -> None:
         raise NotImplementedError
 
-    def get_privileged_observations(self) -> None:
-        raise NotImplementedError
-
-    def is_episode_complete(self) -> th.Tensor:
+    def _is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
 
         # check if the end-effector is in the valid position
@@ -221,13 +245,13 @@ class GraspEnvROS(BaseEnv):
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def get_observations(self) -> TensorDict:
-        tcp_pose = self.robot.get_tcp_pose()
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
+        tcp_pose = obs[Modality.TCP_POSE]
         tcp_pos, tcp_quat = (
             tcp_pose[:, :3],
             tcp_pose[:, 3:],
         )
-        obj_pose = self.object.get_pose()
+        obj_pose = obs[Modality.OBJECT_POSE]
         obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
 
         obs_components = [
@@ -238,97 +262,7 @@ class GraspEnvROS(BaseEnv):
         ]
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
-        return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
-
-    def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
-        # TODO implement gRPC image transportation
-        raise NotImplementedError
-
-    def get_observations_vis(
-        self,
-        normalize: bool = True,
-        swap_tool_cameras: bool = False,
-        enable_vis_preview: bool = False,
-        enable_record_obs: bool = False,
-        record_dir: Optional[Path] = None,
-    ) -> th.Tensor:
-        # TODO(issue#41) Unify the camera setup
-        rgb_list: list[Optional[th.Tensor]] = [None] * len(self._cameras)
-
-        for cam_name in self._cameras:
-            cam_id = self._cameras_order[cam_name]
-            if swap_tool_cameras:
-                cam_name_tmp = {"left": "right", "right": "left"}.get(
-                    cam_name, cam_name
-                )
-                cam_id = self._cameras_order[cam_name_tmp]
-
-            rgb = self.robot.get_camera_image(CameraID.from_str(cam_name))
-            if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
-            rgb_list[cam_id] = rgb
-
-        # TODO(issue#117) redesign the visualization preview
-        # TODO(issue#121) unify the code between grasp_env and grasp_env_ros
-        if enable_vis_preview or enable_record_obs:
-            preview = self._create_vis_observation_preview(
-                obs=rgb_list, normalize=normalize
-            )
-
-            if enable_vis_preview:
-                cv2.imshow("Visual observation preview", preview)
-                cv2.waitKey(1)
-
-            if enable_record_obs:
-                record_dir = (
-                    record_dir or Path(tempfile.gettempdir()) / "aegis_vis_obs_obs"
-                )
-                record_dir.mkdir(parents=True, exist_ok=True)
-                self._record_vis_observation(preview=preview, output_dir=record_dir)
-
-        return th.cat(rgb_list, dim=1).float()
-
-    def _create_vis_observation_preview(
-        self, obs: list[th.Tensor], normalize: bool
-    ) -> np.ndarray:
-
-        opencv_images: list[Optional[np.ndarray]] = [None] * len(obs)
-        for cam_name in self._cameras:
-            cam_id = self._cameras_order[cam_name]
-
-            FIRST_IMG = 0
-            img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
-            img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-            height, width = img.shape[:2]
-            max_side = 256
-            scale = min(max_side / width, max_side / height)
-            img = cv2.resize(
-                img,
-                (int(width * scale), int(height * scale)),
-                interpolation=cv2.INTER_AREA,
-            )
-            cv2.putText(
-                img,
-                str(cam_name),
-                org=(10, 30),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=0.5,
-                color=(0, 255, 0),
-                thickness=2,
-            )
-            opencv_images[cam_id] = img
-
-        return np.hstack(opencv_images)
-
-    def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
-        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
-        record_step = getattr(self, "_record_step", 0)
-        fname = f"frame_{record_step:08d}.png"
-        Image.fromarray(preview).save(output_dir / fname)
-
-        self._record_step = record_step + 1
+        return obs_tensor
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()

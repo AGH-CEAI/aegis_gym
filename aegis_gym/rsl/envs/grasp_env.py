@@ -1,24 +1,18 @@
 import math
-import tempfile
-from pathlib import Path
 from typing import Optional
 
-import cv2
 import genesis as gs
 import numpy as np
-import torch as th
-import torch.nn.functional as F
-from PIL import Image
-from genesis.vis.camera import Camera
-
 from tensordict import TensorDict
+import torch as th
+from genesis.vis.camera import Camera
 from genesis.utils.geom import (
     transform_by_quat,
     transform_quat_by_quat,
 )
 
 from .manipulator import GenesisManipulator
-from .base_env import BaseEnv, StepReturn, ResetReturn
+from .base_env import BaseEnv, StepReturn, ResetReturn, Modality
 from .objects import BaseBox, ObjectsFactory
 from .plotjuggler_udp import PlotJugglerUDP
 
@@ -29,12 +23,24 @@ from config.types import ExpConfig, CameraPoseCfg, Control, CamerasSetup
 
 
 class GraspEnv(BaseEnv):
+    DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+
     def __init__(
         self,
         cfg: ExpConfig,
     ) -> None:
-        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
+        super().__init__(
+            scene=None, num_envs=cfg.env_cfg.num_envs
+        )  # TODO(issue#128) introduce Scene abstraction
         self.device = cfg.get_device()
+
+        self._observation_fns = {
+            Modality.TCP_POSE: self._observe_tcp_pose,
+            Modality.OBJECT_POSE: self._observe_object_pose,
+            Modality.CAMERA_SCENE_RGB: self._observe_camera_scene,
+            Modality.CAMERA_TOOL_LEFT_RGB: self._observe_camera_tool_left,
+            Modality.CAMERA_TOOL_RIGHT_RGB: self._observe_camera_tool_right,
+        }
 
         enable_plot_juggler = cfg.args.enable_plotjuggler
         if enable_plot_juggler:
@@ -57,7 +63,6 @@ class GraspEnv(BaseEnv):
         self._cfg_dr = cfg.dr_cfg
         self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
         self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
-        self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
         self.device = cfg.get_device()
 
         print(
@@ -101,7 +106,6 @@ class GraspEnv(BaseEnv):
         # TODO(issue##117) redesign the whole camera preview system
         self.show_cameras_gui = self._cfg_env.visualize_camera
 
-        self.num_envs = self._cfg_env.num_envs
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
         self.num_actions = self._cfg_env.num_actions
@@ -311,6 +315,29 @@ class GraspEnv(BaseEnv):
     def get_num_envs(self) -> int:
         return self.num_envs
 
+    def _observe_tcp_pose(self) -> th.Tensor:
+        return self.robot.get_tcp_pose()
+
+    def _observe_object_pose(self) -> th.Tensor:
+        return self.object.get_pose()
+
+    def _observe_camera_scene(self) -> th.Tensor:
+        return self._render_rgb_camera("scene_cam")
+
+    def _observe_camera_tool_left(self) -> th.Tensor:
+        return self._render_rgb_camera("tool_left_cam")
+
+    def _observe_camera_tool_right(self) -> th.Tensor:
+        return self._render_rgb_camera("tool_right_cam")
+
+    def _render_rgb_camera(self, camera: str) -> th.Tensor:
+        rgb, _, _, _ = self._cameras[camera].render(
+            rgb=True, depth=False, segmentation=False, normal=False
+        )
+        rgb = rgb.permute(0, 3, 1, 2)[:, :3]  # (B, 3, H, W)
+        rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
+        return rgb
+
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
@@ -384,8 +411,8 @@ class GraspEnv(BaseEnv):
             self.episode_sums[key][envs_idx] = 0.0
 
         if self._cfg_dr.enabled:
+            self._setup_dr_pd_gains()
             self._randomize_camera_extrinsics(envs_idx)
-            self._resample_aug_profile(envs_idx)
 
     def generate_object_poses(self, seed: int) -> th.Tensor:
         rng = th.Generator(device=self.device)
@@ -426,13 +453,13 @@ class GraspEnv(BaseEnv):
         self.object.set_pose(pose=pose)
         self.goal_pose[:] = pose
 
-    def reset(self) -> ResetReturn:
+    def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=gs.device))
         self._log_state_to_plot_juggler()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> StepReturn:
+    def _step(self, actions: th.Tensor) -> StepReturn:
         # Update time
         self.episode_length_buf += 1
 
@@ -446,15 +473,11 @@ class GraspEnv(BaseEnv):
 
         self.robot.ctrl_apply_vel_action(actions, open_gripper=True)
         self.scene.step()
-        # TODO(issue#117) redesign the visualize-cameras feature
-        if self.show_cameras_gui:
-            self.get_observations_vis()
-            if self._cfg_dr.debug_viewer:
-                self._show_augmented_debug()
+
         self._log_state_to_plot_juggler()
 
         # check termination
-        env_reset_idx = self.is_episode_complete()
+        env_reset_idx = self._is_episode_complete()
         if len(env_reset_idx) > 0:
             self.reset_idx(env_reset_idx)
 
@@ -537,10 +560,7 @@ class GraspEnv(BaseEnv):
             self.scene.step()
             self._log_state_to_plot_juggler()
 
-    def get_privileged_observations(self) -> None:
-        raise NotImplementedError
-
-    def is_episode_complete(self) -> th.Tensor:
+    def _is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
 
         # check if the end-effector is in the valid position
@@ -554,10 +574,10 @@ class GraspEnv(BaseEnv):
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def get_observations(self) -> TensorDict:
-        tcp_pose = self.robot.get_tcp_pose()
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
+        tcp_pose = obs[Modality.TCP_POSE]
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
-        obj_pose = self.object.get_pose()
+        obj_pose = obs[Modality.OBJECT_POSE]
         obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
 
         obs_components = [
@@ -566,120 +586,8 @@ class GraspEnv(BaseEnv):
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
-        obs_tensor = th.cat(obs_components, dim=-1)
-        self.extras["observations"]["critic"] = obs_tensor
-        return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
-
-    def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
-        rgb_left, _, _, _ = self._cameras["scene_left_cam"].render(
-            rgb=True, depth=False, segmentation=False, normal=False
-        )
-        rgb_right, _, _, _ = self._cameras["scene_right_cam"].render(
-            rgb=True, depth=False, segmentation=False, normal=False
-        )
-
-        # convert to the NCHW format
-        rgb_left = rgb_left.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
-        rgb_right = rgb_right.permute(0, 3, 1, 2)[:, :3]  # shape (N, 3, H, W)
-
-        # normalize if requested
-        if normalize:
-            rgb_left = th.clamp(rgb_left, min=0.0, max=255.0).div_(255.0)
-            rgb_right = th.clamp(rgb_right, min=0.0, max=255.0).div_(255.0)
-
-        # concatenate left and right rgb images along channel dimension
-        stereo_rgb = th.cat([rgb_left, rgb_right], dim=1)
-        return stereo_rgb
-
-    def get_observations_vis(
-        self,
-        normalize: bool = True,
-        swap_tool_cameras: bool = False,
-        enable_vis_preview: bool = False,
-        enable_record_obs: bool = False,
-        record_dir: Optional[Path] = None,
-    ) -> th.Tensor:
-        rgb_list: list[Optional[th.Tensor]] = [None] * len(self._cameras)
-
-        for cam_name, cam in self._cameras.items():
-            if swap_tool_cameras:
-                # TODO(issue#121) unify cameras names
-                cam_name = {
-                    "tool_left_cam": "tool_right_cam",
-                    "tool_right_cam": "tool_left_cam",
-                }.get(cam_name, cam_name)
-            cam_id = self._cameras_order[cam_name]
-
-            rgb, _, _, _ = cam.render(
-                rgb=True, depth=False, segmentation=False, normal=False
-            )
-            rgb = rgb.permute(0, 3, 1, 2)[:, :3]  # (B, 3, H, W)
-            if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
-
-            if self._cfg_dr.enabled:
-                rgb = self._apply_image_augmentation(rgb)
-
-            rgb_list[cam_id] = rgb
-
-        # TODO(issue#117) redesign the visualization preview
-        # TODO(issue#121) unify the code between grasp_env and grasp_env_ros
-        if enable_vis_preview or enable_record_obs:
-            preview = self._create_vis_observation_preview(
-                obs=rgb_list, normalize=normalize
-            )
-
-            if enable_vis_preview:
-                cv2.imshow("Visual observation preview", preview)
-                cv2.waitKey(1)
-
-            if enable_record_obs:
-                record_dir = record_dir or Path(tempfile.gettempdir()) / "aegis_vis_obs"
-                record_dir.mkdir(parents=True, exist_ok=True)
-                self._record_vis_observation(preview=preview, output_dir=record_dir)
-
-        return th.cat(rgb_list, dim=1).float()
-
-    def _create_vis_observation_preview(
-        self, obs: list[th.Tensor], normalize: bool
-    ) -> np.ndarray:
-
-        opencv_images: list[np.ndarray] = [None] * len(obs)
-        for cam_name in self._cameras.keys():
-            cam_id = self._cameras_order[cam_name]
-
-            FIRST_IMG = 0
-            img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
-            img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-            height, width = img.shape[:2]
-            max_side = 256
-            scale = min(max_side / width, max_side / height)
-            img = cv2.resize(
-                img,
-                (int(width * scale), int(height * scale)),
-                interpolation=cv2.INTER_AREA,
-            )
-            cv2.putText(
-                img,
-                str(cam_name),
-                org=(10, 30),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=0.5,
-                color=(0, 255, 0),
-                thickness=2,
-            )
-            opencv_images[cam_id] = img
-
-        return np.hstack(opencv_images)
-
-    def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
-        record_step = getattr(self, "_record_step", 0)
-        fname = f"frame_{record_step:08d}.png"
-        Image.fromarray(preview).save(output_dir / fname)
-
-        self._record_step = record_step + 1
+        return th.cat(obs_components, dim=-1)
+        # return TensorDict({"policy": res}, batch_size=self._num_envs, device=self.device)
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()
@@ -878,138 +786,6 @@ class GraspEnv(BaseEnv):
         T[:3, 3] = t
         return T
 
-    def _init_aug_profile(self) -> dict[str, th.Tensor]:
-        aug = self._cfg_dr.image_aug
-        if not self._cfg_dr.enabled or not aug.per_episode_aug:
-            return {}
-        N = self.num_envs
-        return {
-            "brightness_jitter": th.zeros(N, device=self.device),
-            "contrast_jitter": th.zeros(N, device=self.device),
-            "gaussian_noise_std": th.zeros(N, device=self.device),
-            "gamma_range": th.zeros(N, device=self.device),
-            "blur_active": th.zeros(N, dtype=th.bool, device=self.device),
-            "channel_jitter": th.zeros(N, 3, device=self.device),
-            "cutout_active": th.zeros(N, dtype=th.bool, device=self.device),
-            "cutout_y": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_x": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_h": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_w": th.zeros(N, dtype=th.long, device=self.device),
-        }
-
-    def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
-        if not self._aug_profile:
-            return
-        aug = self._cfg_dr.image_aug
-        n = len(envs_idx)
-        dev = self.device
-
-        def sample(max_val: float) -> th.Tensor:
-            active = th.rand(n, device=dev) < 0.5
-            return active.float() * (th.rand(n, device=dev) * max_val)
-
-        self._aug_profile["brightness_jitter"][envs_idx] = sample(aug.brightness_jitter)
-        self._aug_profile["contrast_jitter"][envs_idx] = sample(aug.contrast_jitter)
-        self._aug_profile["gaussian_noise_std"][envs_idx] = sample(
-            aug.gaussian_noise_std
-        )
-        self._aug_profile["gamma_range"][envs_idx] = sample(aug.gamma_range)
-        self._aug_profile["blur_active"][envs_idx] = (
-            th.rand(n, device=dev) < aug.blur_prob
-        )
-
-        ch = aug.channel_jitter
-        active = (th.rand(n, device=dev) < 0.5).float().unsqueeze(1)
-        self._aug_profile["channel_jitter"][envs_idx] = (
-            active * (th.rand(n, 3, device=dev) * 2.0 - 1.0) * ch
-        )
-
-        cutout_cfg = aug.cutout
-        prob = cutout_cfg.prob
-        min_sz = cutout_cfg.min_size
-        max_sz = cutout_cfg.max_size
-        H, W = self.image_height, self.image_width
-
-        active = th.rand(n, device=dev) < prob
-        self._aug_profile["cutout_active"][envs_idx] = active
-
-        hs = th.randint(min_sz, max_sz + 1, (n,), device=dev)
-        ws = th.randint(min_sz, max_sz + 1, (n,), device=dev)
-        ys = (th.rand(n, device=dev) * (H - hs).clamp(min=1)).long()
-        xs = (th.rand(n, device=dev) * (W - ws).clamp(min=1)).long()
-
-        self._aug_profile["cutout_h"][envs_idx] = hs
-        self._aug_profile["cutout_w"][envs_idx] = ws
-        self._aug_profile["cutout_y"][envs_idx] = ys
-        self._aug_profile["cutout_x"][envs_idx] = xs
-
-    # TODO(issue#118) Extract domain randomization logic to external file
-    def _apply_image_augmentation(self, rgb: th.Tensor) -> th.Tensor:
-        aug = self._cfg_dr.image_aug
-        if not aug.enabled:
-            return rgb
-
-        N, C, H, W = rgb.shape
-        device = self.device
-        prof = self._aug_profile  # {} = disabled, non-empty = per-episode replay
-
-        def sample_magnitude(key: str, shape: tuple) -> th.Tensor:
-            """Magnitude in [0, max_val]; sign is re-sampled each frame for variety."""
-            mag = (
-                prof[key].view(shape)
-                if prof
-                else th.rand(shape, device=device) * getattr(aug, key)
-            )
-            return mag * (th.rand(shape, device=device) * 2.0 - 1.0)
-
-        def sample_signed(key: str, shape: tuple) -> th.Tensor:
-            """Already a signed delta in the profile (channel_jitter)."""
-            if prof:
-                return prof[key].view(shape)
-            return (th.rand(shape, device=device) * 2.0 - 1.0) * getattr(aug, key)
-
-        # -- Brightness --
-        b_delta = sample_magnitude("brightness_jitter", (N, 1, 1, 1))
-        if b_delta.abs().any():
-            rgb = rgb * (1.0 + b_delta)
-
-        # -- Per-channel jitter (signed delta, no re-sampling) --
-        ch_delta = sample_signed("channel_jitter", (N, C, 1, 1))
-        if ch_delta.abs().any():
-            rgb = rgb * (1.0 + ch_delta)
-
-        # -- Contrast --
-        c_delta = sample_magnitude("contrast_jitter", (N, 1, 1, 1))
-        if c_delta.abs().any():
-            mean = rgb.mean(dim=(1, 2, 3), keepdim=True)
-            rgb = (rgb - mean) * (1.0 + c_delta) + mean
-
-        # -- Gaussian noise (magnitude only, always additive) --
-        noise_std = sample_magnitude("gaussian_noise_std", (N, 1, 1, 1)).abs()
-        if noise_std.any():
-            rgb = rgb + th.randn_like(rgb) * noise_std
-
-        # -- Gamma --
-        g_delta = sample_magnitude("gamma_range", (N, 1, 1, 1))
-        if g_delta.abs().any():
-            rgb = rgb.clamp(1e-6, 1.0).pow(1.0 + g_delta)
-
-        # -- Gaussian blur (per-env) --
-        blur_active = (
-            prof["blur_active"] if prof else th.rand(N, device=device) < aug.blur_prob
-        )
-        if blur_active.any():
-            blurred = self._apply_gaussian_blur(
-                rgb, kernel_size=aug.blur_kernel_size, sigma=aug.blur_sigma
-            )
-            rgb = th.where(blur_active.view(N, 1, 1, 1), blurred, rgb)
-
-        # -- Cutout --
-        if aug.cutout.prob > 0.0 or (prof and prof["cutout_active"].any()):
-            rgb = self._apply_cutout(rgb)
-
-        return rgb.clamp(0.0, 1.0)
-
     def _randomize_camera_extrinsics(self, envs_idx: th.Tensor) -> None:
         cam_cfg = self._cfg_dr.cameras_extrinsics
         if not (
@@ -1040,97 +816,6 @@ class GraspEnv(BaseEnv):
             except Exception:
                 self._dr_cam_extrinsics_active = False
                 break
-
-    def _apply_gaussian_blur(
-        self,
-        rgb: th.Tensor,
-        kernel_size: int,
-        sigma: float,
-    ) -> th.Tensor:
-        x = (
-            th.arange(kernel_size, dtype=th.float32, device=self.device)
-            - kernel_size // 2
-        )
-        k1d = th.exp(-(x**2) / (2.0 * sigma**2))
-        k1d = k1d / k1d.sum()
-        k2d = k1d.unsqueeze(0) * k1d.unsqueeze(1)
-        C = rgb.shape[1]
-        kernel = k2d.unsqueeze(0).unsqueeze(0).expand(C, 1, kernel_size, kernel_size)
-        pad = kernel_size // 2
-        return F.conv2d(rgb, kernel, padding=pad, groups=C)
-
-    def _apply_cutout(self, rgb: th.Tensor) -> th.Tensor:
-        N, C, H, W = rgb.shape
-        device = rgb.device
-        prof = self._aug_profile
-
-        # --- Resolve box coordinates (profile replay or fresh sample) ---
-        if prof and "cutout_active" in prof:
-            # Replay per-episode profile (already on correct device)
-            active = prof["cutout_active"]  # (N,) bool
-            hs = prof["cutout_h"]  # (N,) long
-            ws = prof["cutout_w"]  # (N,) long
-            ys = prof["cutout_y"]  # (N,) long
-            xs = prof["cutout_x"]  # (N,) long
-        else:
-            if not prof:
-                return rgb  # DR disabled / no per-episode aug
-            cutout_cfg = self._cfg_dr.image_aug.cutout
-            active = th.rand(N, device=device) < cutout_cfg.prob
-            hs = th.randint(
-                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
-            )
-            ws = th.randint(
-                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
-            )
-            ys = (th.rand(N, device=device) * (H - hs).clamp(min=1)).long()
-            xs = (th.rand(N, device=device) * (W - ws).clamp(min=1)).long()
-
-        if not active.any():
-            return rgb
-
-        # --- Build vectorized binary mask: 0 = zeroed region ---
-        row_idx = th.arange(H, device=device).view(1, H, 1)  # (1, H, 1)
-        col_idx = th.arange(W, device=device).view(1, 1, W)  # (1, 1, W)
-
-        in_box = (
-            (row_idx >= ys.view(N, 1, 1))
-            & (row_idx < (ys + hs).view(N, 1, 1))
-            & (col_idx >= xs.view(N, 1, 1))
-            & (col_idx < (xs + ws).view(N, 1, 1))
-        )  # (N, H, W)
-
-        mask = ~(in_box & active.view(N, 1, 1))  # (N, H, W)
-        return rgb * mask.unsqueeze(1)  # broadcast over C
-
-    def _show_augmented_debug(self) -> None:
-        # TODO(issue#117) redesign the visualize-camera feature
-        if not self._debug_cameras:
-            return
-
-        frames = []
-        for name, cam in self._debug_cameras.items():
-            rgb, _, _, _ = cam.render(
-                rgb=True, depth=False, segmentation=False, normal=False
-            )
-            rgb = rgb.permute(0, 3, 1, 2)[:, :3]
-            rgb = th.clamp(rgb, 0.0, 255.0) / 255.0
-            if self._cfg_dr.enabled:
-                rgb = self._apply_image_augmentation(rgb)
-            frame = rgb[0].detach().float().cpu()
-            frame_np = (frame.permute(1, 2, 0).clamp(0, 1).numpy() * 255).astype(
-                np.uint8
-            )
-            frame_bgr = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-            frame_up = cv2.resize(
-                frame_bgr, (256, 256), interpolation=cv2.INTER_NEAREST
-            )
-            cv2.putText(
-                frame_up, name, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1
-            )
-            frames.append(frame_up)
-        cv2.imshow("Network view", np.concatenate(frames, axis=1))
-        cv2.waitKey(1)
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:

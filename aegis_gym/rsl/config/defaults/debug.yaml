@@ -1,5 +1,6 @@
 enabled: False
-swap_tool_cameras: False
 enable_vis_preview: False
+vis_preview_side: 256
+vis_preview_max_envs: 5
 enable_record_obs: False
 record_dir: "/tmp"

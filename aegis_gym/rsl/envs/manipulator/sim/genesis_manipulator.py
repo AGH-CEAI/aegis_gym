@@ -318,7 +318,7 @@ class GenesisManipulator(BaseManipulator):
             else th.arange(self._num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
-        q_pos[idx, self._fingers_dof] = self._gripper_open_dof
+        q_pos[idx[:, None], self._fingers_dof] = self._gripper_open_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
@@ -329,7 +329,7 @@ class GenesisManipulator(BaseManipulator):
             else th.arange(self._num_envs, device=self.device)
         )
         q_pos = self._robot_entity.get_qpos()
-        q_pos[idx, self._fingers_dof] = self._gripper_close_dof
+        q_pos[idx[:, None], self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
 

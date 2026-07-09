@@ -3,7 +3,9 @@ import torch as th
 from rsl_rl.runners import OnPolicyRunner
 from clearml import Task
 
-from envs.base_env import BaseEnv
+from envs import BaseEnv
+from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
+
 from envs.grasp_env import GraspEnv
 from behavior_cloning import BehaviorCloning
 from config import ConfigManager, LaunchArgs, parse_arguments
@@ -122,6 +124,8 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     match args.algorithm:
         case Algorithm.BC:
             print("[GraspTrain] >>> Starting training: Behavioral Cloning (BC)")
+
+            print("[GraspTrain] >>> (BC) Loading RL policy")
             teacher_policy = load_rl_policy(
                 env=env,
                 rl_cfg=cfg.rl_cfg,
@@ -135,6 +139,19 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 enable_logging=False,
             )
 
+            if cfg.dr_cfg.enabled:
+                print("[GraspTrain] >>> (BC) Wrapping env with VisionAugWrapper")
+                env = VisionAugEnvWrapper(
+                    env=env, cfg_image_aug=cfg.dr_cfg.image_aug, cfg_env=cfg.env_cfg
+                )
+
+            if cfg.debug_cfg.enabled and (
+                cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+            ):
+                print("[GraspTrain] >>> (BC) Wrapping env with ObsPreviewEnvWrapper")
+                env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+
+            print("[GraspTrain] >>> (BC) Preparing policy runner")
             runner = BehaviorCloning(
                 env=env,
                 bc_cfg=cfg.bc_cfg,
@@ -143,13 +160,23 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 teacher=teacher_policy,
                 device=device,
             )
+            print("[GraspTrain] >>> (BC) Starting runner")
             runner.learn(num_learning_iterations=args.max_iterations)
+
         case Algorithm.RL:
             print("[GraspTrain] >>> Starting training: Reinforcement Learning (RL)")
 
+            if cfg.debug_cfg.enabled and (
+                cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+            ):
+                print("[GraspTrain] >>> (RL) Wrapping env with ObsPreviewEnvWrapper")
+                env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+
+            print("[GraspTrain] >>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(
                 env=env, train_cfg=rsl_rl_cfg, log_dir=str(log_dir), device=str(device)
             )
+            print("[GraspTrain] >>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True
             )

@@ -1,9 +1,11 @@
-from .base_env import BaseEnv
+from .base_env import BaseEnv, Modality, IMAGE_MODALITIES
 from .scene import BaseScene
 from .manipulator import BaseManipulator
 
 __all__ = [
     "BaseEnv",
-    "BaseScene",
     "BaseManipulator",
+    "BaseScene",
+    "Modality",
+    "IMAGE_MODALITIES",
 ]

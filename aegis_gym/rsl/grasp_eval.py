@@ -12,7 +12,8 @@ from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
-from envs import BaseEnv
+from envs import BaseEnv, IMAGE_MODALITIES
+from envs.wrappers import ObsPreviewEnvWrapper
 
 from grasp_train import init_clearml_task, create_env
 
@@ -36,6 +37,12 @@ def main():
     sweep = is_checkpoints_sweep_required(args)
 
     env = create_env(cfg)
+    if cfg.debug_cfg.enabled and (
+        cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
+    ):
+        print("[EvalTrain] >>> Wrapping env with ObsPreviewEnvWrapper")
+        env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+
     print(
         f"[GraspEval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
     )
@@ -279,15 +286,10 @@ def run_eval(
     start_time = time.perf_counter()
     total_inference_time = 0.0
 
+    # TODO(issue#135) This shouldn't be defined in the eval code!
     def get_obs_vis() -> th.Tensor:
-        if not debug_cfg.enabled:
-            return env.get_observations_vis()
-        return env.get_observations_vis(
-            swap_tool_cameras=debug_cfg.swap_tool_cameras,
-            enable_vis_preview=debug_cfg.enable_vis_preview,
-            enable_record_obs=debug_cfg.enable_record_obs,
-            record_dir=debug_cfg.record_dir,
-        )
+        obs = env.get_modality_observations(modalities=IMAGE_MODALITIES)
+        return th.cat([obs[m] for m in IMAGE_MODALITIES], dim=1).float()
 
     vis_debug_params = {}
     if debug_cfg.enabled:
