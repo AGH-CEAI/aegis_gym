@@ -378,7 +378,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         if interval == 0:
             return {"enabled": False, "part": "both", "interval": None}
 
-        target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
+        target = ResetLastLayerTarget.from_value(part)
 
         if interval is None or interval <= 0:
             return {"enabled": False, "target": target, "interval": None}

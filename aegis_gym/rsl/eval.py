@@ -11,6 +11,7 @@ from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
 from envs import BaseEnv, IMAGE_MODALITIES
 from envs.wrappers import ObsPreviewEnvWrapper
 from runners import BehaviorCloningRunner
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 from train import init_clearml_task, create_env
 from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
