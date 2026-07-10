@@ -11,9 +11,9 @@ from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
 from envs import BaseEnv, IMAGE_MODALITIES
 from envs.wrappers import ObsPreviewEnvWrapper
 from runners import BehaviorCloningRunner
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
-from grasp_train import init_clearml_task, create_env
+from train import init_clearml_task, create_env
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 
 def main():
@@ -88,7 +88,6 @@ def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
             clearml_task_id=args.load_rl_task_id,
             clearml_model_id=args.load_rl_model_id,
             clearml_artifact_name="model",
-            enable_logging=False,
         )
     if algorithm == Algorithm.BC:
         policy = load_bc_policy(
@@ -98,7 +97,6 @@ def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
             exp_name=args.experiment_name,
             clearml_task_id=args.load_bc_task_id,
             clearml_model_id=args.load_bc_model_id,
-            enable_logging=False,
         )
         policy.eval()
         return policy

@@ -7,14 +7,14 @@ import torch.nn as nn
 
 from config.types import PolicyBCCfg, FusionCfg, VisionEncoderCfg
 
-from bc_encoders import (
+from .bc_encoders import (
     AutoencoderCNNEncoder,
     BaseVisionEncoder,
     ConcatenatedCNNEncoder,
     PerCameraCNNEncoder,
     SharedCNNEncoder,
 )
-from bc_fusions import (
+from .bc_fusions import (
     BaseFusionModule,
     LinearFusion,
     SpatialAttentionFusion,

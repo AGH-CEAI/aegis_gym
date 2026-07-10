@@ -72,12 +72,12 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
 
     if control_type == Control.SIM:
         gs.init(logging_level="info", precision="32")
-        return GraspEnv(cfg)
+        return GraspEnv(cfg=cfg)
     if control_type == Control.ROS:
         if GraspEnvROS is None:
             print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
             exit()
-        return GraspEnvROS(cfg)
+        return GraspEnvROS(cfg=cfg)
     raise ValueError(f"Wrong control type: {str(control_type)}")
 
 
@@ -131,7 +131,6 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 clearml_task_id=args.load_rl_task_id,
                 clearml_model_id=args.load_rl_model_id,
                 clearml_artifact_name="model",
-                enable_logging=False,
             )
 
             if cfg.dr_cfg.enabled:

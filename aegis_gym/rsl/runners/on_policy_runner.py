@@ -1,9 +1,9 @@
 from pathlib import Path
+from typing import Any
 
 import torch as th
 
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
-from rsl_rl.models import MLPModel
 
 from .base_runner import BasePolicyRunner
 from config.types import ExpConfig
@@ -38,7 +38,7 @@ class OnPolicyRunner(BasePolicyRunner):
     def load(self, path: Path) -> None:
         self.runner.load(path=str(path))
 
-    def get_inference_policy(self, device: th.device = th.device("cpu")) -> MLPModel:
+    def get_inference_policy(self, device: th.device = th.device("cpu")) -> Any:
         return self.runner.get_inference_policy(device=str(device))
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:

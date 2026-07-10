@@ -59,7 +59,7 @@ class BaseEnv(VecEnv):
         super().__init__()
         self._scene: Optional[BaseScene] = scene
         self._cfg = cfg
-        self.num_envs = cfg.env_cfg.num_envs
+        self.num_envs = cfg.num_envs
         self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
 
     def __del__(self):
