@@ -1,13 +1,12 @@
 import genesis as gs
 import torch as th
-from rsl_rl.runners import OnPolicyRunner
 from clearml import Task
 
 from envs import BaseEnv
 from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
 from envs.grasp_env import GraspEnv
-from behavior_cloning import BehaviorCloning
+from runners import OnPolicyRunner, BehaviorCloningRunner
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, Algorithm, Control
 from utils import load_rl_policy
@@ -114,8 +113,6 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
 
 def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     args = cfg.args
-    device = cfg.get_device()
-    log_dir = cfg.logger_cfg.local_log_dir
 
     rsl_rl_cfg = cfg.rl_cfg.as_dict()
     rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
@@ -128,9 +125,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             print("[GraspTrain] >>> (BC) Loading RL policy")
             teacher_policy = load_rl_policy(
                 env=env,
-                rl_cfg=cfg.rl_cfg,
-                logger_cfg=cfg.logger_cfg,
-                device=device,
+                cfg=cfg,
                 load_cfg_from_clearml=not args.enforce_current_config,
                 exp_name=args.experiment_name,
                 clearml_task_id=args.load_rl_task_id,
@@ -152,13 +147,10 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
             print("[GraspTrain] >>> (BC) Preparing policy runner")
-            runner = BehaviorCloning(
+            runner = BehaviorCloningRunner(
                 env=env,
-                bc_cfg=cfg.bc_cfg,
-                logger_cfg=cfg.logger_cfg,
-                debug_cfg=cfg.debug_cfg,
+                cfg=cfg,
                 teacher=teacher_policy,
-                device=device,
             )
             print("[GraspTrain] >>> (BC) Starting runner")
             runner.learn(num_learning_iterations=args.max_iterations)
@@ -173,9 +165,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
             print("[GraspTrain] >>> (RL) Preparing policy runner")
-            runner = OnPolicyRunner(
-                env=env, train_cfg=rsl_rl_cfg, log_dir=str(log_dir), device=str(device)
-            )
+            runner = OnPolicyRunner(env=env, cfg=cfg)
             print("[GraspTrain] >>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=args.max_iterations, init_at_random_ep_len=True

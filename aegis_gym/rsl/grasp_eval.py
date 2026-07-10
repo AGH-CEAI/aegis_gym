@@ -6,14 +6,12 @@ import torch as th
 from clearml import Task
 from tqdm import tqdm
 
-
-from behavior_cloning import BehaviorCloning
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
-
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
 from envs import BaseEnv, IMAGE_MODALITIES
 from envs.wrappers import ObsPreviewEnvWrapper
+from runners import BehaviorCloningRunner
+from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
 
 from grasp_train import init_clearml_task, create_env
 
@@ -79,15 +77,12 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
 
 def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
     args: LaunchArgs = cfg.args
-    device = cfg.get_device()
 
     algorithm = args.algorithm
     if algorithm == Algorithm.RL:
         return load_rl_policy(
             env=env,
-            rl_cfg=cfg.rl_cfg,
-            logger_cfg=cfg.logger_cfg,
-            device=device,
+            cfg=cfg,
             load_cfg_from_clearml=not args.enforce_current_config,
             exp_name=args.experiment_name,
             clearml_task_id=args.load_rl_task_id,
@@ -98,10 +93,7 @@ def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
     if algorithm == Algorithm.BC:
         policy = load_bc_policy(
             env=env,
-            bc_cfg=cfg.bc_cfg,
-            logger_cfg=cfg.logger_cfg,
-            debug_cfg=cfg.debug_cfg,
-            device=device,
+            cfg=cfg,
             load_cfg_from_clearml=not args.enforce_current_config,
             exp_name=args.experiment_name,
             clearml_task_id=args.load_bc_task_id,
@@ -190,7 +182,7 @@ def eval_policy_single(
     args = cfg.args
     record_render = args.control_type == Control.SIM and args.enable_recording
     device = cfg.get_device()
-    max_steps = cfg.env_cfg.max_steps
+    max_steps = int(cfg.env_cfg.max_steps)
 
     # TODO(issue#101): Design arguments and config manager for policy loading
     policy = load_policy(env, cfg)
@@ -216,7 +208,7 @@ def eval_policy_sweep(
     args = cfg.args
     log_dir = Path(cfg.logger_cfg.local_log_dir)
     device = cfg.get_device()
-    max_steps = cfg.env_cfg.max_steps
+    max_steps = int(cfg.env_cfg.max_steps)
 
     checkpoints = get_bc_checkpoints(
         log_dir=log_dir,
@@ -235,20 +227,17 @@ def eval_policy_sweep(
         f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s): {[ckpt.step for ckpt in checkpoints]}"
     )
 
-    bc_runner = BehaviorCloning(
-        env,
-        bc_cfg=cfg.bc_cfg,
-        logger_cfg=cfg.logger_cfg,
-        debug_cfg=cfg.debug_cfg,
+    bc_runner = BehaviorCloningRunner(
+        env=env,
+        cfg=cfg,
         teacher=None,
-        device=device,
     )
     object_pose = env.generate_object_poses(seed=args.seed)
 
     for ckpt in checkpoints:
         print(f"\n[GraspEval] === Checkpoint iter {ckpt.step:04d} ===")
-        bc_runner.load(str(ckpt.path))
-        policy = bc_runner._policy
+        bc_runner.load(ckpt.path)
+        policy = bc_runner.get_inference_policy(device=cfg.get_device())
         policy.eval()
 
         obs, _ = env.reset()

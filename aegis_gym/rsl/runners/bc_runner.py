@@ -21,10 +21,10 @@ from config.types import (
 )
 
 from .base_runner import BasePolicyRunner
-from .bc_policy import Policy, ExperienceBuffer
+from .bc_policy import Policy, ExperienceBuffer, ResetLastLayerTarget
 
 
-class BehaviorCloning(BasePolicyRunner):
+class BehaviorCloningRunner(BasePolicyRunner):
     """Multi-task behavior cloning with action prediction and object pose estimation"""
 
     def __init__(
@@ -378,7 +378,7 @@ class BehaviorCloning(BasePolicyRunner):
         if interval == 0:
             return {"enabled": False, "part": "both", "interval": None}
 
-        target = BehaviorCloning.ResetLastLayerTarget.from_value(part)
+        target = ResetLastLayerTarget.from_value(part)
 
         if interval is None or interval <= 0:
             return {"enabled": False, "target": target, "interval": None}
@@ -464,7 +464,7 @@ class BehaviorCloning(BasePolicyRunner):
         print(f"Model loaded from {path}")
 
     def get_inference_policy(self, device: th.device) -> Any:
-        raise NotImplementedError()
+        return self._policy.to(device)
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
         raise NotImplementedError()
