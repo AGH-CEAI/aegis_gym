@@ -11,13 +11,14 @@ from tensordict import TensorDict
 
 from ..base_manipulator import BaseManipulator, CameraID, CameraModality
 from config.types import RobotCfg
+from envs.scene import GenesisScene
 
 
 class GenesisManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene: gs.Scene,
+        scene: GenesisScene,
         cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
@@ -26,6 +27,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._num_envs = num_envs
         self._scene = scene
+        self._gs_scene = scene.gs_scene
         self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
@@ -179,9 +181,8 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: Optional[bool] = None,
         envs_idx: Optional[th.Tensor] = None,
     ) -> None:
-        max_lin_speed, max_ang_speed = self.scene.get_manipulator_max_speed()
-        action[:, :3] *= max_lin_speed
-        action[:, 3:] *= max_ang_speed
+        action[:, :3] *= self._scene.max_linear_speed
+        action[:, 3:] *= self._scene.max_angular_speed
 
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:

@@ -24,7 +24,7 @@ class BaseScene(ABC):
     """
 
     CONTROL_TYPE: Control
-    _randomization_fns: dict[RandomizationType, Callable[[], None]]
+    _randomization_fns: dict[RandomizationType, Callable[[th.Tensor], None]]
 
     def __init__(self, device: th.device = th.device("cpu")):
         super().__init__()

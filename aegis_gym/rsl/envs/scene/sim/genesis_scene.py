@@ -58,7 +58,7 @@ class GenesisScene(BaseScene):
         self._setup_scene(cfg=cfg)
 
         self._global_entity_cnt = 0
-        self._entity_map: dict[int, BaseObject] = {}
+        self._entity_registry: dict[int, BaseObject] = {}
 
     def _extract_config(self) -> None:
         self.num_envs = self._cfg_env.num_envs
@@ -93,9 +93,6 @@ class GenesisScene(BaseScene):
 
         self.reward_scales = self._cfg_env.reward_scales
 
-        pass
-
-    # TODO migrate to scene
     def _setup_pj_server(self) -> None:
         self._pj: Optional[PlotJugglerUDP] = None
         if not self._enable_pj_logging:
@@ -335,7 +332,7 @@ class GenesisScene(BaseScene):
             device=self.device,
             **kwargs,
         )
-        self._entity_map[self._global_entity_cnt] = obj
+        self._entity_registry[self._global_entity_cnt] = obj
         self._global_entity_cnt += 1
         return obj
 
@@ -351,7 +348,7 @@ class GenesisScene(BaseScene):
     def add_manipulator(self, cfg: RobotCfg) -> None:
         self.manipulator = GenesisManipulator(
             num_envs=self.num_envs,
-            scene=self.gs_scene,
+            scene=self,
             cfg_robot=cfg,
             show_cell=self.show_cell,
             device=self.device,
@@ -412,7 +409,8 @@ class GenesisScene(BaseScene):
             ),
         }
 
-    def _rand_cameras_extrinsics(self) -> None:
+    def _rand_cameras_extrinsics(self, envs_idx: th.Tensor) -> None:
+        # TODO apply only to envs_dix
         # TODO adapt to new abstraciotns
         cam_cfg = self._cfg_dr.cameras_extrinsics
         if not (
@@ -478,10 +476,7 @@ class GenesisScene(BaseScene):
         T[:3, 3] = t
         return T
 
-    def get_manipulator_max_speed(self) -> tuple[float, float]:
-        return self.max_linear_speed, self.max_angular_speed
-
-    def _rand_manipulator_max_speed(self) -> None:
+    def _rand_manipulator_max_speed(self, envs_idx: th.Tensor) -> None:
         cfg = self._cfg_dr.max_speed
         if not cfg.enabled:
             return
@@ -499,7 +494,7 @@ class GenesisScene(BaseScene):
         self.max_linear_speed = self._max_linear_speed * lin_scale
         self.max_angular_speed = self._max_angular_speed * ang_scale
 
-    def _rand_manipulator_pd_gains(self) -> None:
+    def _rand_manipulator_pd_gains(self, envs_idx: th.Tensor) -> None:
         cfg = self._cfg_dr.pd_gains
         if not cfg.enabled:
             return

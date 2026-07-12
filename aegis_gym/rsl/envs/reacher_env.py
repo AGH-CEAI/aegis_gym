@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 import torch as th
 from tensordict import TensorDict
@@ -60,6 +61,7 @@ class ReacherEnv(BaseEnv):
 
         # TODO(issue##117) redesign the whole camera preview system
         self.show_cameras_gui = self._cfg_env.visualize_camera
+        self.show_cell = self._cfg_env.visualize_cell
 
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
@@ -67,7 +69,6 @@ class ReacherEnv(BaseEnv):
         self.image_width = self._cfg_env.image_resolution[0]
         self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.show_cell = self._cfg_env.visualize_cell
         self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
@@ -131,7 +132,7 @@ class ReacherEnv(BaseEnv):
 
     def _init_buffers(self) -> None:
         self.episode_length_buf = th.zeros(
-            (self.num_envs,), device=self.device, dtype=th.int32
+            (self.num_envs,), device=self.device, dtype=th.float32
         )
         self.reset_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.goal_pose = th.zeros(self.num_envs, 7, device=self.device)
@@ -166,8 +167,8 @@ class ReacherEnv(BaseEnv):
             self.episode_sums[key][envs_idx] = 0.0
 
         if self._cfg_dr.enabled:
-            self._setup_dr_pd_gains()
-            self._randomize_camera_extrinsics(envs_idx)
+            # TODO move this to a proper public call
+            f(envs_idx) for f in self._scene._randomization_fns.values()
 
     def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
         num_reset = len(envs_idx)
@@ -252,8 +253,10 @@ class ReacherEnv(BaseEnv):
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
-        return th.cat(obs_components, dim=-1)
-        # return TensorDict({"policy": res}, batch_size=self._num_envs, device=self.device)
+        # TODO validate if the self.extras is needed
+        obs_tensor = th.cat(obs_components, dim=-1)
+        self.extras["observations"]["critic"] = obs_tensor
+        return obs_tensor
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()
@@ -270,10 +273,10 @@ class ReacherEnv(BaseEnv):
             tcp_quat,
             keypoints_offset,
         )
+
         obj_pose = self.object.get_pose()
-        object_pos_keypoints = self._to_world_frame(
-            obj_pose[:, :3], obj_pose[:, 3:], keypoints_offset
-        )
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
+        object_pos_keypoints = self._to_world_frame(obj_pos, obj_quat, keypoints_offset)
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
 
@@ -283,11 +286,20 @@ class ReacherEnv(BaseEnv):
         quaternion: th.Tensor,  # [N, 4]
         keypoints_offset: th.Tensor,  # [N, 7, 3]
     ) -> th.Tensor:
-        N, K, _ = keypoints_offset.shape
+        # TODO ceck thes genesis implementation
 
-        v_flat = keypoints_offset.reshape(N * K, 3)
-        quat_flat = quaternion[:, None].expand(N, K, 4).reshape(N * K, 4)
-        rotated = transform_by_quat(v_flat, quat_flat)
-        rotated = rotated.reshape(N, K, 3)
-        world = position[:, None, :] + rotated
+        # N, K, _ = keypoints_offset.shape
+        #
+        # v_flat = keypoints_offset.reshape(N * K, 3)
+        # quat_flat = quaternion[:, None].expand(N, K, 4).reshape(N * K, 4)
+        # rotated = transform_by_quat(v_flat, quat_flat)
+        # rotated = rotated.reshape(N, K, 3)
+        # world = position[:, None, :] + rotated
+        # return world
+        world = th.zeros_like(keypoints_offset)
+        for k in range(keypoints_offset.shape[1]):
+            world[:, k] = position + transform_by_quat(
+                keypoints_offset[:, k], quaternion
+            )
         return world
+
