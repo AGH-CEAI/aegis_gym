@@ -20,7 +20,7 @@ class GraspEnvROS(BaseEnv):
 
     def __init__(self, cfg: ExpConfig, scene: Optional[BaseScene] = None) -> None:
         super().__init__(
-            scene=scene, cfg=cfg.env_cfg
+            scene=scene, cfg_env=cfg.env_cfg
         )  # TODO(issue#128) introduce Scene abstraction
 
         self._observation_fns = {

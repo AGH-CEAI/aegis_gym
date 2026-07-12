@@ -15,7 +15,7 @@ class RosGrpcBox(BaseBox):
     ):
         super().__init__(scene=scene, device=device)
 
-    def create(self, pose: tuple, *args, **kwargs) -> None:
+    def create(self, pose: Optional[tuple], *args, **kwargs) -> None:
         # TODO(issue#131) read poses from RosGrpc bridge
         self.pose = th.tensor(pose, device=self.device).repeat(1, 1)
 

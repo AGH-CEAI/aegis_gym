@@ -5,6 +5,7 @@ from typing import Optional
 
 import torch as th
 import genesis as gs
+from genesis.engine.entities.rigid_entity.rigid_link import RigidLink
 from clearml import Dataset
 from tensordict import TensorDict
 
@@ -178,6 +179,10 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: Optional[bool] = None,
         envs_idx: Optional[th.Tensor] = None,
     ) -> None:
+        max_lin_speed, max_ang_speed = self.scene.get_manipulator_max_speed()
+        action[:, :3] *= max_lin_speed
+        action[:, 3:] *= max_ang_speed
+
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
             case "gs_ikv":
@@ -384,3 +389,6 @@ class GenesisManipulator(BaseManipulator):
         raise NotImplementedError(
             "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
         )
+
+    def get_robot_link(self, link: str) -> RigidLink:
+        return self._robot_entity.get_link(link)

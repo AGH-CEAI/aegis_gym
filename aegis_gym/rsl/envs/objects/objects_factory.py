@@ -14,33 +14,35 @@ class ObjectsFactory:
     def create_object(
         cls,
         obj_type: ObjectType,
-        scene: BaseScene | gs.Scene,  # TODO(issue@128) remove genesis from this api
-        ctrl: Control,
+        scene: BaseScene,
         device: th.device,
+        **kwargs,
     ) -> BaseObject:
         match obj_type:
             case ObjectType.BOX:
                 return cls.create_box(
                     scene=scene,
-                    ctrl=ctrl,
                     device=device,
+                    **kwargs,
                 )
 
     @classmethod
     def create_box(
         cls,
-        scene: BaseScene | gs.Scene,  # TODO(issue@128) remove genesis from this api
-        ctrl: Control,
+        scene: BaseScene,
         device: th.device,
+        **kwargs,
     ) -> BaseBox:
-        match ctrl:
+        match scene.CONTROL_TYPE:
             case Control.SIM:
                 return GenesisBox(
                     scene=scene,
                     device=device,
+                    **kwargs,
                 )
             case Control.ROS:
                 return RosGrpcBox(
                     scene=scene,
                     device=device,
+                    **kwargs,
                 )

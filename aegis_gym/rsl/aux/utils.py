@@ -2,33 +2,12 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-import torch as th
 import torch.nn as nn
 from clearml import Task, Model, InputModel
 from natsort import natsorted
 
 from config.types import Checkpoint, ExpConfig
 from runners import BehaviorCloningRunner, OnPolicyRunner
-
-
-@th.jit.script
-def transform_quat_by_quat(u: th.Tensor, v: th.Tensor) -> th.Tensor:
-    w1, x1, y1, z1 = u[..., 0], u[..., 1], u[..., 2], u[..., 3]
-    w2, x2, y2, z2 = v[..., 0], v[..., 1], v[..., 2], v[..., 3]
-    ww = (z1 + x1) * (x2 + y2)
-    yy = (w1 - y1) * (w2 + z2)
-    zz = (w1 + y1) * (w2 - z2)
-    xx = ww + yy + zz
-    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
-
-    out = th.empty(qq.shape + (4,), dtype=qq.dtype, device=qq.device)
-    out[..., 0] = qq - ww + (z1 - y1) * (y2 - z2)
-    out[..., 1] = qq - xx + (x1 + w1) * (x2 + w2)
-    out[..., 2] = qq - yy + (w1 - x1) * (y2 + z2)
-    out[..., 3] = qq - zz + (z1 + y1) * (w2 - x2)
-
-    out /= th.linalg.vector_norm(out, ord=2, dim=-1, keepdim=True)
-    return out
 
 
 def load_rl_policy(

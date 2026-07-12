@@ -17,8 +17,8 @@ class EnvCfg(BaseCfg):
     ctrl_dt: float
     policy_dt: float
     # TODO(issue#111) introduce size config
-    box_size_default: list
-    box_size_symmetrical: list
+    box_size_default: list[float]
+    box_size_symmetrical: list[float]
     table_size: list
     workbench_size: list
     box_collision: bool

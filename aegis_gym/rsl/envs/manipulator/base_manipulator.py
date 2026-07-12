@@ -1,32 +1,10 @@
 from abc import ABC, abstractmethod
-from enum import auto
-from strenum import StrEnum
 from typing import Optional
 
 import torch as th
 from tensordict import TensorDict
 
-
-class CameraID(StrEnum):
-    SCENE_CAMERA = auto()
-    TOOL_LEFT = auto()
-    TOOL_RIGHT = auto()
-
-    @classmethod
-    def from_str(cls, x: str) -> "CameraID":
-        if "left" in x.lower():
-            return CameraID.TOOL_LEFT
-        if "right" in x.lower():
-            return CameraID.TOOL_RIGHT
-        if "scene" in x.lower():
-            return CameraID.SCENE_CAMERA
-        raise ValueError(f"Could not resolve the CameraID from given string: {x}")
-
-
-class CameraModality(StrEnum):
-    RGB = auto()
-    RGBD = auto()
-    DEPTH = auto()
+from config.types import CameraName, CameraModality
 
 
 class BaseManipulator(ABC):
@@ -177,7 +155,7 @@ class BaseManipulator(ABC):
 
     @abstractmethod
     def get_camera_image(
-        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+        self, camera: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
         """
         Returns image tensor for the given camera and modality:

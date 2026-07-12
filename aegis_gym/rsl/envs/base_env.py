@@ -2,14 +2,18 @@ from abc import abstractmethod
 from enum import auto
 from typing import NamedTuple, Optional, Callable, Collection
 
+try:
+    from enum import StrEnum
+except ImportError:
+    # from strenum import StrEnum
+    pass
 
 import torch as th
-from strenum import StrEnum
 from tensordict import TensorDict
 from rsl_rl.env import VecEnv
 
 from .scene.base_scene import BaseScene
-from config.types import EnvCfg, CamerasSetup
+from config.types import EnvCfg, DomainRandomizationCfg, ExpConfig, CamerasSetup, CameraName 
 
 
 class ResetReturn(NamedTuple):
@@ -32,9 +36,9 @@ class Modality(StrEnum):
     TCP_POSE = auto()
     TCP_VELOCITY = auto()
     TCP_WRENCH = auto()
-    CAMERA_SCENE_RGB = auto()
-    CAMERA_TOOL_LEFT_RGB = auto()
-    CAMERA_TOOL_RIGHT_RGB = auto()
+    CAMERA_SCENE_RGB = CameraName.CAMERA_SCENE
+    CAMERA_TOOL_LEFT_RGB = CameraName.CAMERA_SCENE_LEFT
+    CAMERA_TOOL_RIGHT_RGB = CameraName.CAMERA_SCENE_RIGHT
     OBJECT_POSE = auto()
 
 
@@ -43,7 +47,6 @@ IMAGE_MODALITIES: tuple[Modality, ...] = (
     Modality.CAMERA_TOOL_LEFT_RGB,
     Modality.CAMERA_TOOL_RIGHT_RGB,
 )
-
 
 class BaseEnv(VecEnv):
     """
@@ -55,11 +58,13 @@ class BaseEnv(VecEnv):
     DEFAULT_MODALITIES: frozenset[Modality]
     _observation_fns: dict[Modality, Callable[[], th.Tensor]]
 
-    def __init__(self, scene: Optional[BaseScene], cfg: EnvCfg):
+    def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__()
-        self._scene: Optional[BaseScene] = scene
-        self._cfg = cfg
-        self.num_envs = cfg.num_envs
+        self._scene: BaseScene = scene
+        self._cfg_env: EnvCfg = cfg.env_cfg
+        self._cfg_dr: DomainRandomizationCfg = cfg.dr_cfg
+        self.num_envs = cfg.env_cfg.num_envs
+        self.device = cfg.get_device()
         self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
 
     def __del__(self):
@@ -67,7 +72,7 @@ class BaseEnv(VecEnv):
             self._scene.shutdown()
 
     def _obs_cache_get(self, modalities: frozenset[Modality]) -> TensorDict:
-        return self._obs_cache.select(*(m.value for m in modalities))
+       # return self._obs_cache.select(*(m.value for m in modalities))
 
     def _obs_cache_set(self, modality: Modality, value: th.Tensor) -> None:
         self._obs_cache.set(modality.value, value)
@@ -98,10 +103,9 @@ class BaseEnv(VecEnv):
         """Returns set of available observation modalities"""
         return frozenset(self._observation_fns)
 
-    @abstractmethod
     def get_policy_dt(self) -> float:
         """Returns the time period for policy inference."""
-        ...
+        return self._scene.get_policy_dt()
 
     @abstractmethod
     def get_cfg_as_dict(self) -> dict:
@@ -110,7 +114,7 @@ class BaseEnv(VecEnv):
 
     def get_cameras_setup(self) -> CamerasSetup:
         """The environment cameras setup"""
-        return self._cfg.cameras_setup
+        return self._cfg_env.cameras_setup
 
     def get_modality_observations(
         self, modalities: Optional[Collection[Modality]] = None

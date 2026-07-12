@@ -13,7 +13,7 @@ class BaseEnvWrapper(BaseEnv):
     """
 
     def __init__(self, env: BaseEnv):
-        super().__init__(scene=None, cfg=env._cfg)
+        super().__init__(scene=None, cfg_env=env._cfg_env)
         self._env = env
         del self._obs_cache
 

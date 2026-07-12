@@ -33,7 +33,7 @@ class BaseObject(ABC):
     def create(
         self,
         dims: tuple,
-        pose: tuple,  # TODO(issue#128) unify pose type for create() and set_pose()
+        pose: Optional[tuple[float]],  # TODO(issue#128) unify pose type for create() and set_pose()
         fixed: bool = False,
         collision: bool = True,
         color: tuple[float, float, float] = (1.0, 0.0, 0.0),

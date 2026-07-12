@@ -4,12 +4,13 @@ import torch as th
 import genesis as gs
 
 from ..base_objects import BaseBox
-from envs.scene import BaseScene
+from envs.scene import GenesisScene
 
 
 class GenesisBox(BaseBox):
-    def __init__(self, scene: BaseScene | gs.Scene, device: th.device):
+    def __init__(self, scene: GenesisScene, device: th.device):
         super().__init__(scene=scene, device=device)
+        self._gs_scene = scene.gs_scene
 
     def create(
         self,
@@ -19,7 +20,8 @@ class GenesisBox(BaseBox):
         collision: bool = False,
         color: tuple[float, float, float] = (1.0, 0.0, 0.0),
     ) -> None:
-        self._obj = self._scene.add_entity(
+        # TODO change
+        self._obj = self._gs_scene.add_entity(
             gs.morphs.Box(
                 size=dims,
                 pos=(0, 0, 0) if not pose else pose[:3],
