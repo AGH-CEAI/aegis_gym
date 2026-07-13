@@ -6,8 +6,8 @@ import torch as th
 from strenum import StrEnum
 
 
-from envs.objects import ObjectType
 from config.types import Control, RobotCfg
+from ..objects.base_objects import ObjectProperties, ObjectType
 from ..manipulator.base_manipulator import BaseManipulator
 
 
@@ -26,7 +26,7 @@ class BaseScene(ABC):
     CONTROL_TYPE: Control
     _randomization_fns: dict[RandomizationType, Callable[[th.Tensor], None]]
 
-    def __init__(self, device: th.device = th.device("cpu")):
+    def __init__(self, device: th.device):
         super().__init__()
         self._is_build = False
         self.device: th.device = device
@@ -47,7 +47,7 @@ class BaseScene(ABC):
         ...
 
     @abstractmethod
-    def add_entity(self, entity: ObjectType) -> Any:
+    def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
         """Add a given entity to the scene."""
         ...
 

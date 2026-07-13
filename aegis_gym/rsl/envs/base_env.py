@@ -2,18 +2,20 @@ from abc import abstractmethod
 from enum import auto
 from typing import NamedTuple, Optional, Callable, Collection
 
-try:
-    from enum import StrEnum
-except ImportError:
-    # from strenum import StrEnum
-    pass
+from strenum import StrEnum
 
 import torch as th
 from tensordict import TensorDict
 from rsl_rl.env import VecEnv
 
 from .scene.base_scene import BaseScene
-from config.types import EnvCfg, DomainRandomizationCfg, ExpConfig, CamerasSetup, CameraName 
+from config.types import (
+    EnvCfg,
+    DomainRandomizationCfg,
+    ExpConfig,
+    CamerasSetup,
+    CameraName,
+)
 
 
 class ResetReturn(NamedTuple):
@@ -48,6 +50,7 @@ IMAGE_MODALITIES: tuple[Modality, ...] = (
     Modality.CAMERA_TOOL_RIGHT_RGB,
 )
 
+
 class BaseEnv(VecEnv):
     """
     Base class for implementing an environment compatible with rsl_rl's VecEnv.
@@ -72,7 +75,7 @@ class BaseEnv(VecEnv):
             self._scene.shutdown()
 
     def _obs_cache_get(self, modalities: frozenset[Modality]) -> TensorDict:
-       # return self._obs_cache.select(*(m.value for m in modalities))
+        return self._obs_cache.select(*(m.value for m in modalities))
 
     def _obs_cache_set(self, modality: Modality, value: th.Tensor) -> None:
         self._obs_cache.set(modality.value, value)

@@ -1,28 +1,18 @@
-import math
-import time
-from typing import Optional
-
-from tensordict import TensorDict
-import torch as th
-
-from .manipulator import RosGrpcManipulator 
-from .base_env import BaseEnv, StepReturn, ResetReturn, Modality
+from .manipulator import RosGrpcManipulator
+from .base_env import BaseEnv, Modality
 from .objects import BaseBox, ObjectsFactory
-from .scene import 
- 
+
 from config import ExpConfig
 from config.types import Control, CamerasSetup
 
-from aux import transform_by_quat
+from .scene import BaseScene
 
 
 class GraspEnvROS(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
 
     def __init__(self, cfg: ExpConfig, scene: BaseScene = None) -> None:
-        super().__init__(
-            scene=scene, cfg=cfg
-        ) 
+        super().__init__(scene=scene, cfg=cfg)
         self._extract_config()
         self._observation_fns = {
             Modality.TCP_POSE: self._observe_tcp_pose,
@@ -84,4 +74,3 @@ class GraspEnvROS(BaseEnv):
         self._init_reward_functions()
         self._init_buffers()
         self.reset()
-

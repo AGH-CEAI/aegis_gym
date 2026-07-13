@@ -3,26 +3,25 @@ from typing import Optional, Any
 
 # TODO try to remove the np dependnecy
 import torch as th
-import numpu as np
 
 from ..base_scene import BaseScene, RandomizationType
 from envs.manipulator import BaseManipulator, RosGrpcManipulator
-from envs.objects import ObjectsFactory, ObjectType, BaseObject
-from config.types import CameraName, CamerasSetup, Control, DomainRandomizationCfg, EnvCfg, ExpConfig, RobotCfg
+from envs.objects import ObjectType, BaseObject, ObjectProperties
+from config.types import CameraName, Control, ExpConfig, RobotCfg
 
 
 class RosGrcpScene(BaseScene):
     def __init__(
         self,
         cfg: ExpConfig,
-        cfg_env: EnvCfg,
-        cfg_dr: DomainRandomizationCfg,
-        device: th.device = th.device("cpu"),
+        device: th.device,
     ):
+        cfg_env = cfg.env_cfg
+        cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
         self.CONTROL_TYPE = Control.ROS
         self._randomization_fns = {
-                RandomizationType.SCENE_LIGHTING: self._rand_scene_lighting,
+            RandomizationType.SCENE_LIGHTING: self._rand_scene_lighting,
         }
 
         self._cfg_env = cfg_env
@@ -34,7 +33,8 @@ class RosGrcpScene(BaseScene):
             f"[ROSgRPCScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
         )
 
-        self._cameras: dict[CameraName, Camera] = {}
+        # TODO change Any to CameraType?
+        self._cameras: dict[CameraName, Any] = {}
         self._setup_scene(cfg=cfg)
 
         self._global_entity_cnt = 0
@@ -50,7 +50,7 @@ class RosGrcpScene(BaseScene):
     def get_policy_dt(self) -> float:
         raise NotImplementedError
 
-    def add_entity(self, entity: ObjectType) -> Any:
+    def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
         raise NotImplementedError
 
     def add_manipulator(self, cfg: RobotCfg) -> None:
@@ -69,7 +69,6 @@ class RosGrcpScene(BaseScene):
     def _get_manipulator(self) -> BaseManipulator:
         return self.manipulator
 
-
     def update_state(self) -> None:
         raise NotImplementedError
 
@@ -82,7 +81,6 @@ class RosGrcpScene(BaseScene):
         while time.perf_counter() - self.last_step_ts < self.policy_dt:
             time.sleep(0.0001)
         self.last_step_ts = time.perf_counter()
-
 
     def _rand_scene_lighting(self, envs_idx: th.Tensor) -> None:
         pass

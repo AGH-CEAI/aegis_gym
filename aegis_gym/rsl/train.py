@@ -5,18 +5,14 @@ from clearml import Task
 from envs import BaseEnv
 from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
-from envs.grasp_env import GraspEnv
+from envs import ReacherEnv
 from runners import OnPolicyRunner, BehaviorCloningRunner
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, Algorithm, Control
-from utils import load_rl_policy
+from aux import load_rl_policy
 
 
-try:
-    from envs.grasp_env_ros import GraspEnvROS
-except ImportError as e:
-    GraspEnvROS = None
-    print(f"[ImportError] Couldn't import GraspEnvRos: {e}")
+from envs.scene import GenesisScene, RosGrcpScene
 
 
 def init_clearml_task(
@@ -70,15 +66,20 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
     args: LaunchArgs = cfg.args
     control_type = args.control_type
 
+    scene = None
     if control_type == Control.SIM:
         gs.init(logging_level="info", precision="32")
-        return GraspEnv(cfg=cfg)
+        scene = GenesisScene(cfg=cfg, device=cfg.get_device())
     if control_type == Control.ROS:
-        if GraspEnvROS is None:
+        if RosGrcpScene is None:
             print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
             exit()
-        return GraspEnvROS(cfg=cfg)
-    raise ValueError(f"Wrong control type: {str(control_type)}")
+        scene = RosGrcpScene(cfg=cfg, device=cfg.get_device())
+
+    if scene is None:
+        raise ValueError("Scene is None")
+
+    return ReacherEnv(scene=scene, cfg=cfg)
 
 
 def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:

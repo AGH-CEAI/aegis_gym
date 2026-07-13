@@ -1,12 +1,11 @@
 import math
-from typing import Optional
 
 import torch as th
 from tensordict import TensorDict
 
 from config.types import ExpConfig, CameraName
 from envs.base_env import BaseEnv, Modality, StepReturn, ResetReturn
-from envs.objects import ObjectType, BaseBox
+from envs.objects import ObjectType, BaseBox, ObjectProperties
 from envs.manipulator import BaseManipulator
 
 from .scene import BaseScene
@@ -90,7 +89,16 @@ class ReacherEnv(BaseEnv):
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
-        self.object: BaseBox = self._scene.add_entity(entity=ObjectType.BOX)
+        p = ObjectProperties(
+            dims=(0.4, 0.4, 0.4),
+            pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+            collision=True,
+            fixed=False,
+            color=(0.8, 0.0, 0.0),
+        )
+        self.object: BaseBox = self._scene.add_entity(
+            entity=ObjectType.BOX, properties=p
+        )
 
     def _init_reward_functions(self) -> None:
         # TODO simplify creation of the rewards_functions registry
@@ -142,7 +150,7 @@ class ReacherEnv(BaseEnv):
     def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
-        self.scene.update_state()
+        self._scene.update_state()
         return ResetReturn(self.get_observations(), self.extras)
 
     def reset_idx(self, envs_idx: th.Tensor) -> None:
@@ -168,7 +176,8 @@ class ReacherEnv(BaseEnv):
 
         if self._cfg_dr.enabled:
             # TODO move this to a proper public call
-            f(envs_idx) for f in self._scene._randomization_fns.values()
+            # f(envs_idx) for f in self._scene._randomization_fns.values()
+            pass
 
     def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
         num_reset = len(envs_idx)
@@ -208,8 +217,8 @@ class ReacherEnv(BaseEnv):
         actions = th.clamp(actions, min=-1.0, max=1.0)
 
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
-        self.scene.step()
-        self.scene.update_state()
+        self._scene.step()
+        self._scene.update_state()
 
         # check env termination (Sets the self.reset_buf)
         env_reset_idx = self._is_episode_complete()
@@ -259,7 +268,7 @@ class ReacherEnv(BaseEnv):
         return obs_tensor
 
     def _reward_keypoints(self) -> th.Tensor:
-        tcp_pose = self.robot.get_tcp_pose()
+        tcp_pose = self.manipulator.get_tcp_pose()
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         keypoints_offset = self.keypoints_offset
         object_offset = th.tensor(
@@ -286,7 +295,7 @@ class ReacherEnv(BaseEnv):
         quaternion: th.Tensor,  # [N, 4]
         keypoints_offset: th.Tensor,  # [N, 7, 3]
     ) -> th.Tensor:
-        # TODO ceck thes genesis implementation
+        # TODO check this genesis implementation
 
         # N, K, _ = keypoints_offset.shape
         #
@@ -302,4 +311,3 @@ class ReacherEnv(BaseEnv):
                 keypoints_offset[:, k], quaternion
             )
         return world
-

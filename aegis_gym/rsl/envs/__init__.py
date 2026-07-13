@@ -1,6 +1,7 @@
 from .base_env import BaseEnv, Modality, IMAGE_MODALITIES
 from .scene import BaseScene
 from .manipulator import BaseManipulator
+from .reacher_env import ReacherEnv
 
 __all__ = [
     "BaseEnv",
@@ -8,4 +9,5 @@ __all__ = [
     "BaseScene",
     "Modality",
     "IMAGE_MODALITIES",
+    "ReacherEnv",
 ]

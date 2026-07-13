@@ -1,24 +1,24 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypeVar
 
 import torch as th
 import genesis as gs
-from genesis.engine.entities.rigid_entity.rigid_link import RigidLink
 from clearml import Dataset
 from tensordict import TensorDict
 
-from ..base_manipulator import BaseManipulator, CameraID, CameraModality
-from config.types import RobotCfg
-from envs.scene import GenesisScene
+from envs.manipulator import BaseManipulator, CameraModality
+from config.types import RobotCfg, CameraName
+
+RigidLink = TypeVar
 
 
 class GenesisManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene: GenesisScene,
+        gs_scene: gs.Scene,
         cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
@@ -26,8 +26,7 @@ class GenesisManipulator(BaseManipulator):
         super().__init__(device=device)
 
         self._num_envs = num_envs
-        self._scene = scene
-        self._gs_scene = scene.gs_scene
+        self._gs_scene = gs_scene
         self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
@@ -58,10 +57,12 @@ class GenesisManipulator(BaseManipulator):
                 "cam_scene_rgb_camera_frame",
             ],
         )
-        self._robot_entity = scene.add_entity(material=material, morph=morph)
+        self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
+        self.max_linear_speed = 1.0
+        self.max_angular_speed = 1.0
 
         self._ik_method = cfg_robot.ik_method
 
@@ -181,8 +182,8 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: Optional[bool] = None,
         envs_idx: Optional[th.Tensor] = None,
     ) -> None:
-        action[:, :3] *= self._scene.max_linear_speed
-        action[:, 3:] *= self._scene.max_angular_speed
+        action[:, :3] *= self.max_linear_speed
+        action[:, 3:] *= self.max_angular_speed
 
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
@@ -376,7 +377,7 @@ class GenesisManipulator(BaseManipulator):
         return fingers.sum(dim=1)
 
     def get_camera_image(
-        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+        self, camera_name: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
         # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
         raise NotImplementedError(

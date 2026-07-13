@@ -1,4 +1,4 @@
-from .base_objects import ObjectType, BaseObject, BaseBox
+from .base_objects import ObjectType, BaseObject, BaseBox, ObjectProperties
 from .real.ros_grpc_objects import RosGrpcBox
 from .sim.genesis_objects import GenesisBox
 from .objects_factory import ObjectsFactory
@@ -11,4 +11,5 @@ __all__ = [
     "RosGrpcBox",
     "GenesisBox",
     "ObjectsFactory",
+    "ObjectProperties",
 ]

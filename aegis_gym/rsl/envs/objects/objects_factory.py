@@ -1,10 +1,8 @@
 import torch as th
-import genesis as gs
 
-from .base_objects import ObjectType, BaseBox, BaseObject
+from .base_objects import ObjectProperties, ObjectType, BaseBox, BaseObject
 from .real.ros_grpc_objects import RosGrpcBox
 from .sim.genesis_objects import GenesisBox
-from ..scene import BaseScene
 
 from config.types import Control
 
@@ -13,36 +11,34 @@ class ObjectsFactory:
     @classmethod
     def create_object(
         cls,
+        ctrl_type: Control,
         obj_type: ObjectType,
-        scene: BaseScene,
+        obj_properties: ObjectProperties,
         device: th.device,
-        **kwargs,
     ) -> BaseObject:
         match obj_type:
             case ObjectType.BOX:
                 return cls.create_box(
-                    scene=scene,
+                    ctrl_type=ctrl_type,
+                    properties=obj_properties,
                     device=device,
-                    **kwargs,
                 )
 
     @classmethod
     def create_box(
         cls,
-        scene: BaseScene,
+        ctrl_type: Control,
+        properties: ObjectProperties,
         device: th.device,
-        **kwargs,
     ) -> BaseBox:
-        match scene.CONTROL_TYPE:
+        match ctrl_type:
             case Control.SIM:
                 return GenesisBox(
-                    scene=scene,
+                    properties=properties,
                     device=device,
-                    **kwargs,
                 )
             case Control.ROS:
                 return RosGrpcBox(
-                    scene=scene,
+                    properties=properties,
                     device=device,
-                    **kwargs,
                 )

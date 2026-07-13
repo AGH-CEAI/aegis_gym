@@ -8,14 +8,13 @@ import genesis as gs
 from genesis.vis.camera import Camera
 
 from envs.manipulator import BaseManipulator, GenesisManipulator
-from envs.objects import ObjectsFactory, ObjectType, BaseObject
+from envs.objects import ObjectsFactory, ObjectType, BaseObject, ObjectProperties
 from config.types import (
     CameraLink,
     CameraName,
     CameraPoseCfg,
     CamerasSetup,
     Control,
-    DomainRandomizationCfg,
     EnvCfg,
     ExpConfig,
     RobotCfg,
@@ -29,10 +28,10 @@ class GenesisScene(BaseScene):
     def __init__(
         self,
         cfg: ExpConfig,
-        cfg_env: EnvCfg,
-        cfg_dr: DomainRandomizationCfg,
-        device: th.device = th.device("cpu"),
+        device: th.device,
     ):
+        cfg_env = cfg.env_cfg
+        cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
         self.CONTROL_TYPE = Control.SIM
         self._randomization_fns = {
@@ -44,7 +43,7 @@ class GenesisScene(BaseScene):
         self._cfg_dr = cfg_dr
         self._extract_config()
 
-        self._enable_pj_logging = cfg.args.enable_plot_juggler
+        self._enable_pj_logging = cfg.args.enable_plotjuggler
         self._setup_pj_server()
 
         # TODO investigate if there is possibility to remove numpy
@@ -88,8 +87,6 @@ class GenesisScene(BaseScene):
 
         self._max_linear_speed = self._cfg_env.action_max_linear_speed
         self._max_angular_speed = self._cfg_env.action_max_angular_speed
-        self.max_linear_speed = self._max_linear_speed
-        self.max_angular_speed = self._max_angular_speed
 
         self.reward_scales = self._cfg_env.reward_scales
 
@@ -111,11 +108,14 @@ class GenesisScene(BaseScene):
         print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
-        self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.show_viewer)
+        self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
         self._setup_create_plane(self.gs_scene)
-        self._setup_create_table(self.gs_scene, cfg.args.show_cell)
+        # TODO why there is a visualize_cell, this should be taken from the URDF file
+        self._setup_create_table(self.gs_scene, True)
         self._setup_create_cameras(
-            self.gs_scene, self.cameras_setup, cfg.args.show_cameras_gui
+            self.gs_scene,
+            self.cameras_setup,
+            cfg.args.debug_preview_vis_obs,  # TODO rremove the show_cameras_gui feature?
         )
         self._setup_create_lighting(self.gs_scene)
 
@@ -304,8 +304,8 @@ class GenesisScene(BaseScene):
         # TODO create a proper logic
         if not self._cfg_dr.enabled:
             return
-        self._setup_dr_pd_gains()
-        self._cache_camera_base_offsets()
+        # self._setup_dr_pd_gains()
+        # self._cache_camera_base_offsets()
 
     # TODO this should be in scene, not in env
     def get_policy_dt(self) -> float:
@@ -325,12 +325,12 @@ class GenesisScene(BaseScene):
         if self.manipulator:
             del self.manipulator
 
-    def add_entity(self, entity: ObjectType, **kwargs) -> Any:
+    def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
         obj = ObjectsFactory.create_object(
             obj_type=entity,
-            scene=self.gs_scene,
+            obj_properties=properties,
+            ctrl_type=self.CONTROL_TYPE,
             device=self.device,
-            **kwargs,
         )
         self._entity_registry[self._global_entity_cnt] = obj
         self._global_entity_cnt += 1
@@ -348,13 +348,16 @@ class GenesisScene(BaseScene):
     def add_manipulator(self, cfg: RobotCfg) -> None:
         self.manipulator = GenesisManipulator(
             num_envs=self.num_envs,
-            scene=self,
+            gs_scene=self.gs_scene,
             cfg_robot=cfg,
             show_cell=self.show_cell,
             device=self.device,
         )
 
     def _build(self) -> None:
+        for obj in self._entity_registry.values():
+            obj.create(gs_scene=self.gs_scene)
+
         self.gs_scene.build(
             n_envs=self.num_envs
             # env_spacing=(1.0, 1.0),
@@ -491,8 +494,8 @@ class GenesisScene(BaseScene):
             1.0 + (th.rand(1, device=self.device).item() * 2.0 - 1.0) * ang_speed_noise
         )
 
-        self.max_linear_speed = self._max_linear_speed * lin_scale
-        self.max_angular_speed = self._max_angular_speed * ang_scale
+        self.manipulator.max_linear_speed = self._max_linear_speed * lin_scale
+        self.manipulator.max_angular_speed = self._max_angular_speed * ang_scale
 
     def _rand_manipulator_pd_gains(self, envs_idx: th.Tensor) -> None:
         cfg = self._cfg_dr.pd_gains

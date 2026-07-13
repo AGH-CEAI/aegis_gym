@@ -1,12 +1,19 @@
 from abc import ABC, abstractmethod
 from enum import auto
+from dataclasses import dataclass
 from strenum import StrEnum
 from typing import Optional
 
 import torch as th
-import genesis as gs
 
-from envs.scene import BaseScene
+
+@dataclass(frozen=True, slots=True)
+class ObjectProperties:
+    dims: tuple
+    pose: Optional[tuple[float]]
+    fixed: bool = False
+    collision: bool = True
+    color: tuple[float, float, float] = (1.0, 0.0, 0.0)
 
 
 class ObjectType(StrEnum):
@@ -20,23 +27,16 @@ class BaseObject(ABC):
 
     def __init__(
         self,
-        scene: BaseScene | gs.Scene,  # TODO(issue#128) Remove gs.Scene from this API
-        device: th.device = th.device("cpu"),
+        properties: ObjectProperties,
+        device: th.device,
     ):
-        """
-        The `dims` are given per specialization, `pose` as X,Y,Z,QW,QX,QY,QZ and the `num_envs` as int.
-        """
-        self._scene = scene
+        self.properties = properties
         self.device = device
 
     @abstractmethod
     def create(
         self,
-        dims: tuple,
-        pose: Optional[tuple[float]],  # TODO(issue#128) unify pose type for create() and set_pose()
-        fixed: bool = False,
-        collision: bool = True,
-        color: tuple[float, float, float] = (1.0, 0.0, 0.0),
+        **kwargs,
     ) -> None:
         """Create the object."""
         ...
