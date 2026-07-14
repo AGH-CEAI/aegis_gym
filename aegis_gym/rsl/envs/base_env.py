@@ -89,7 +89,8 @@ class BaseEnv(VecEnv):
 
     def get_policy_dt(self) -> float:
         """Returns the time period for policy inference."""
-        # TODO figure out how to get_policy_dt out of the scene (maybe store it in the env after all)
+        if self._scene is None:
+            raise RuntimeError("Missing scene definition to call get_policy_dt().")
         return self._scene.get_policy_dt()
 
     @abstractmethod
@@ -100,6 +101,16 @@ class BaseEnv(VecEnv):
     def get_cameras_setup(self) -> CamerasSetup:
         """The environment cameras setup"""
         return self._cfg_env.cameras_setup
+
+    def get_modality_observation(self, modality: Modality) -> th.Tensor:
+        """
+        Returns a selected observation `modality` at the current state.
+        """
+        if modality not in self.available_modalities:
+            raise ValueError(f"Unsupported modality: {modality}")
+        if modality not in self._obs_cache:
+            self._obs_cache_set(modality, self._observation_fns[modality]())
+        return self._obs_cache_get(frozenset({modality}))[modality]
 
     def get_modality_observations(
         self, modalities: Optional[Collection[Modality]] = None
