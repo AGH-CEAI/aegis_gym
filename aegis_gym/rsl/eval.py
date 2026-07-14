@@ -1,19 +1,22 @@
 import time
-from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import torch as th
 from clearml import Task
 from tqdm import tqdm
 
 from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, DebugCfg, Algorithm, Control, CamerasSetup
-from envs import BaseEnv, IMAGE_MODALITIES
+from config.types import (
+    ExpConfig,
+    DebugCfg,
+    Algorithm,
+    IMAGE_MODALITIES,
+    Modality,
+)
 from envs.wrappers import ObsPreviewEnvWrapper
-from runners import BehaviorCloningRunner
+from envs import BaseEnv
 
-from train import init_clearml_task, create_env
-from utils import load_rl_policy, load_bc_policy, get_bc_checkpoints
+from train import init_clearml_task, create_env, load_policy
 
 
 def main():
@@ -32,31 +35,28 @@ def main():
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     ConfigManager.setup_config(argv=args, device=device, task=task)
     cfg: ExpConfig = ConfigManager.get_config()
-    sweep = is_checkpoints_sweep_required(args)
 
-    env = create_env(cfg)
+    env: BaseEnv = create_env(cfg)
+
     if cfg.debug_cfg.enabled and (
         cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
     ):
-        print("[EvalTrain] >>> Wrapping env with ObsPreviewEnvWrapper")
+        print("[Eval] >>> Wrapping env with ObsPreviewEnvWrapper")
         env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
     print(
-        f"[GraspEval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
+        f"[Eval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
     )
-    print("[GraspEval] Setup done")
+    print("[Eval] Setup done")
 
     with th.no_grad():
-        start_cameras_recording(env=env, cfg=cfg)
+        if is_checkpoints_sweep_required(args):
+            # TODO note in changelog that this feature has been deprecated
+            raise NotImplementedError("[Eval] Deprecated feature")
 
-        if sweep:
-            eval_policy_sweep(env=env, cfg=cfg, task=task)
-        else:
-            eval_policy_single(env=env, cfg=cfg, task=task)
+        eval_policy_single(env=env, cfg=cfg, clearml_task=task)
 
-        stop_cameras_recording(env=env, cfg=cfg)
-
-    print("[GraspEval] Finished evaluation script")
+    print("[Eval] Finished evaluation script")
 
 
 def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
@@ -67,118 +67,20 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
         args.bc_all_checkpoints or args.bc_eval_every is not None
     ):
         print(
-            "[GraspEval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
+            "[Eval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
     if sweep and args.enable_recording:
-        print("[GraspEval] WARNING: record is ignored during multi-checkpoint sweep")
+        print("[Eval] WARNING: record is ignored during multi-checkpoint sweep")
         # args.enable_recording = False # TODO ensure to disable the recording
     return sweep
 
 
-def load_policy(env: BaseEnv, cfg: ExpConfig) -> Callable:
-    args: LaunchArgs = cfg.args
-
-    algorithm = args.algorithm
-    if algorithm == Algorithm.RL:
-        return load_rl_policy(
-            env=env,
-            cfg=cfg,
-            load_cfg_from_clearml=not args.enforce_current_config,
-            exp_name=args.experiment_name,
-            clearml_task_id=args.load_rl_task_id,
-            clearml_model_id=args.load_rl_model_id,
-            clearml_artifact_name="model",
-        )
-    if algorithm == Algorithm.BC:
-        policy = load_bc_policy(
-            env=env,
-            cfg=cfg,
-            load_cfg_from_clearml=not args.enforce_current_config,
-            exp_name=args.experiment_name,
-            clearml_task_id=args.load_bc_task_id,
-            clearml_model_id=args.load_bc_model_id,
-        )
-        policy.eval()
-        return policy
-    raise ValueError("Unknown learning method")
-
-
-def start_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
-    args = cfg.args
-    if not args.control_type == Control.SIM:
-        print(
-            f"[GraspEval] Skipping camera setup for control type: {str(args.control_type)}"
-        )
-    if not args.enable_recording:
-        return
-    cameras_setup = cfg.env_cfg.cameras_setup
-
-    # TODO(issue#41): Refactor camera handling to use a unified camera registry instead of dynamic attributes
-    match cameras_setup:
-        case CamerasSetup.DEFAULT:
-            env.record_cam.start_recording()
-            env._cameras["scene_cam"].start_recording()
-            env._cameras["tool_left_cam"].start_recording()
-            env._cameras["tool_right_cam"].start_recording()
-        case CamerasSetup.SCENE_DUAL:
-            env.record_cam.start_recording()
-            env._cameras["scene_left_cam"].start_recording()
-            env._cameras["scene_right_cam"].start_recording()
-    print(f"[GraspEval] Recording video (camera setup: {cameras_setup})...")
-
-
-def stop_cameras_recording(env: BaseEnv, cfg: ExpConfig) -> None:
-    args = cfg.args
-    if not args.control_type == Control.SIM:
-        return
-
-    if not args.enable_recording:
-        return
-
-    print("[GraspEval] Stopping video recording...")
-    cameras_setup = cfg.env_cfg.cameras_setup
-    fps = int(1 / cfg.env_cfg.policy_dt)
-
-    match cameras_setup:
-        case CamerasSetup.DEFAULT:
-            env.record_cam.stop_recording(
-                save_to_filename=str(args.video_path),
-                fps=fps,
-            )
-            env._cameras["scene_cam"].stop_recording(
-                save_to_filename="scene_cam.mp4",
-                fps=fps,
-            )
-            env._cameras["tool_left_cam"].stop_recording(
-                save_to_filename="tool_left_cam.mp4",
-                fps=fps,
-            )
-            env._cameras["tool_right_cam"].stop_recording(
-                save_to_filename="tool_right_cam.mp4",
-                fps=fps,
-            )
-        case CamerasSetup.SCENE_DUAL:
-            env.record_cam.stop_recording(
-                save_to_filename=str(args.video_path),
-                fps=fps,
-            )
-            env._cameras["scene_right_cam"].stop_recording(
-                save_to_filename="scene_left_cam.mp4",
-                fps=fps,
-            )
-            env._cameras["scene_left_cam"].stop_recording(
-                save_to_filename="scene_right_cam.mp4",
-                fps=fps,
-            )
-
-
 def eval_policy_single(
-    env: Any,
+    env: BaseEnv,
     cfg: ExpConfig,
-    task: Task,
+    clearml_task: Task,
 ) -> None:
     args = cfg.args
-    record_render = args.control_type == Control.SIM and args.enable_recording
     device = cfg.get_device()
     max_steps = int(cfg.env_cfg.max_steps)
 
@@ -186,86 +88,26 @@ def eval_policy_single(
     policy = load_policy(env, cfg)
     obs, _ = env.reset()
     metrics = run_eval(
-        env,
-        policy,
-        args.algorithm,
-        max_steps,
-        obs,
-        device,
-        record_render=record_render,
+        env=env,
+        policy=policy,
+        stage=args.algorithm,
+        max_steps=max_steps,
+        obs=obs,
+        device=device,
         debug_cfg=cfg.debug_cfg,
     )
-    log_metrics(task, metrics)
-
-
-def eval_policy_sweep(
-    env: Any,
-    cfg: ExpConfig,
-    task: Task,
-) -> None:
-    args = cfg.args
-    log_dir = Path(cfg.logger_cfg.local_log_dir)
-    device = cfg.get_device()
-    max_steps = int(cfg.env_cfg.max_steps)
-
-    checkpoints = get_bc_checkpoints(
-        log_dir=log_dir,
-        clearml_task_id=args.load_bc_task_id,
-        clearml_model_id=args.load_bc_model_id,
-    )
-    if args.bc_eval_every is not None:
-        checkpoints = [
-            ckpt for ckpt in checkpoints if ckpt.step % args.bc_eval_every == 0
-        ]
-        if not checkpoints:
-            raise ValueError(
-                f"[GraspEval] No checkpoints match every {args.bc_eval_every}"
-            )
-    print(
-        f"[GraspEval] Evaluating {len(checkpoints)} BC checkpoint(s): {[ckpt.step for ckpt in checkpoints]}"
-    )
-
-    bc_runner = BehaviorCloningRunner(
-        env=env,
-        cfg=cfg,
-        teacher=None,
-    )
-    object_pose = env.generate_object_poses(seed=args.seed)
-
-    for ckpt in checkpoints:
-        print(f"\n[GraspEval] === Checkpoint iter {ckpt.step:04d} ===")
-        bc_runner.load(ckpt.path)
-        policy = bc_runner.get_inference_policy(device=cfg.get_device())
-        policy.eval()
-
-        obs, _ = env.reset()
-        env.apply_object_poses(object_pose)
-        env.scene.step()
-        obs = env.get_observations()
-
-        metrics = run_eval(
-            env,
-            policy,
-            args.algorithm,
-            max_steps,
-            obs,
-            device,
-            record_render=False,
-            debug_cfg=cfg.debug_cfg,
-        )
-        log_metrics(task, metrics, step=ckpt.step)
+    log_metrics(clearml_task, metrics)
 
 
 # TODO(issue#100): Unify policy model types under a common base class or type alias
 def run_eval(
-    env: Any,
+    env: BaseEnv,
     policy: Callable,
     stage: Algorithm,
     max_steps: int,
-    obs: Any,
+    obs: th.Tensor,
     device: th.device,
     debug_cfg: DebugCfg,
-    record_render: bool = False,
 ) -> dict[str, float]:
     total_rewards = th.zeros(env.num_envs, device=device)
     episode_lengths = th.zeros(env.num_envs, device=device)
@@ -289,17 +131,15 @@ def run_eval(
                 actions = policy(obs)
             case Algorithm.BC:
                 rgb_obs = get_obs_vis()
-                tcp_pose = env.robot.get_tcp_pose()
+                tcp_pose = env.get_modality_observation(Modality.TCP_POSE)
                 actions = policy(rgb_obs, tcp_pose)
-                if record_render:
-                    env.record_cam.render()
 
         obs, rews, dones, infos = env.step(actions)
 
         total_rewards += rews
         episode_lengths += 1
 
-    print("[GraspEval] Finished model inference, proceeding to procedural grasp demo")
+    print("[Eval] Finished model inference")
 
     end_time = time.perf_counter()
     total_inference_time += end_time - start_time
@@ -309,10 +149,7 @@ def run_eval(
     mean_inference_time = total_inference_time / max_steps
     fps = 1.0 / mean_inference_time
 
-    success_rate = env.grasp_and_lift_demo()
-
     return {
-        "success_rate": success_rate,
         "mean_reward": mean_reward,
         "mean_episode_length": mean_episode_length,
         "mean_inference_time_s": mean_inference_time,
@@ -322,7 +159,6 @@ def run_eval(
 
 def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
     info_str = (
-        f"Success rate: {metrics['success_rate']:.2f}\n"
         f"Mean reward: {metrics['mean_reward']:.6f}\n"
         f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
         f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
@@ -331,7 +167,6 @@ def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
     print(info_str)
 
     logger = task.get_logger()
-    logger.report_scalar("Eval/success_rate", "series", metrics["success_rate"], step)
     logger.report_scalar("Eval/mean_reward", "series", metrics["mean_reward"], step)
     logger.report_scalar(
         "Eval/mean_episode_length", "series", metrics["mean_episode_length"], step
@@ -346,4 +181,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n\n[GraspEval] > Exiting (invoked by user)")
+        print("\n\n\n[Eval] > Exiting (invoked by user)")
