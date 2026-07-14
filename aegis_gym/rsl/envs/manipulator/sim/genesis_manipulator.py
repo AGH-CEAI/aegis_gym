@@ -1,7 +1,7 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Optional, TypeVar
+from typing import Optional, TypeVar, Callable
 
 import torch as th
 import genesis as gs
@@ -19,6 +19,7 @@ class GenesisManipulator(BaseManipulator):
         self,
         num_envs: int,
         gs_scene: gs.Scene,
+        cameras_obs_getter: Callable[[CameraName, CameraModality], th.Tensor],
         cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
@@ -27,6 +28,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._num_envs = num_envs
         self._gs_scene = gs_scene
+        self._observe_camera_fn = cameras_obs_getter
         self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
@@ -377,19 +379,16 @@ class GenesisManipulator(BaseManipulator):
         return fingers.sum(dim=1)
 
     def get_camera_image(
-        self, camera_name: CameraName, modality: CameraModality = CameraModality.RGB
+        self, camera: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
-        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
-        raise NotImplementedError(
-            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
-        )
+        return self._observe_camera_fn(camera, modality)
 
     def get_all_cameras_images(
         self, modality: CameraModality = CameraModality.RGB
     ) -> TensorDict:
         # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
         raise NotImplementedError(
-            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
+            "Currently in Genesis Sim, the manipulator doesn't have access to the all cameras observation."
         )
 
     def get_robot_link(self, link: str) -> RigidLink:

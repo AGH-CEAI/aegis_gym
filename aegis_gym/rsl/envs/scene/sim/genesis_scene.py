@@ -11,6 +11,7 @@ from envs.manipulator import BaseManipulator, GenesisManipulator
 from envs.objects import ObjectsFactory, ObjectType, BaseObject, ObjectProperties
 from config.types import (
     CameraLink,
+    CameraModality,
     CameraName,
     CameraPoseCfg,
     CamerasSetup,
@@ -311,9 +312,11 @@ class GenesisScene(BaseScene):
     def get_policy_dt(self) -> float:
         return self.policy_dt
 
-    # TODO observations should be made through manipulator abstraction, however, the logic should be implemented in the scene
-    def observe_camera(self, camera: CameraName) -> th.Tensor:
-        # def _render_rgb_camera(self, camera: str) -> th.Tensor:
+    def observe_camera(self, camera: CameraName, modality: CameraModality) -> th.Tensor:
+        if not modality == CameraModality.RGB:
+            raise ValueError(
+                "The current implementation of Genesis Simulator doesn't support different cameras modalities!"
+            )
         rgb, _, _, _ = self._cameras[camera].render(
             rgb=True, depth=False, segmentation=False, normal=False
         )
@@ -349,6 +352,7 @@ class GenesisScene(BaseScene):
         self.manipulator = GenesisManipulator(
             num_envs=self.num_envs,
             gs_scene=self.gs_scene,
+            cameras_obs_getter=self.observe_camera,
             cfg_robot=cfg,
             show_cell=self.show_cell,
             device=self.device,

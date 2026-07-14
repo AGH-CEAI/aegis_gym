@@ -293,7 +293,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 teacher_action = self._teacher(obs).detach()
 
                 # Get end-effector position
-                robot: BaseManipulator = self.env.robot
+                robot: BaseManipulator = self.env.manipulator
                 ee_pose = robot.get_tcp_pose()
 
                 # Get object pose in camera frame
