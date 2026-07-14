@@ -40,6 +40,23 @@ class CameraModality(StrEnum):
     DEPTH = auto()
 
 
+class Modality(StrEnum):
+    TCP_POSE = auto()
+    TCP_VELOCITY = auto()
+    TCP_WRENCH = auto()
+    CAMERA_SCENE_RGB = CameraName.CAMERA_SCENE
+    CAMERA_TOOL_LEFT_RGB = CameraName.CAMERA_SCENE_LEFT
+    CAMERA_TOOL_RIGHT_RGB = CameraName.CAMERA_SCENE_RIGHT
+    OBJECT_POSE = auto()
+
+
+IMAGE_MODALITIES: tuple[Modality, ...] = (
+    Modality.CAMERA_SCENE_RGB,
+    Modality.CAMERA_TOOL_LEFT_RGB,
+    Modality.CAMERA_TOOL_RIGHT_RGB,
+)
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class Checkpoint:
     step: int

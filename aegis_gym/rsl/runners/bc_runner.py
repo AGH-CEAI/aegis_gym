@@ -12,12 +12,13 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
-from envs import BaseManipulator, BaseEnv, IMAGE_MODALITIES
+from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
 from config.types import (
     ExpConfig,
     BCCfg,
     CamerasSetup,
+    IMAGE_MODALITIES,
 )
 
 from .base_runner import BasePolicyRunner

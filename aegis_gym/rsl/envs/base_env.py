@@ -1,8 +1,6 @@
 from abc import abstractmethod
-from enum import auto
 from typing import NamedTuple, Optional, Callable, Collection
 
-from strenum import StrEnum
 
 import torch as th
 from tensordict import TensorDict
@@ -14,7 +12,7 @@ from config.types import (
     DomainRandomizationCfg,
     ExpConfig,
     CamerasSetup,
-    CameraName,
+    Modality,
 )
 
 
@@ -34,23 +32,6 @@ class StepReturn(NamedTuple):
     extras: dict
 
 
-class Modality(StrEnum):
-    TCP_POSE = auto()
-    TCP_VELOCITY = auto()
-    TCP_WRENCH = auto()
-    CAMERA_SCENE_RGB = CameraName.CAMERA_SCENE
-    CAMERA_TOOL_LEFT_RGB = CameraName.CAMERA_SCENE_LEFT
-    CAMERA_TOOL_RIGHT_RGB = CameraName.CAMERA_SCENE_RIGHT
-    OBJECT_POSE = auto()
-
-
-IMAGE_MODALITIES: tuple[Modality, ...] = (
-    Modality.CAMERA_SCENE_RGB,
-    Modality.CAMERA_TOOL_LEFT_RGB,
-    Modality.CAMERA_TOOL_RIGHT_RGB,
-)
-
-
 class BaseEnv(VecEnv):
     """
     Base class for implementing an environment compatible with rsl_rl's VecEnv.
@@ -63,7 +44,7 @@ class BaseEnv(VecEnv):
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__()
-        self._scene: BaseScene = scene
+        self._scene: Optional[BaseScene] = scene
         self._cfg_env: EnvCfg = cfg.env_cfg
         self._cfg_dr: DomainRandomizationCfg = cfg.dr_cfg
         self.num_envs = cfg.env_cfg.num_envs
@@ -108,6 +89,7 @@ class BaseEnv(VecEnv):
 
     def get_policy_dt(self) -> float:
         """Returns the time period for policy inference."""
+        # TODO figure out how to get_policy_dt out of the scene (maybe store it in the env after all)
         return self._scene.get_policy_dt()
 
     @abstractmethod

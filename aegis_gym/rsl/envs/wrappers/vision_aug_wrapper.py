@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from tensordict import TensorDict
 
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
+from ..base_env import BaseEnv, StepReturn, ResetReturn
 
-from config.types import ImageAugCfg, EnvCfg
+from config.types import ImageAugCfg, EnvCfg, IMAGE_MODALITIES, Modality
 
 
 class VisionAugEnvWrapper(BaseEnvWrapper):

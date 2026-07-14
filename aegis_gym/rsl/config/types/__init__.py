@@ -16,7 +16,17 @@ from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
 from .env import EnvCfg
 from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
-from .enum_types import Algorithm, Checkpoint, Control, CamerasSetup, CameraName, CameraLink, CameraModality
+from .enum_types import (
+    Algorithm,
+    Checkpoint,
+    Control,
+    CamerasSetup,
+    CameraName,
+    CameraLink,
+    CameraModality,
+    Modality,
+    IMAGE_MODALITIES,
+)
 
 from .exp_config import ExpConfig
 
@@ -42,9 +52,11 @@ __all__ = [
     "EnvCfg",
     "ExpConfig",
     "FusionCfg",
+    "IMAGE_MODALITIES",
     "ImageAugCfg",
     "LoggerCfg",
     "MaxSpeedCfg",
+    "Modality",
     "PDGainCfg",
     "PolicyBCCfg",
     "PolicyCfg",

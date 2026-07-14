@@ -8,9 +8,9 @@ import numpy as np
 import torch as th
 from tensordict import TensorDict
 
-from config.types import DebugCfg
+from config.types import DebugCfg, Modality, IMAGE_MODALITIES
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, Modality, IMAGE_MODALITIES, ResetReturn
+from ..base_env import BaseEnv, StepReturn, ResetReturn
 
 
 class ObsPreviewEnvWrapper(BaseEnvWrapper):
