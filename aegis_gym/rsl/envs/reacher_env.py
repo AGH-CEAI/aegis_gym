@@ -174,10 +174,10 @@ class ReacherEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if self._cfg_dr.enabled:
-            # TODO move this to a proper public call
-            # f(envs_idx) for f in self._scene._randomization_fns.values()
-            pass
+        if not self._cfg_dr.enabled:
+            return
+        for rt in self._scene.get_available_randomizations():
+            self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
     def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
         num_reset = len(envs_idx)
@@ -216,9 +216,9 @@ class ReacherEnv(BaseEnv):
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
 
+        self._scene.pre_step()
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
         self._scene.step()
-        self._scene.update_state()
 
         # check env termination (Sets the self.reset_buf)
         env_reset_idx = self._is_episode_complete()

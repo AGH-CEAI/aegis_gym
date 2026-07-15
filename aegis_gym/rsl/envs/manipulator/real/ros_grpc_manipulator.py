@@ -43,7 +43,6 @@ class RosGrpcManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene,  # TODO(issue#128) introduce proper typing
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,
@@ -55,7 +54,6 @@ class RosGrpcManipulator(BaseManipulator):
         super().__init__(device=device)
 
         self._num_envs = num_envs
-        self._scene = scene
         self._cfg_robot = robot_cfg
         self._policy_dt = policy_dt
         self._disable_vision = disable_vision

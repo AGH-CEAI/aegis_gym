@@ -308,7 +308,6 @@ class GenesisScene(BaseScene):
         # self._setup_dr_pd_gains()
         # self._cache_camera_base_offsets()
 
-    # TODO this should be in scene, not in env
     def get_policy_dt(self) -> float:
         return self.policy_dt
 
@@ -377,8 +376,12 @@ class GenesisScene(BaseScene):
     def update_state(self) -> None:
         self._log_state_to_plot_juggler()
 
+    def pre_step(self) -> None:
+        pass
+
     def step(self) -> None:
         self.gs_scene.step()
+        self.update_state()
 
     def _cache_camera_base_offsets(self) -> None:
         # TODO refactor to new abstraciotns

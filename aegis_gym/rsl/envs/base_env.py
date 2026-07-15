@@ -44,7 +44,7 @@ class BaseEnv(VecEnv):
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__()
-        self._scene: Optional[BaseScene] = scene
+        self._scene: BaseScene = scene
         self._cfg_env: EnvCfg = cfg.env_cfg
         self._cfg_dr: DomainRandomizationCfg = cfg.dr_cfg
         self.num_envs = cfg.env_cfg.num_envs

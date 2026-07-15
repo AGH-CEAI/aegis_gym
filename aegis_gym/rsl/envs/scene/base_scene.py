@@ -36,9 +36,19 @@ class BaseScene(ABC):
         """Shutdown the scene connection."""
         ...
 
-    @property
-    def available_randomizations(self) -> frozenset[RandomizationType]:
-        """Returns set of available randomizations types"""
+    def randomize_domain(
+        self, rand_type: RandomizationType, env_idx: th.Tensor
+    ) -> None:
+        """Calls domain randomization function."""
+        if rand_type not in self._randomization_fns:
+            raise IndexError(
+                f"The `{rand_type}` randomization is not defined for `{type(self).__name__}` scene."
+                "TIP: Check available randomizations via `get_available_randomizations()`."
+            )
+        self._randomization_fns[rand_type](env_idx)
+
+    def get_available_randomizations(self) -> frozenset[RandomizationType]:
+        """Returns set of available randomizations types."""
         return frozenset(self._randomization_fns)
 
     @abstractmethod
@@ -88,6 +98,11 @@ class BaseScene(ABC):
         ...
 
     @abstractmethod
+    def pre_step(self) -> None:
+        """Prepare the scene for a new action."""
+        ...
+
+    @abstractmethod
     def step(self) -> None:
-        """Process the scene step (mainly for simulations)."""
+        """Process the scene step."""
         ...
