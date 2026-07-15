@@ -120,7 +120,6 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             print("[Train] >>> Starting training: Behavioral Cloning (BC)")
 
             print("[Train] >>> (BC) Loading RL policy")
-            teacher_policy = load_policy(env, cfg=cfg)
             teacher_policy = load_rl_policy(
                 env=env,
                 cfg=cfg,

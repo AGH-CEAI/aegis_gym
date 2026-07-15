@@ -319,7 +319,7 @@ class RosGrpcManipulator(BaseManipulator):
         return result.unsqueeze(dim=0)
 
     def get_camera_image(
-        self, camera_id: CameraName, modality: CameraModality = CameraModality.RGB
+        self, camera: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
         """
         Returns image tensor for the given camera and modality:
@@ -334,7 +334,7 @@ class RosGrpcManipulator(BaseManipulator):
             CameraName.CAMERA_SCENE: "scene",
             CameraName.CAMERA_TOOL_LEFT: "left",
             CameraName.CAMERA_TOOL_RIGHT: "right",
-        }[camera_id]
+        }[camera]
         match modality:
             case CameraModality.RGB:
                 return self._vision[cam_name]

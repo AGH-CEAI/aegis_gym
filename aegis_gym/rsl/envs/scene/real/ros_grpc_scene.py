@@ -37,6 +37,9 @@ class RosGrcpScene(BaseScene):
         self._global_entity_cnt = 0
         self._entity_registry: dict[int, BaseObject] = {}
 
+    def shutdown(self) -> None:
+        self.manipulator.shutdown()
+
     def _extract_config(self) -> None:
         self.last_step_ts: float = time.perf_counter()
 
