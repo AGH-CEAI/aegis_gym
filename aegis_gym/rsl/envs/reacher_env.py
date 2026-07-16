@@ -101,7 +101,7 @@ class ReacherEnv(BaseEnv):
         )
 
     def _init_reward_functions(self) -> None:
-        # TODO simplify creation of the rewards_functions registry
+        # TODO(issue#141) simplify creation of the rewards_functions registry
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
             self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
@@ -262,7 +262,6 @@ class ReacherEnv(BaseEnv):
             obj_pos,  # goal position
             obj_quat,  # goal orientation (w, x, y, z)
         ]
-        # TODO validate if the self.extras is needed
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return obs_tensor
@@ -295,7 +294,7 @@ class ReacherEnv(BaseEnv):
         quaternion: th.Tensor,  # [N, 4]
         keypoints_offset: th.Tensor,  # [N, 7, 3]
     ) -> th.Tensor:
-        # TODO check this genesis implementation
+        # TODO(issue#140) check this genesis implementation
 
         # N, K, _ = keypoints_offset.shape
         #

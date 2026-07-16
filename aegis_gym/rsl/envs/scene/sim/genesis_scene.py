@@ -178,21 +178,6 @@ class GenesisScene(BaseScene):
             material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
         )
 
-    # TODO parametrize, change the API, check if the add_enitty work
-    # def _setup_create_object(self, scene: gs.Scene, env_cfg: EnvCfg, device: th.device) -> None:
-    #
-    #     self.add_entity()
-    #     self.object: BaseBox = ObjectsFactory.create_box(
-    #         scene=scene, ctrl=Control.SIM, device=device,
-    #     )
-    #     self.object.create(
-    #         dims=env_cfg.box_size_default,
-    #         pose=None,
-    #         fixed=env_cfg.box_fixed,
-    #         collision=env_cfg.box_collision,
-    #         color=(0.8, 0.0, 0.0),
-    #     )
-    #
     def _setup_create_cameras(
         self, scene: gs.Scene, cameras_setup: CamerasSetup, show_cameras_gui: bool
     ) -> None:
@@ -338,14 +323,6 @@ class GenesisScene(BaseScene):
         self._global_entity_cnt += 1
         return obj
 
-        # TODO extract this to Env
-        # self.object.create(
-        #         dims=self,env_cfg.box_size_default,
-        #         pose=None,
-        #         fixed=env_cfg.box_fixed,
-        #         collision=env_cfg.box_collision,
-        #         color=(0.8, 0.0, 0.0),
-        # )
 
     def add_manipulator(self, cfg: RobotCfg) -> None:
         self.manipulator = GenesisManipulator(

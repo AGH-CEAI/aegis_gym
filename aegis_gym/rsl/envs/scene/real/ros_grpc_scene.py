@@ -21,7 +21,7 @@ class RosGrcpScene(BaseScene):
         super().__init__(device=device)
         self.CONTROL_TYPE = Control.ROS
         self._randomization_fns = {
-            # TODO implement scene lighting randomization
+            # TODO(issue#139) implement scene lighting randomization
             # RandomizationType.SCENE_LIGHTING: self._rand_scene_lighting,
         }
 
@@ -109,5 +109,4 @@ class RosGrcpScene(BaseScene):
         self.update_state()
 
     def _rand_scene_lighting(self, envs_idx: th.Tensor) -> None:
-        # TODO implement scene lighting
-        raise NotImplementedError()
+        raise NotImplementedError("TODO(issue#139) implement scene lighting")
