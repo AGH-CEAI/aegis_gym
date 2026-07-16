@@ -103,13 +103,9 @@ RUN apt update  \
         libprotoc-dev \
         protobuf-compiler \
         protobuf-compiler-grpc \
-        # python3-grpc-tools \
-        # python3-grpcio \
-        # python3-protobuf \
-    && uv pip install --system \
-        "protobuf<3.21" \
-        "grpcio<1.51" \
-        "grpcio-tools<1.51"; \
+        python3-grpc-tools \
+        python3-grpcio \
+        python3-protobuf \
     && git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
     && cd ./aegis_ros/aegis_grpc/ \
     && bash ./install_client.sh \
