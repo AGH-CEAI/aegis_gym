@@ -17,9 +17,9 @@ cuda_short_version="cu129"
 torch_version="2.8.0"
 torchvision_version="0.23.0"
 
-aegis_gym_tag="devel"
-ceai_rsl_rl_tag="ceai-devel"
-aegis_ros_tag="humble-devel"
+aegis_gym_tag=${AEGIS_GYM_TAG:-v202606181210}
+ceai_rsl_rl_tag=${CEAI_RSL_RL_TAG:-v3.3.2}
+aegis_ros_tag=${AEGIS_ROS_TAG:-v202605061402}
 
 no_cache=false
 skip_editable=false
