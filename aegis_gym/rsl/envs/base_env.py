@@ -9,6 +9,7 @@ from tensordict import TensorDict
 from rsl_rl.env import VecEnv
 
 from .scene.base_scene import BaseScene
+from config.types import EnvCfg, CamerasSetup
 
 
 class ResetReturn(NamedTuple):
@@ -54,11 +55,12 @@ class BaseEnv(VecEnv):
     DEFAULT_MODALITIES: frozenset[Modality]
     _observation_fns: dict[Modality, Callable[[], th.Tensor]]
 
-    def __init__(self, scene: Optional[BaseScene], num_envs: int):
+    def __init__(self, scene: Optional[BaseScene], cfg: EnvCfg):
         super().__init__()
         self._scene: Optional[BaseScene] = scene
-        self.num_envs = num_envs
-        self._obs_cache: TensorDict = TensorDict({}, batch_size=[num_envs])
+        self._cfg = cfg
+        self.num_envs = cfg.num_envs
+        self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
 
     def __del__(self):
         if self._scene:
@@ -105,6 +107,10 @@ class BaseEnv(VecEnv):
     def get_cfg_as_dict(self) -> dict:
         """Return the environment config as dict."""
         ...
+
+    def get_cameras_setup(self) -> CamerasSetup:
+        """The environment cameras setup"""
+        return self._cfg.cameras_setup
 
     def get_modality_observations(
         self, modalities: Optional[Collection[Modality]] = None

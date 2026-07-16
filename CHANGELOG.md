@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: introduced `BasePolicyRunner` abstraction for wrapping rsl_rl's `OnPolicyRunner` and the `BehaviorCloningRunner`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Introducing observation cache in the `BaseEnv`class, which allows to query the same observation multiple times without re-calculating the observation.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Added `Modality` enum for indicating all available and default modalities in `BaseEnv` specializations.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Added `RandomizationTypes` enum for flagging `BaseScene` specialization available domain randomization capabilities.
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: Sliced `BehaviorCloning` into smaller files.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all debug preview code from the `grasp_env.py` into a new env-wrapper: `ObsPreviewEnvWrapper`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all visual augumentation from the domain randomization (PR #116) from the `grasp_env.py` into a new env-wrapper: `VisualAugEnvWrapper`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Totally makeover of the `get_observations()` and `get_observations_vis()` API into `get_modality_observations()`, `_build_agent_observations()` and `_format_rslrl_observations()`.

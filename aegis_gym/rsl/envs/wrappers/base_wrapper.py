@@ -3,6 +3,7 @@ from typing import Optional, Collection, Any
 import torch as th
 from tensordict import TensorDict
 
+from config.types import CamerasSetup
 from ..base_env import BaseEnv, ResetReturn, StepReturn, Modality
 
 
@@ -12,7 +13,7 @@ class BaseEnvWrapper(BaseEnv):
     """
 
     def __init__(self, env: BaseEnv):
-        super().__init__(scene=None, num_envs=env.num_envs)
+        super().__init__(scene=None, cfg=env._cfg)
         self._env = env
         del self._obs_cache
 
@@ -30,6 +31,9 @@ class BaseEnvWrapper(BaseEnv):
 
     def get_cfg_as_dict(self) -> dict:
         return self._env.get_cfg_as_dict()
+
+    def get_cameras_setup(self) -> CamerasSetup:
+        return self._env.get_cameras_setup()
 
     def get_modality_observations(
         self, modalities: Optional[Collection[Modality]] = None

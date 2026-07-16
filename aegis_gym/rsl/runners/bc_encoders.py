@@ -3,6 +3,8 @@ from typing import Callable
 import torch as th
 import torch.nn as nn
 
+# TODO(enc_mem_dec): Remove this file and source it from the enc_mem_dec package.
+
 
 class BaseVisionEncoder(nn.Module):
     def __init__(self, num_cameras: int):

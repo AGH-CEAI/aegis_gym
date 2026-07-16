@@ -30,7 +30,7 @@ class GraspEnv(BaseEnv):
         cfg: ExpConfig,
     ) -> None:
         super().__init__(
-            scene=None, num_envs=cfg.env_cfg.num_envs
+            scene=None, cfg=cfg.env_cfg
         )  # TODO(issue#128) introduce Scene abstraction
         self.device = cfg.get_device()
 
