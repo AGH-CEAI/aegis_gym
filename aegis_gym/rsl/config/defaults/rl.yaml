@@ -1,0 +1,50 @@
+class_name: "OnPolicyRunner" # Number of steps per environment per iteration
+num_steps_per_env: 24  # Number of policy updates
+max_iterations: 500
+seed: 1
+# Observations mapping
+obs_groups: {"policy": ["policy"], "critic": ["policy"]}
+
+# Logging parameters
+save_interval: 100  # Check for potential saves every `save_interval` iterations
+best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
+experiment_name: null
+run_name: ""
+algorithm:
+  class_name: "PPO"
+  # Training
+  learning_rate: 0.0003
+  num_learning_epochs: 5
+  num_mini_batches: 4
+  schedule: "adaptive"  # adaptive, fixed
+  # Value function
+  value_loss_coef: 1.0
+  clip_param: 0.2
+  use_clipped_value_loss: True
+  # Surrogate loss
+  desired_kl: 0.01
+  entropy_coef: 0.0
+  gamma: 0.99
+  lam: 0.95
+  max_grad_norm: 1.0
+  # Miscellaneous
+  normalize_advantage_per_mini_batch: False
+  # Random network distilation
+  rnd_cfg: null
+  # Symmetry augmentation
+  symmetry_cfg: null
+# reset_last_layer_weights_interval: 0 # Set above 0 to enable
+# reset_last_layer_weights_part: part # `actor`, `critic` or `both`
+reset_last_layer_weights: {"interval": 0, "part": "both"}
+init_member_classes: {}
+policy:
+  class_name: "ActorCritic"
+  activation: "elu"  # original: "relu"
+  actor_obs_normalization: False
+  critic_obs_normalization: False
+  init_noise_std: 1.0
+  actor_hidden_dims: [128, 128, 64]
+  critic_hidden_dims: [128, 128, 64]
+  noise_std_type: "scalar"  # 'scalar' or 'log'
+  state_dependent_std: False
+  detach_actor_grad: False

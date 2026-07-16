@@ -1,67 +1,41 @@
 import math
-import tempfile
 import time
-from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
-import cv2
-import numpy as np
+from tensordict import TensorDict
 import torch as th
 from genesis.utils.geom import transform_by_quat
-from PIL import Image
-from tensordict import TensorDict
 
 from .manipulator import RosGrpcManipulator, CameraID
-from .base_env import BaseEnv, StepReturn, ResetReturn
+from .base_env import BaseEnv, StepReturn, ResetReturn, Modality
+from .objects import BaseBox, ObjectsFactory
+from .scene import BaseScene
 
-
-class Object:
-    def __init__(
-        self,
-        size: th.Tensor,
-        pos: th.Tensor,
-        quat: th.Tensor,
-        num_envs: int = 1,
-        device: Optional[th.device] = None,
-    ):
-        self.device = device or th.device("cpu")
-        self.num_envs = num_envs
-        self.size = size
-
-        self.pos = pos.repeat(self.num_envs, 1)
-        self.quat = quat.repeat(self.num_envs, 1)
-        self._init_pos = self.pos.clone()
-        self._init_quat = self.quat.clone()
-
-    def reset(self, envs_idx: int) -> None:
-        self.pos = self._init_pos.clone()
-        self.quat = self._init_quat.clone()
-
-    def get_pos(self) -> th.Tensor:
-        return self.pos
-
-    def get_quat(self) -> th.Tensor:
-        return self.quat
-
-    def set_pos(self, pos: th.Tensor, envs_idx: int) -> None:
-        self.pos = pos
-
-    def set_quat(self, quat: th.Tensor, envs_idx: int) -> None:
-        self.quat = quat
+from config import ExpConfig
+from config.types import Control, CamerasSetup
 
 
 class GraspEnvROS(BaseEnv):
-    def __init__(
-        self,
-        env_cfg: dict,
-        robot_cfg: dict,
-        disable_vision: bool = False,
-        device: Optional[th.device] = None,
-    ) -> None:
-        super().__init__(scene=None)  # TODO(issue#128) introduce Scene abstraction
-        self.device = device or th.device("cpu")
-        self._cfg = env_cfg
-        self.disable_vision = disable_vision
+    DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+
+    def __init__(self, cfg: ExpConfig, scene: Optional[BaseScene] = None) -> None:
+        super().__init__(
+            scene=scene, cfg=cfg.env_cfg
+        )  # TODO(issue#128) introduce Scene abstraction
+
+        self._observation_fns = {
+            Modality.TCP_POSE: self._observe_tcp_pose,
+            Modality.OBJECT_POSE: self._observe_object_pose,
+            Modality.CAMERA_SCENE_RGB: self._observe_camera_scene,
+            Modality.CAMERA_TOOL_LEFT_RGB: self._observe_camera_tool_left,
+            Modality.CAMERA_TOOL_RIGHT_RGB: self._observe_camera_tool_right,
+        }
+
+        env_cfg = cfg.env_cfg
+        self.device = cfg.get_device()
+
+        self._cfg_env = env_cfg
+        self.disable_vision = cfg.args.disable_vision
 
         self._extract_config()
         print(
@@ -70,40 +44,37 @@ class GraspEnvROS(BaseEnv):
 
         self.robot = RosGrpcManipulator(
             num_envs=self.num_envs,
-            args=robot_cfg,
+            scene=self._scene,
+            robot_cfg=cfg.robot_cfg,
+            policy_dt=cfg.env_cfg.policy_dt,
             disable_vision=self.disable_vision,
             device=self.device,
         )
 
         # This pose is already in the Genesi's world base
-        world_box_pose = th.tensor(
-            # TODO(issue#98) move setup into URDF-dataset in ClearML
-            # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
-            device=self.device,
-        )
-        world_box_pose[2] += 0.00  # m
+        # world_box_pose = th.tensor(
+        #     # TODO(issue#98) move setup into URDF-dataset in ClearML
+        #     # [0.631, 0.028, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     # [0.557, 0.012, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     [0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0],
+        #     device=self.device,
+        # )
+        # world_box_pose[2] += 0.00  # m
+        self.box_pose = (0.576, 0.245, self.box_size[2] / 2 + 0.02, 0.0, 1.0, 0.0, 0.0)
 
-        self.box_position = world_box_pose[:3]
-        self.box_grasp_orientation = world_box_pose[3:]
-        self.object = Object(
-            size=self.box_size,
-            pos=self.box_position,
-            quat=self.box_grasp_orientation,
-            num_envs=self.num_envs,
-            device=self.device,
+        self.object: BaseBox = ObjectsFactory.create_box(
+            scene=self._scene, ctrl=Control.ROS, device=self.device
         )
+        self.object.create(dims=self.box_size, pose=self.box_pose)
 
         # TODO(issue#41) Unify the setup of the cameras
         # TODO(issue#121) Unify the grasp_env and grasp_env_ros cameras names
-        match self.camera_setup:
-            case "default":
+        match self.cameras_setup:
+            case CamerasSetup.DEFAULT:
                 self._cameras = ["scene", "left", "right"]
-            case "scene_dual":
+            case CamerasSetup.SCENE_DUAL:
                 self._cameras = ["left", "right"]
-            case _:
-                raise ValueError(f"Unknown camera setup {self.camera_setup}")
+
         self._cameras_order = {
             "scene": 0,
             "left": 1,
@@ -115,31 +86,30 @@ class GraspEnvROS(BaseEnv):
         self.reset()
 
     def _extract_config(self) -> None:
-        self.num_envs = self._cfg["num_envs"]
-        self.num_obs = self._cfg["num_obs"]
+        self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
-        self.num_actions = self._cfg["num_actions"]
-        self.image_width = self._cfg["image_resolution"][0]
-        self.image_height = self._cfg["image_resolution"][1]
+        self.num_actions = self._cfg_env.num_actions
+        self.image_width = self._cfg_env.image_resolution[0]
+        self.image_height = self._cfg_env.image_resolution[1]
         self.rgb_image_shape = (3, self.image_height, self.image_width)
-        self.camera_setup: Literal["default", "scene_dual"] = self._cfg["camera_setup"]
-        self.table_size = self._cfg["table_size"]
-        self.workbench_size = self._cfg["workbench_size"]
-        self.box_size = self._cfg["box_sizes"]["default"]
+        self.cameras_setup = self._cfg_env.cameras_setup
+        self.table_size = self._cfg_env.table_size
+        self.workbench_size = self._cfg_env.workbench_size
+        self.box_size = tuple(self._cfg_env.box_size_default)
 
-        self.ctrl_dt = self._cfg["ctrl_dt"]
-        self.policy_dt = self._cfg["policy_dt"]
+        self.ctrl_dt = self._cfg_env.ctrl_dt
+        self.policy_dt = self._cfg_env.policy_dt
         self.sim_substeps = int(
-            math.ceil(self._cfg["policy_dt"] / self._cfg["ctrl_dt"])
+            math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
         )
         self.max_episode_length = int(
-            math.ceil(self._cfg["episode_length_s"] / self.policy_dt)
+            math.ceil(self._cfg_env.episode_length_s / self.policy_dt)
         )
 
-        self.max_linear_speed = self._cfg["action_scaling"]["max_linear_speed"]
-        self.max_angular_speed = self._cfg["action_scaling"]["max_angular_speed"]
+        self.max_linear_speed = self._cfg_env.action_max_linear_speed
+        self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg["reward_scales"]
+        self.reward_scales = self._cfg_env.reward_scales
 
         self.last_step_ts: Optional[float] = None
 
@@ -147,10 +117,30 @@ class GraspEnvROS(BaseEnv):
         return self.policy_dt
 
     def get_cfg_as_dict(self) -> dict:
-        return self._cfg
+        return self._cfg_env.as_dict()
 
     def get_num_envs(self) -> int:
         return self.num_envs
+
+    def _observe_tcp_pose(self) -> th.Tensor:
+        return self.robot.get_tcp_pose()
+
+    def _observe_object_pose(self) -> th.Tensor:
+        return self.object.get_pose()
+
+    def _observe_camera_scene(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.SCENE_CAMERA)
+
+    def _observe_camera_tool_left(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.TOOL_LEFT)
+
+    def _observe_camera_tool_right(self) -> th.Tensor:
+        return self._read_rgb_camera(CameraID.TOOL_RIGHT)
+
+    def _read_rgb_camera(self, camera: CameraID) -> th.Tensor:
+        rgb = self.robot.get_camera_image(camera_id=camera)
+        rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
+        return rgb
 
     def _init_reward_functions(self) -> None:
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -162,7 +152,7 @@ class GraspEnvROS(BaseEnv):
             )
 
         self.keypoints_offset = self.get_keypoint_offsets(
-            batch_size=self.num_envs, device=self.device, unit_length=0.5
+            batch_size=self.num_envs, unit_length=0.5
         )
 
     def _init_buffers(self) -> None:
@@ -182,24 +172,24 @@ class GraspEnvROS(BaseEnv):
         # reset robot
         self.robot.ctrl_gripper_open(envs_idx)
         self.robot.ctrl_go_to_home(envs_idx)
-        self.object.reset(envs_idx)
+        self.object.set_pose(pose=th.tensor(self.box_pose, device=self.device))
 
         # fill extras
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
-                / self._cfg["episode_length_s"]
+                / self._cfg_env.episode_length_s
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-    def reset(self) -> ResetReturn:
+    def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
         self.reset_idx(th.arange(self.num_envs, device=self.device))
         self.robot.read_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def step(self, actions: th.Tensor) -> StepReturn:
+    def _step(self, actions: th.Tensor) -> StepReturn:
         if not self.last_step_ts:
             self.last_step_ts = time.perf_counter()
 
@@ -217,7 +207,7 @@ class GraspEnvROS(BaseEnv):
         self.robot.read_state()
 
         # check termination
-        env_reset_idx = self.is_episode_complete()
+        env_reset_idx = self._is_episode_complete()
         if len(env_reset_idx) > 0:
             self.reset_idx(env_reset_idx)
 
@@ -236,15 +226,12 @@ class GraspEnvROS(BaseEnv):
     def calib_run(
         self,
         joints_diff: Optional[th.Tensor] = None,
-        cart_diff: Optional[th.tensor] = None,
+        cart_diff: Optional[th.Tensor] = None,
         steps: int = 100,
     ) -> None:
         raise NotImplementedError
 
-    def get_privileged_observations(self) -> None:
-        raise NotImplementedError
-
-    def is_episode_complete(self) -> th.Tensor:
+    def _is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
 
         # check if the end-effector is in the valid position
@@ -258,13 +245,14 @@ class GraspEnvROS(BaseEnv):
         self.extras["time_outs"][time_out_idx] = 1.0
         return self.reset_buf.nonzero(as_tuple=True)[0]
 
-    def get_observations(self) -> TensorDict:
-        tcp_pose = self.robot.get_tcp_pose()
+    def _build_agent_observations(self, obs: TensorDict) -> th.Tensor:
+        tcp_pose = obs[Modality.TCP_POSE]
         tcp_pos, tcp_quat = (
             tcp_pose[:, :3],
             tcp_pose[:, 3:],
         )
-        obj_pos, obj_quat = self.object.get_pos(), self.object.get_quat()
+        obj_pose = obs[Modality.OBJECT_POSE]
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
 
         obs_components = [
             tcp_pos - obj_pos,  # 3D position difference
@@ -274,97 +262,7 @@ class GraspEnvROS(BaseEnv):
         ]
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
-        return TensorDict({"policy": obs_tensor}, batch_size=[self.num_envs])
-
-    def get_stereo_rgb_images(self, normalize: bool = True) -> th.Tensor:
-        # TODO implement gRPC image transportation
-        raise NotImplementedError
-
-    def get_observations_vis(
-        self,
-        normalize: bool = True,
-        swap_tool_cameras: bool = False,
-        enable_vis_preview: bool = False,
-        enable_record_obs: bool = False,
-        record_dir: Optional[Path] = None,
-    ) -> th.Tensor:
-        # TODO(issue#41) Unify the camera setup
-        rgb_list: list[th.Tensor] = [None] * len(self._cameras)
-
-        for cam_name in self._cameras:
-            cam_id = self._cameras_order[cam_name]
-            if swap_tool_cameras:
-                cam_name_tmp = {"left": "right", "right": "left"}.get(
-                    cam_name, cam_name
-                )
-                cam_id = self._cameras_order[cam_name_tmp]
-
-            rgb = self.robot.get_camera_image(CameraID.from_str(cam_name))
-            if normalize:
-                rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
-            rgb_list[cam_id] = rgb
-
-        # TODO(issue#117) redesign the visualization preview
-        # TODO(issue#121) unify the code between grasp_env and grasp_env_ros
-        if enable_vis_preview or enable_record_obs:
-            preview = self._create_vis_observation_preview(
-                obs=rgb_list, normalize=normalize
-            )
-
-            if enable_vis_preview:
-                cv2.imshow("Visual observation preview", preview)
-                cv2.waitKey(1)
-
-            if enable_record_obs:
-                record_dir = (
-                    record_dir or Path(tempfile.gettempdir()) / "aegis_vis_obs_obs"
-                )
-                record_dir.mkdir(parents=True, exist_ok=True)
-                self._record_vis_observation(preview=preview, output_dir=record_dir)
-
-        return th.cat(rgb_list, dim=1).float()
-
-    def _create_vis_observation_preview(
-        self, obs: list[th.Tensor], normalize: bool
-    ) -> np.ndarray:
-
-        opencv_images: list[np.ndarray] = [None] * len(obs)
-        for cam_name in self._cameras:
-            cam_id = self._cameras_order[cam_name]
-
-            FIRST_IMG = 0
-            img = obs[cam_id][FIRST_IMG].permute(1, 2, 0).cpu().numpy()  # NCHW -> HWC
-            img = (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-            height, width = img.shape[:2]
-            max_side = 256
-            scale = min(max_side / width, max_side / height)
-            img = cv2.resize(
-                img,
-                (int(width * scale), int(height * scale)),
-                interpolation=cv2.INTER_AREA,
-            )
-            cv2.putText(
-                img,
-                str(cam_name),
-                org=(10, 30),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=0.5,
-                color=(0, 255, 0),
-                thickness=2,
-            )
-            opencv_images[cam_id] = img
-
-        return np.hstack(opencv_images)
-
-    def _record_vis_observation(self, preview: np.ndarray, output_dir: Path) -> None:
-        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2RGB)
-        record_step = getattr(self, "_record_step", 0)
-        fname = f"frame_{record_step:08d}.png"
-        Image.fromarray(preview).save(output_dir / fname)
-
-        self._record_step = record_step + 1
+        return obs_tensor
 
     def _reward_keypoints(self) -> th.Tensor:
         tcp_pose = self.robot.get_tcp_pose()
@@ -382,9 +280,9 @@ class GraspEnvROS(BaseEnv):
             keypoints_offset,
         )
 
-        object_pos_keypoints = self._to_world_frame(
-            self.object.get_pos(), self.object.get_quat(), keypoints_offset
-        )
+        obj_pose = self.object.get_pose()
+        obj_pos, obj_quat = obj_pose[:, :3], obj_pose[:, 3:]
+        object_pos_keypoints = self._to_world_frame(obj_pos, obj_quat, keypoints_offset)
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
 
@@ -401,9 +299,8 @@ class GraspEnvROS(BaseEnv):
             )
         return world
 
-    @staticmethod
     def get_keypoint_offsets(
-        batch_size: int, device: str, unit_length: float = 0.5
+        self, batch_size: int, unit_length: float = 0.5
     ) -> th.Tensor:
         """
         Get uniformly-spaced keypoints along a line of unit length, centered at body center.
@@ -419,7 +316,7 @@ class GraspEnvROS(BaseEnv):
                     [0, 0, -1.0],  # z-negative
                     [0, 0, 1.0],  # z-positive
                 ],
-                device=device,
+                device=self.device,
                 dtype=th.float32,
             )
             * unit_length

@@ -1,13 +1,26 @@
 from abc import ABC, abstractmethod
+from enum import auto
+from typing import Callable
+
+from strenum import StrEnum
 import torch as th
 
-from ..manipulator import BaseManipulator
+from ..manipulator.base_manipulator import BaseManipulator
+
+
+class RandomizationType(StrEnum):
+    MANIPULATOR_PD_GAINS = auto()
+    MANIPULATOR_MAX_SPEED = auto()
+    CAMERAS_EXTRINSICS = auto()
+    SCENE_LIGHTING = auto()
 
 
 class BaseScene(ABC):
     """
     Base class for implementing whole interaction with simulator or real world.
     """
+
+    _randomization_fns: dict[RandomizationType, Callable[[], None]]
 
     def __init__(self, device: th.device = th.device("cpu")):
         super().__init__()

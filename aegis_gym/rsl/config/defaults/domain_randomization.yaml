@@ -1,0 +1,33 @@
+enabled: True
+debug_viewer: True
+image_aug:
+    enabled: True
+    per_episode_aug: True
+    brightness_jitter: 0.4
+    contrast_jitter: 0.3
+    gaussian_noise_std: 0.025
+    gamma_range: 0.25
+    channel_jitter: 0.05
+    blur_prob: 0.30
+    blur_kernel_size: 3
+    blur_sigma: 0.8
+    cutout:
+        prob: 0.3
+        min_size: 4
+        max_size: 12
+pd_gains:
+    enabled: True
+    kp_noise: 0.10
+    kv_noise: 0.10
+max_speed:
+    enabled: True
+    linear_speed_noise: 0.03
+    angular_speed_noise: 0.03
+cameras_extrinsics:
+    enabled: True
+    scene_cam:
+        translation_std: 0.0
+        rotation_std_deg: 1.0
+    tool_cams:
+        translation_std: 0.001
+        rotation_std_deg: 0.6
