@@ -71,7 +71,7 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
         scene = GenesisScene(cfg=cfg, device=cfg.get_device())
     if control_type == Control.ROS:
         if RosGrcpScene is None:
-            print("[Train] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
+            print("[Train] >>>> ERROR: Can not import RosGrcpScene. \n>>>> Exiting")
             exit()
         scene = RosGrcpScene(cfg=cfg, device=cfg.get_device())
 
