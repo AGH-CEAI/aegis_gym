@@ -1,0 +1,47 @@
+ARG UBUNTU_VERSION=22.04
+
+FROM ubuntu:${UBUNTU_VERSION}
+
+ARG UBUNTU_VERSION=22.04
+ARG CUDA_SHORT_VERSION=cu129
+ARG TORCH_VERSION=2.8.0
+ARG TORCHVISION_VERSION=0.23.0
+
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL aegis.gym.cuda=${CUDA_SHORT_VERSION}
+LABEL aegis.gym.ubuntu=${UBUNTU_VERSION}
+LABEL aegis.gym.torch=${TORCH_VERSION}
+LABEL aegis.gym.torchvision=${TORCHVISION_VERSION}
+
+USER root
+WORKDIR /ws
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_SYSTEM_PYTHON=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        zsh \
+        libcap2-bin \
+        curl \
+        git \
+        wget \
+        python3-pip \
+    && python3 -m pip install --no-cache-dir uv \
+    && uv pip install --system \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}" \
+        --index-url "https://download.pytorch.org/whl/${CUDA_SHORT_VERSION}" \
+    && export SUDO_FORCE_REMOVE=yes \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && uv cache clean \
+    && rm -rf \
+        /var/lib/apt/lists/* \
+        /root/.cache/pip \
+        /root/.cache/uv \
+        /tmp/* \
+        /var/tmp/*
+
+CMD ["/bin/bash"]

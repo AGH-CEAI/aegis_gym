@@ -9,7 +9,7 @@ VERSION=v0.0.2 REGISTRY=genesis.local PUSH=true ./build.sh
 VERSION=v0.0.2 REGISTRY=ghcr.io PUSH=true ./build.sh
 ```
 Will create
-* `${REGISTRY}/ceai/aegis_gym:${VERSION}` for learning and ROS-gRPC bridge.
+* `${REGISTRY}/agh-ceai/aegis_gym:${VERSION}` for learning and ROS-gRPC bridge.
 and optionally push this image to the given repository.
 
 ### Run

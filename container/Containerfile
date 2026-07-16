@@ -29,7 +29,10 @@ WORKDIR /ws
 # Install tools and PyTorch
 ENV UV_SYSTEM_PYTHON=1
 RUN apt update  \
-    && apt install -y \
+    && apt install -y --no-install-recommends \
+        bash \
+        zsh \
+        libcap2-bin \
         curl \
         git \
         wget \
@@ -93,15 +96,20 @@ FROM simulation as hardware_control
 ARG AEGIS_ROS_TAG
 RUN apt update  \
     && apt install -y \
+        build-essential \
         cmake \
         libgrpc++-dev \
         libprotobuf-dev \
         libprotoc-dev \
         protobuf-compiler \
         protobuf-compiler-grpc \
-        python3-grpc-tools \
-        python3-grpcio \
-        python3-protobuf \
+        # python3-grpc-tools \
+        # python3-grpcio \
+        # python3-protobuf \
+    && uv pip install --system \
+        "protobuf<3.21" \
+        "grpcio<1.51" \
+        "grpcio-tools<1.51"; \
     && git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
     && cd ./aegis_ros/aegis_grpc/ \
     && bash ./install_client.sh \
@@ -109,6 +117,7 @@ RUN apt update  \
     && cd /ws \
     && rm -rf ./aegis_ros \
     && apt remove -y \
+        build-essential \
         cmake \
         libgrpc++-dev \
         libprotobuf-dev \

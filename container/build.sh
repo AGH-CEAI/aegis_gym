@@ -18,6 +18,7 @@ podman build \
   --build-arg AEGIS_ROS_TAG=${AEGIS_ROS_TAG} \
   --build-arg CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG} \
   --build-arg AEGIS_GYM_TAG=${AEGIS_GYM_TAG} \
+  --no-cache \
   .
 
 echo "> Built: ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}"
