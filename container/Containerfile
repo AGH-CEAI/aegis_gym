@@ -30,8 +30,6 @@ WORKDIR /ws
 ENV UV_SYSTEM_PYTHON=1
 RUN apt update  \
     && apt install -y --no-install-recommends \
-        bash \
-        zsh \
         libcap2-bin \
         curl \
         git \

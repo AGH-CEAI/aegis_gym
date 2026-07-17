@@ -12,6 +12,16 @@ Will create
 * `${REGISTRY}/agh-ceai/aegis_gym:${VERSION}` for learning and ROS-gRPC bridge.
 and optionally push this image to the given repository.
 
+#### Development container
+Build image, start toolbox:
+```bash
+./dev/aegis_gym_enter_toolbox.sh
+```
+To cleanup, out of toolbox run:
+```bash
+./dev/aegis_gym_destoy_toolbox.sh
+```
+
 ### Run
 ```bash
 podman run --rm -it --network=host --device nvidia.com/gpu=all -v ${HOME}/clearml.conf:/root/clearml.conf:ro localhost/agh-ceai/aegis_gym:v0.0.2 bash

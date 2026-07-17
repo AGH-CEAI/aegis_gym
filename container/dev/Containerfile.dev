@@ -1,8 +1,7 @@
 ARG AEGIS_GYM_TAG
 ARG CEAI_RSL_RL_TAG
 ARG AEGIS_ROS_TAG
-
-ARG TORCH_BASE_IMAGE=localhost/aegis-torch:torch2.8-cu129
+ARG TORCH_BASE_IMAGE
 
 FROM ${TORCH_BASE_IMAGE} as simulation
 
@@ -22,87 +21,22 @@ WORKDIR /ws
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        libegl-mesa0 \
-        libegl1 \
-        libgl1 \
-        libgl1-mesa-dri \
-        libgl1-mesa-glx \
-        libgles2 \
-        libglvnd-dev \
-        libglvnd0 \
-        libglx0 \
-        libxrender1 \
-        libvulkan-dev \
-        libvulkan1 \
-        libglib2.0-0 \
-        mesa-utils \
-        mesa-vulkan-drivers \
-        vulkan-tools \
-        xvfb \
-    && git clone \
-        --depth 1 \
-        --branch "${CEAI_RSL_RL_TAG}" \
-        https://github.com/AGH-CEAI/rsl_rl.git \
-        /tmp/rsl_rl \
-    && uv pip install --system /tmp/rsl_rl \
-    && git clone \
-        --depth 1 \
-        --branch "${AEGIS_GYM_TAG}" \
-        https://github.com/AGH-CEAI/aegis_gym.git \
-        /tmp/aegis_gym \
-    # && uv pip install --system \
-    #     "/tmp/aegis_gym[sim-genesis,test]" \
-    && cd /tmp/aegis_gym \
-    && uv export --extra sim-genesis --extra test > requirements.txt \
-    && uv pip install --system -r requirements.txt \
-    && cd / \
-    && rm -rf \
-        /tmp/rsl_rl \
-        /tmp/aegis_gym \
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && uv cache clean \
-    && rm -rf \
-        /var/lib/apt/lists/* \
-        /root/.cache/pip \
-        /root/.cache/uv \
-        /tmp/* \
-        /var/tmp/*
+COPY scripts/install_simulation.sh /tmp/install_simulation.sh
+
+RUN CEAI_RSL_RL_TAG="${CEAI_RSL_RL_TAG}" \
+    AEGIS_GYM_TAG="${AEGIS_GYM_TAG}" \
+    bash /tmp/install_simulation.sh \
+    && rm -f /tmp/install_simulation.sh
 
 CMD ["/bin/bash"]
 
 FROM simulation as hardware_control
 ARG AEGIS_ROS_TAG
-RUN apt update  \
-    && apt install -y \
-        build-essential \
-        cmake \
-        libgrpc++-dev \
-        libprotobuf-dev \
-        libprotoc-dev \
-        protobuf-compiler \
-        protobuf-compiler-grpc \
-        python3-grpc-tools \
-        python3-grpcio \
-        python3-protobuf \
-    && git clone -b ${AEGIS_ROS_TAG} https://github.com/AGH-CEAI/aegis_ros.git aegis_ros \
-    && cd ./aegis_ros/aegis_grpc/ \
-    && bash ./install_client.sh \
-    && uv cache clean \
-    && cd /ws \
-    && rm -rf ./aegis_ros \
-    && apt remove -y \
-        build-essential \
-        cmake \
-        libgrpc++-dev \
-        libprotobuf-dev \
-        libprotoc-dev \
-        protobuf-compiler \
-        protobuf-compiler-grpc \
-    && apt autoremove -y \
-    && apt clean \
-    && rm -rf /var/lib/apt/lists/* ~/.cache/pip /tmp/* /var/tmp/*
+
+COPY scripts/install_hardware_control.sh /tmp/install_hardware_control.sh
+
+RUN AEGIS_ROS_TAG="${AEGIS_ROS_TAG}" \
+    bash /tmp/install_hardware_control.sh \
+    && rm -f /tmp/install_hardware_control.sh
 
 CMD ["/bin/bash"]

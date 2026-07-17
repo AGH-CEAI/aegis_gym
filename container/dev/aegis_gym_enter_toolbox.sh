@@ -6,8 +6,8 @@ torch_image="localhost/aegis-torch:torch2.8-cu129"
 dev_image="localhost/aegis-gym-dev:devel"
 toolbox_name="aegis_gym-dev"
 
-torch_containerfile="Containerfile.torch"
-dev_containerfile="Containerfile.dev"
+torch_containerfile="dev/Containerfile.torch"
+dev_containerfile="dev/Containerfile.dev"
 
 workspace_path="$HOME/ceai_ws"
 aegis_gym_path="$workspace_path/src/aegis_gym"
@@ -117,10 +117,10 @@ build_dev_image() {
     "${cache_args[@]}" \
     --file "$dev_containerfile" \
     --tag "$dev_image" \
-    --build-arg="TORCH_BASE_IMAGE=$torch_image" \
     --build-arg="AEGIS_GYM_TAG=$aegis_gym_tag" \
     --build-arg="CEAI_RSL_RL_TAG=$ceai_rsl_rl_tag" \
     --build-arg="AEGIS_ROS_TAG=$aegis_ros_tag" \
+    --build-arg="TORCH_BASE_IMAGE=$torch_image" \
     .
 }
 
