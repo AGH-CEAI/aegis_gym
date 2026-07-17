@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-138](https://github.com/AGH-CEAI/aegis_gym/pull/138) - Added the scripts to autobuild the development toolbox.
 - [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: introduced `BasePolicyRunner` abstraction for wrapping rsl_rl's `OnPolicyRunner` and the `BehaviorCloningRunner`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Introducing observation cache in the `BaseEnv`class, which allows to query the same observation multiple times without re-calculating the observation.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Added `Modality` enum for indicating all available and default modalities in `BaseEnv` specializations.
