@@ -161,9 +161,7 @@ class ConfigManager:
         if args.debug_enable:
             cfg_dict["debug"]["enabled"] = args.debug_enable
             cfg_dict["debug"]["enable_vis_preview"] = args.debug_preview_vis_obs
-            cfg_dict["debug"]["enable_record_obsenable_record_vis_obs"] = (
-                args.debug_record_vis_obs
-            )
+            cfg_dict["debug"]["enable_record_obs"] = args.debug_record_vis_obs
             cfg_dict["debug"]["record_dir"] = str(args.debug_record_dir)
 
         # Confirm types of data
