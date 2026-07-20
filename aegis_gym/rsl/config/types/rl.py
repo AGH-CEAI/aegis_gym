@@ -42,6 +42,7 @@ class PolicyCfg(BaseCfg):
 class RLCfg(BaseCfg):
     class_name: str
     num_steps_per_env: int
+    max_iterations: int
     seed: int
     obs_groups: dict
     save_interval: int
