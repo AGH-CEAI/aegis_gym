@@ -23,6 +23,7 @@ class EnvCfg(BaseCfg):
     workbench_size: list
     box_collision: bool
     box_fixed: bool
+    t_block_scale: float
     image_resolution: tuple[int, int]
     use_rasterizer: bool
     visualize_camera: bool
