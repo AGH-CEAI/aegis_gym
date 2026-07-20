@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Callable
 
-from .types import Algorithm, Control
+from .types import Algorithm, Control, EnvTask
 
 
 @dataclass(slots=True, frozen=True)
@@ -32,6 +32,7 @@ class LaunchArgs:
 
     enforce_current_config: Optional[bool]
     control_type: Optional[Control]
+    env_task: Optional[EnvTask]
 
     calibration_move: Optional[list]
     calibration_move_cartesian: Optional[list]
@@ -108,6 +109,13 @@ def parse_arguments(
     # changed --stage to --control
     p.add_argument(
         "--control", type=Control, choices=list(Control), default=Control.SIM
+    )
+    p.add_argument(
+        "--env-task",
+        type=EnvTask,
+        choices=list(EnvTask),
+        default=EnvTask.GRASP,
+        help="Environment to train on.",
     )
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
@@ -192,6 +200,7 @@ def parse_arguments(
         load_bc_model_id=args.load_bc_model_id,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
+        env_task=args.env_task,
         calibration_move=args.calibration_move,
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,

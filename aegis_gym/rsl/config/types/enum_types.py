@@ -18,6 +18,11 @@ class CamerasSetup(StrEnum):
     SCENE_DUAL = "scene_dual"
 
 
+class EnvTask(StrEnum):
+    GRASP = "grasp"
+    PUSH_T = "push_t"
+
+
 @dataclass(frozen=True, order=True, slots=True)
 class Checkpoint:
     step: int

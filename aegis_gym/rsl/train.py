@@ -6,9 +6,10 @@ from envs import BaseEnv
 from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
 from envs.grasp_env import GraspEnv
+from envs.pusher_t_env import PusherTEnv
 from runners import OnPolicyRunner, BehaviorCloningRunner
 from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, Algorithm, Control
+from config.types import ExpConfig, Algorithm, Control, EnvTask
 from utils import load_rl_policy
 
 
@@ -72,8 +73,12 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
 
     if control_type == Control.SIM:
         gs.init(logging_level="info", precision="32")
+        if args.env_task == EnvTask.PUSH_T:
+            return PusherTEnv(cfg=cfg)
         return GraspEnv(cfg=cfg)
     if control_type == Control.ROS:
+        if args.env_task == EnvTask.PUSH_T:
+            raise NotImplementedError("Pusher-T Env doesn't support ROS control yet.")
         if GraspEnvROS is None:
             print("[GraspTrain] >>>> ERROR: Can not import GraspEnvROS. \n>>>> Exiting")
             exit()

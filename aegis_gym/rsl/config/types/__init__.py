@@ -16,7 +16,7 @@ from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
 from .env import EnvCfg
 from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
-from .enum_types import Algorithm, Checkpoint, Control, CamerasSetup
+from .enum_types import Algorithm, Checkpoint, Control, CamerasSetup, EnvTask
 
 from .exp_config import ExpConfig
 
@@ -37,6 +37,7 @@ __all__ = [
     "DebugCfg",
     "DomainRandomizationCfg",
     "EnvCfg",
+    "EnvTask",
     "ExpConfig",
     "FusionCfg",
     "ImageAugCfg",
