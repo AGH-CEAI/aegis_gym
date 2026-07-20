@@ -185,23 +185,23 @@ class GenesisScene(BaseScene):
         def_pos = (0.0, 0.0, 0.0)
         match cameras_setup:
             case CamerasSetup.DEFAULT:
-                self._add_camera(
+                self._setup_add_camera(
                     scene=scene, name=CameraName.CAMERA_SCENE, pos=def_pos, fov=38
                 )
-                self._add_camera(
+                self._setup_add_camera(
                     scene=scene, name=CameraName.CAMERA_TOOL_LEFT, pos=def_pos, fov=30
                 )
-                self._add_camera(
+                self._setup_add_camera(
                     scene=scene, name=CameraName.CAMERA_TOOL_RIGHT, pos=def_pos, fov=30
                 )
             case CamerasSetup.SCENE_DUAL:
-                self._add_camera(
+                self._setup_add_camera(
                     scene=scene,
                     name=CameraName.CAMERA_SCENE_LEFT,
                     pos=(1.25, 0.3, 0.3),
                     fov=60,
                 )
-                self._add_camera(
+                self._setup_add_camera(
                     scene=scene,
                     name=CameraName.CAMERA_SCENE_RIGHT,
                     pos=(1.25, -0.3, 0.3),
@@ -230,7 +230,7 @@ class GenesisScene(BaseScene):
             cutoff=90.0,
         )
 
-    def _add_camera(
+    def _setup_add_camera(
         self,
         scene: gs.Scene,
         name: CameraName,
@@ -250,7 +250,7 @@ class GenesisScene(BaseScene):
             GUI=show_cameras_gui,
         )
 
-    def _attach_cameras(self):
+    def _setup_attach_cameras(self):
         if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
@@ -323,7 +323,6 @@ class GenesisScene(BaseScene):
         self._global_entity_cnt += 1
         return obj
 
-
     def add_manipulator(self, cfg: RobotCfg) -> None:
         self.manipulator = GenesisManipulator(
             num_envs=self.num_envs,
@@ -342,7 +341,7 @@ class GenesisScene(BaseScene):
             n_envs=self.num_envs
             # env_spacing=(1.0, 1.0),
         )
-        self._attach_cameras()
+        self._setup_attach_cameras()
         # TODO rename this method to something more general
         self.manipulator.set_joints_pd_gains()
         self._enable_randomizations()
