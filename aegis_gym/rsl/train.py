@@ -1,5 +1,3 @@
-from typing import Callable, Optional
-
 import genesis as gs
 import torch as th
 from clearml import Task
@@ -11,7 +9,7 @@ from envs import ReacherEnv
 from runners import OnPolicyRunner, BehaviorCloningRunner
 from config import ConfigManager, LaunchArgs, parse_arguments
 from config.types import ExpConfig, Algorithm, Control
-from aux import load_rl_policy, load_bc_policy
+from aux import load_policy
 
 
 from envs.scene import GenesisScene, RosGrcpScene
@@ -120,15 +118,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             print("[Train] >>> Starting training: Behavioral Cloning (BC)")
 
             print("[Train] >>> (BC) Loading RL policy")
-            teacher_policy = load_rl_policy(
-                env=env,
-                cfg=cfg,
-                load_cfg_from_clearml=not args.enforce_current_config,
-                exp_name=args.experiment_name,
-                clearml_task_id=args.load_rl_task_id,
-                clearml_model_id=args.load_rl_model_id,
-                clearml_artifact_name="model",
-            )
+            teacher_policy = load_policy(env=env, cfg=cfg, alg=Algorithm.RL)
 
             if cfg.dr_cfg.enabled:
                 print("[Train] >>> (BC) Wrapping env with VisionAugWrapper")
@@ -169,36 +159,6 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     print("[Train] > Training finished.")
-
-
-def load_policy(
-    env: BaseEnv, cfg: ExpConfig, alg: Optional[Algorithm] = None
-) -> Callable:
-    args: LaunchArgs = cfg.args
-
-    algorithm = alg or args.algorithm
-    if algorithm == Algorithm.RL:
-        return load_rl_policy(
-            env=env,
-            cfg=cfg,
-            load_cfg_from_clearml=not args.enforce_current_config,
-            exp_name=args.experiment_name,
-            clearml_task_id=args.load_rl_task_id,
-            clearml_model_id=args.load_rl_model_id,
-            clearml_artifact_name="model",
-        )
-    if algorithm == Algorithm.BC:
-        policy = load_bc_policy(
-            env=env,
-            cfg=cfg,
-            load_cfg_from_clearml=not args.enforce_current_config,
-            exp_name=args.experiment_name,
-            clearml_task_id=args.load_bc_task_id,
-            clearml_model_id=args.load_bc_model_id,
-        )
-        policy.eval()
-        return policy
-    raise ValueError("Unknown learning method")
 
 
 if __name__ == "__main__":

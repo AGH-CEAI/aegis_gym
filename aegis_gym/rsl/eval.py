@@ -16,7 +16,8 @@ from config.types import (
 from envs.wrappers import ObsPreviewEnvWrapper
 from envs import BaseEnv
 
-from train import init_clearml_task, create_env, load_policy
+from train import init_clearml_task, create_env
+from aux import load_policy
 
 
 def main():
@@ -85,7 +86,7 @@ def eval_policy_single(
     max_steps = int(cfg.env_cfg.max_steps)
 
     # TODO(issue#101): Design arguments and config manager for policy loading
-    policy = load_policy(env, cfg)
+    policy = load_policy(env=env, cfg=cfg)
     obs, _ = env.reset()
     metrics = run_eval(
         env=env,
