@@ -1,15 +1,15 @@
 from .base_cfg import BaseCfg, ToggleCfg
 from .debug import DebugCfg
 from .domain_randomization import (
-    CutoutCfg,
-    ImageAugCfg,
-    PDGainCfg,
-    MaxSpeedCfg,
+    CameraFovValueCfg,
     CameraPoseCfg,
     CamerasExtrinsicsCfg,
-    CameraFovValueCfg,
     CamerasFovCfg,
+    CutoutCfg,
     DomainRandomizationCfg,
+    ImageAugCfg,
+    MaxSpeedCfg,
+    PDGainCfg,
 )
 from .logger import LoggerCfg
 from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
@@ -18,14 +18,14 @@ from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
 from .enum_types import (
     Algorithm,
-    Checkpoint,
-    Control,
-    CamerasSetup,
-    CameraName,
     CameraLink,
     CameraModality,
-    Modality,
+    CameraName,
+    CamerasSetup,
+    Checkpoint,
+    Control,
     IMAGE_MODALITIES,
+    Modality,
 )
 
 from .exp_config import ExpConfig
