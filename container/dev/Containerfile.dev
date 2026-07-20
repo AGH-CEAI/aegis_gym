@@ -1,0 +1,42 @@
+ARG AEGIS_GYM_TAG
+ARG CEAI_RSL_RL_TAG
+ARG AEGIS_ROS_TAG
+ARG TORCH_BASE_IMAGE
+
+FROM ${TORCH_BASE_IMAGE} as simulation
+
+ARG AEGIS_GYM_TAG
+ARG CEAI_RSL_RL_TAG
+ARG AEGIS_ROS_TAG
+
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL aegis.image.type="development"
+LABEL aegis.gym.version=${AEGIS_GYM_TAG}
+LABEL aegis.ros.version=${AEGIS_ROS_TAG}
+LABEL ceai.rsl_rl.version=${CEAI_RSL_RL_TAG}
+
+USER root
+WORKDIR /ws
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_SYSTEM_PYTHON=1
+
+COPY scripts/install_simulation.sh /tmp/install_simulation.sh
+
+RUN CEAI_RSL_RL_TAG="${CEAI_RSL_RL_TAG}" \
+    AEGIS_GYM_TAG="${AEGIS_GYM_TAG}" \
+    bash /tmp/install_simulation.sh \
+    && rm -f /tmp/install_simulation.sh
+
+CMD ["/bin/bash"]
+
+FROM simulation as hardware_control
+ARG AEGIS_ROS_TAG
+
+COPY scripts/install_hardware_control.sh /tmp/install_hardware_control.sh
+
+RUN AEGIS_ROS_TAG="${AEGIS_ROS_TAG}" \
+    bash /tmp/install_hardware_control.sh \
+    && rm -f /tmp/install_hardware_control.sh
+
+CMD ["/bin/bash"]

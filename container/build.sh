@@ -10,9 +10,16 @@ CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG:-v3.3.2}
 AEGIS_GYM_TAG=${AEGIS_GYM_TAG:-v202605061407}
 AEGIS_ROS_TAG=${AEGIS_ROS_TAG:-v202605061402}
 
+no_cache=false
+
 echo "> Building ${REGISTRY}/agh-ceai/aegis_gym:${VERSION}"
 
+if [ "$no_cache" = true ]; then
+  cache_args+=(--no-cache)
+fi
+
 podman build \
+  "${cache_args[@]}" \
   --target hardware_control \
   -t "${REGISTRY}/agh-ceai/aegis_gym:${VERSION}" \
   --build-arg AEGIS_ROS_TAG=${AEGIS_ROS_TAG} \

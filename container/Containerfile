@@ -29,7 +29,8 @@ WORKDIR /ws
 # Install tools and PyTorch
 ENV UV_SYSTEM_PYTHON=1
 RUN apt update  \
-    && apt install -y \
+    && apt install -y --no-install-recommends \
+        libcap2-bin \
         curl \
         git \
         wget \
@@ -93,6 +94,7 @@ FROM simulation as hardware_control
 ARG AEGIS_ROS_TAG
 RUN apt update  \
     && apt install -y \
+        build-essential \
         cmake \
         libgrpc++-dev \
         libprotobuf-dev \
@@ -109,6 +111,7 @@ RUN apt update  \
     && cd /ws \
     && rm -rf ./aegis_ros \
     && apt remove -y \
+        build-essential \
         cmake \
         libgrpc++-dev \
         libprotobuf-dev \
