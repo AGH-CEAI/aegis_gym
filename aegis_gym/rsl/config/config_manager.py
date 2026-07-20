@@ -135,6 +135,8 @@ class ConfigManager:
         # Apply launch arguments if given
         if args.experiment_name:
             cfg_dict["rl"]["experiment_name"] = args.experiment_name
+        if args.max_iterations:
+            cfg_dict["rl"]["max_iterations"] = args.max_iterations
         if args.num_envs:
             cfg_dict["env"]["num_envs"] = args.num_envs
         if args.visualize_camera:

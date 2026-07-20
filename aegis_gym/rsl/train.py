@@ -167,8 +167,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             runner = OnPolicyRunner(env=env, cfg=cfg)
             print("[GraspTrain] >>> (RL) Starting runner")
             runner.learn(
-                num_learning_iterations=args.max_iterations
-                or cfg.rl_cfg.max_iterations,
+                num_learning_iterations=cfg.rl_cfg.max_iterations,
                 init_at_random_ep_len=True,
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
