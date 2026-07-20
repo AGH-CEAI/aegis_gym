@@ -11,6 +11,7 @@ from envs.scene import BaseScene
 
 class ObjectType(StrEnum):
     BOX = auto()
+    T_BLOCK = auto()
 
 
 class BaseObject(ABC):
@@ -61,3 +62,17 @@ class BaseBox(BaseObject):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+
+class BaseTBlock(BaseObject):
+    """
+    The interface for implementing a T-shaped block object.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @abstractmethod
+    def set_mass(self, mass: float) -> None:
+        """Set the object's total mass in kg."""
+        ...
