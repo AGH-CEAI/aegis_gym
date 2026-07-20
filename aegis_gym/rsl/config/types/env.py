@@ -19,8 +19,8 @@ class EnvCfg(BaseCfg):
     # TODO(issue#111) introduce size config
     box_size_default: list[float]
     box_size_symmetrical: list[float]
-    table_size: list
-    workbench_size: list
+    table_size: list[float]
+    workbench_size: list[float]
     box_collision: bool
     box_fixed: bool
     image_resolution: tuple[int, int]
