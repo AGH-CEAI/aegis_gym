@@ -54,6 +54,7 @@ class RosGrpcManipulator(BaseManipulator):
         policy_dt: float,
         disable_vision: bool = False,
         device: Optional[th.device] = None,
+        server_address: str = "127.0.0.1:50051",
     ):
         if hasattr(self, "_initialized") and self._initialized:
             return
@@ -90,7 +91,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
         self._loop_thread.start()
 
-        self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
+        self._robot_client = AegisRobotClient(server_address=server_address)
         self._run_coro(self._robot_client.connect())
 
         self._gripper_last_action = False  # Forcing first opening
