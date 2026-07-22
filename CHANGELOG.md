@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: Introdcued `BaseObjectsFactory` with custom implementations for `RosGrpcObjectsFactory` and `GenesisFactory`.
 - [PR-138](https://github.com/AGH-CEAI/aegis_gym/pull/138) - Added the scripts to autobuild the development toolbox.
 - [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: introduced `BasePolicyRunner` abstraction for wrapping rsl_rl's `OnPolicyRunner` and the `BehaviorCloningRunner`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Introducing observation cache in the `BaseEnv`class, which allows to query the same observation multiple times without re-calculating the observation.
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: `GraspEnv` was reworked into `ReacherEnv` using all previous abstractions.
 - [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: Sliced `BehaviorCloning` into smaller files.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all debug preview code from the `grasp_env.py` into a new env-wrapper: `ObsPreviewEnvWrapper`.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all visual augumentation from the domain randomization (PR #116) from the `grasp_env.py` into a new env-wrapper: `VisualAugEnvWrapper`.
@@ -31,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ### Deprecated
+
+- [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: removed the BC checkpoints sweep feature.
+
 ### Removed
 
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
