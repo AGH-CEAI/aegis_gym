@@ -348,7 +348,7 @@ class GenesisScene(BaseScene):
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
-            obj.create(gs_scene=self.gs_scene)
+            obj.create()
 
         self.gs_scene.build(
             n_envs=self.num_envs
