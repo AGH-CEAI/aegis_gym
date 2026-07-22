@@ -56,8 +56,6 @@ class ReacherEnv(BaseEnv):
         return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_RIGHT)
 
     def _extract_config(self) -> None:
-        # TODO do not extract config, just use config in the env and scene
-
         # TODO(issue##117) redesign the whole camera preview system
         self.show_cameras_gui = self._cfg_env.visualize_camera
         self.show_cell = self._cfg_env.visualize_cell

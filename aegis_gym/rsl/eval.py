@@ -27,7 +27,6 @@ def main():
     args: LaunchArgs = parse_arguments()
     # The ClearML task must exists for connecting configuration
     task = init_clearml_task(
-        # TODO setup the ClearML task in the Configmanager to avoid the problem with project_name
         project_name=args.project_name,
         algorithm=args.algorithm,
         control=args.control_type,
@@ -52,7 +51,6 @@ def main():
 
     with th.no_grad():
         if is_checkpoints_sweep_required(args):
-            # TODO note in changelog that this feature has been deprecated
             raise NotImplementedError("[Eval] Deprecated feature")
 
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
@@ -72,7 +70,6 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
         )
     if sweep and args.enable_recording:
         print("[Eval] WARNING: record is ignored during multi-checkpoint sweep")
-        # args.enable_recording = False # TODO ensure to disable the recording
     return sweep
 
 

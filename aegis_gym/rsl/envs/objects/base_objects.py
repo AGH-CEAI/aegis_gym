@@ -10,7 +10,7 @@ import torch as th
 @dataclass(frozen=True, slots=True)
 class ObjectProperties:
     dims: tuple
-    pose: Optional[tuple[float]]
+    pose: Optional[tuple[float, ...]]
     fixed: bool = False
     collision: bool = True
     color: tuple[float, float, float] = (1.0, 0.0, 0.0)

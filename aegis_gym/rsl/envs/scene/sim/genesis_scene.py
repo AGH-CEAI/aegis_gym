@@ -111,12 +111,11 @@ class GenesisScene(BaseScene):
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
         self._setup_create_plane(self.gs_scene)
-        # TODO why there is a visualize_cell, this should be taken from the URDF file
         self._setup_create_table(self.gs_scene, True)
         self._setup_create_cameras(
             self.gs_scene,
             self.cameras_setup,
-            cfg.args.debug_preview_vis_obs,  # TODO rremove the show_cameras_gui feature?
+            cfg.args.debug_preview_vis_obs,
         )
         self._setup_create_lighting(self.gs_scene)
 
@@ -209,7 +208,6 @@ class GenesisScene(BaseScene):
                 )
 
         if show_cameras_gui:
-            # TODO investigate if the rhe reference must exists somewhere
             self._record_cam = scene.add_camera(
                 res=(1280, 720),
                 pos=(1.5, 0.0, 0.2),
@@ -255,7 +253,6 @@ class GenesisScene(BaseScene):
         if self.cameras_setup != CamerasSetup.DEFAULT:
             return
 
-        # TODO try to change np.arrays into th.tensors (on CPU)
         scene_offset_T = np.array(
             [
                 [0.0, 0.0, -1.0, 0.0],
@@ -359,9 +356,7 @@ class GenesisScene(BaseScene):
             # env_spacing=(1.0, 1.0),
         )
         self._setup_attach_cameras()
-        # TODO rename this method to something more general
         self.manipulator.set_joints_pd_gains()
-        self._enable_randomizations()
 
     def _get_manipulator(self) -> BaseManipulator:
         return self.manipulator
@@ -483,7 +478,7 @@ class GenesisScene(BaseScene):
         data = {}
         # TODO(issue#128) change api to expose the robot entity
         robot = self.manipulator._robot_entity
-        for name in self._joint_names:
+        for name in self._pj_joint_names:
             j = robot.get_joint(name=name)
             for idx in j.dofs_idx_local:
                 # TODO(issue#119) investigate one query for obtaining all of the data
