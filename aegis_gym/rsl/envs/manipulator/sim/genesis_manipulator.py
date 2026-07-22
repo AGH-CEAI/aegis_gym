@@ -20,6 +20,7 @@ class GenesisManipulator(BaseManipulator):
         num_envs: int,
         gs_scene: gs.Scene,
         cameras_obs_getter: Callable[[CameraName, CameraModality], th.Tensor],
+        available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
@@ -29,6 +30,7 @@ class GenesisManipulator(BaseManipulator):
         self._num_envs = num_envs
         self._gs_scene = gs_scene
         self._observe_camera_fn = cameras_obs_getter
+        self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
@@ -386,10 +388,12 @@ class GenesisManipulator(BaseManipulator):
     def get_all_cameras_images(
         self, modality: CameraModality = CameraModality.RGB
     ) -> TensorDict:
-        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
-        raise NotImplementedError(
-            "Currently in Genesis Sim, the manipulator doesn't have access to the all cameras observation."
-        )
+        res = {}
+        for cam, cam_modalities in self._available_cameras.items():
+            if modality not in cam_modalities:
+                raise ValueError(f"Camera {cam} doesn't support modality {modality}")
+            res[cam] = self._observe_camera_fn(cam, modality)
+        return TensorDict(res)
 
     def get_robot_link(self, link: str) -> RigidLink:
         return self._robot_entity.get_link(link)

@@ -18,6 +18,7 @@ from .rl import AlgorithmCfg, PolicyCfg, RLCfg
 from .robot import RobotCfg
 from .enum_types import (
     Algorithm,
+    CAMERAS_LINKS,
     CameraLink,
     CameraModality,
     CameraName,
@@ -35,6 +36,7 @@ __all__ = [
     "AlgorithmCfg",
     "BCCfg",
     "BaseCfg",
+    "CAMERAS_LINKS",
     "CNNLayerCfg",
     "CameraFovValueCfg",
     "CameraLink",

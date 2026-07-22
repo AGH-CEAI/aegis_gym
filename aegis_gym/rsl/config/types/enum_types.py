@@ -56,6 +56,12 @@ IMAGE_MODALITIES: tuple[Modality, ...] = (
     Modality.CAMERA_TOOL_RIGHT_RGB,
 )
 
+CAMERAS_LINKS: dict[CameraName, CameraLink] = {
+    CameraName.CAMERA_SCENE: CameraLink.CAMERA_SCENE,
+    CameraName.CAMERA_TOOL_LEFT: CameraLink.CAMERA_TOOL_LEFT,
+    CameraName.CAMERA_TOOL_RIGHT: CameraLink.CAMERA_TOOL_RIGHT,
+}
+
 
 @dataclass(frozen=True, order=True, slots=True)
 class Checkpoint:

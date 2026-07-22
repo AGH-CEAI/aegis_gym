@@ -13,7 +13,7 @@ from config.types import (
     CameraLink,
     CameraModality,
     CameraName,
-    CameraPoseCfg,
+    CAMERAS_LINKS,
     CamerasSetup,
     Control,
     EnvCfg,
@@ -47,14 +47,14 @@ class GenesisScene(BaseScene):
         self._enable_pj_logging = cfg.args.enable_plotjuggler
         self._setup_pj_server()
 
-        # TODO investigate if there is possibility to remove numpy
-        self._dr_cam_base_offsets: dict[str, np.ndarray] = {}
-        self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
         print(
             f"[GenesisScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
         )
 
         self._cameras: dict[CameraName, Camera] = {}
+        self._cameras_modalities: dict[CameraName, tuple[CameraModality]] = {}
+        self._dr_cam_base_offsets: dict[CameraName, np.ndarray] = {}
+        self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
         self._setup_scene(cfg=cfg)
 
         self._global_entity_cnt = 0
@@ -249,6 +249,7 @@ class GenesisScene(BaseScene):
             fov=fov,
             GUI=show_cameras_gui,
         )
+        self._cameras_modalities[name] = tuple(CameraModality.RGB)
 
     def _setup_attach_cameras(self):
         if self.cameras_setup != CamerasSetup.DEFAULT:
@@ -274,24 +275,39 @@ class GenesisScene(BaseScene):
             dtype=np.float32,
         )
 
-        cams_to_attach = [
-            (CameraName.CAMERA_SCENE, CameraLink.CAMERA_SCENE, scene_offset_T),
-            (CameraName.CAMERA_TOOL_LEFT, CameraLink.CAMERA_TOOL_LEFT, tool_offset_T),
-            (CameraName.CAMERA_TOOL_RIGHT, CameraLink.CAMERA_TOOL_RIGHT, tool_offset_T),
-        ]
+        get_link = self.manipulator.get_robot_link
+        self._cameras[CameraName.CAMERA_SCENE].attach(
+            get_link(link=CameraLink.CAMERA_SCENE), scene_offset_T
+        )
+        self._cameras[CameraName.CAMERA_SCENE].move_to_attach()
+        self._cameras[CameraName.CAMERA_TOOL_LEFT].attach(
+            get_link(link=CameraLink.CAMERA_TOOL_LEFT), tool_offset_T
+        )
+        self._cameras[CameraName.CAMERA_TOOL_LEFT].move_to_attach()
+        self._cameras[CameraName.CAMERA_TOOL_RIGHT].attach(
+            get_link(link=CameraLink.CAMERA_TOOL_RIGHT), tool_offset_T
+        )
+        self._cameras[CameraName.CAMERA_TOOL_RIGHT].move_to_attach()
 
-        for cam_name, link_name, offset in cams_to_attach:
-            link = self.manipulator.get_robot_link(link=link_name)
-            if cam_name in self._cameras:
-                self._cameras[cam_name].attach(link, offset)
-                self._cameras[cam_name].move_to_attach()
+        self._cache_camera_base_offsets(
+            offset_scene=scene_offset_T, offset_tool=tool_offset_T
+        )
 
-    def _enable_randomizations(self) -> None:
-        # TODO create a proper logic
+    def _cache_camera_base_offsets(
+        self, offset_scene: np.ndarray, offset_tool: np.ndarray
+    ) -> None:
         if not self._cfg_dr.enabled:
             return
-        # self._setup_dr_pd_gains()
-        # self._cache_camera_base_offsets()
+        if self.cameras_setup != CamerasSetup.DEFAULT:
+            raise NotImplementedError(
+                f"The cameras setup `{self.cameras_setup}` is not supported."
+            )
+
+        self._dr_cam_base_offsets = {
+            CameraName.CAMERA_SCENE: offset_scene.copy(),
+            CameraName.CAMERA_TOOL_LEFT: offset_tool.copy(),
+            CameraName.CAMERA_TOOL_RIGHT: offset_tool.copy(),
+        }
 
     def get_policy_dt(self) -> float:
         return self.policy_dt
@@ -328,6 +344,7 @@ class GenesisScene(BaseScene):
             num_envs=self.num_envs,
             gs_scene=self.gs_scene,
             cameras_obs_getter=self.observe_camera,
+            available_cameras=self._cameras_modalities,
             cfg_robot=cfg,
             show_cell=self.show_cell,
             device=self.device,
@@ -359,45 +376,7 @@ class GenesisScene(BaseScene):
         self.gs_scene.step()
         self.update_state()
 
-    def _cache_camera_base_offsets(self) -> None:
-        # TODO refactor to new abstraciotns
-        self._dr_cam_base_offsets = {}
-        if self.cameras_setup != CamerasSetup.DEFAULT:
-            return
-
-        self._dr_cam_base_offsets = {
-            "scene_cam": np.array(
-                [
-                    [0.0, 0.0, -1.0, 0.0],
-                    [-1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                dtype=np.float32,
-            ),
-            "tool_left_cam": np.array(
-                [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, -0.03],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                dtype=np.float32,
-            ),
-            "tool_right_cam": np.array(
-                [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, -0.03],
-                    [0.0, 0.0, 0.0, 1.0],
-                ],
-                dtype=np.float32,
-            ),
-        }
-
-    def _rand_cameras_extrinsics(self, envs_idx: th.Tensor) -> None:
-        # TODO apply only to envs_dix
-        # TODO adapt to new abstraciotns
+    def _rand_cameras_extrinsics(self, _envs_idx: th.Tensor) -> None:
         cam_cfg = self._cfg_dr.cameras_extrinsics
         if not (
             cam_cfg.enabled
@@ -407,26 +386,24 @@ class GenesisScene(BaseScene):
             return
 
         for cam_name, base_offset in self._dr_cam_base_offsets.items():
-            cfg_key = "scene_cam" if cam_name == "scene_cam" else "tool_cams"
-            per_cam: CameraPoseCfg = getattr(cam_cfg, cfg_key)
+            if cam_name == CameraName.CAMERA_SCENE:
+                per_cam = cam_cfg.scene_cam
+            elif cam_name in (
+                CameraName.CAMERA_TOOL_LEFT,
+                CameraName.CAMERA_TOOL_RIGHT,
+            ):
+                per_cam = cam_cfg.tool_cams
+            else:
+                raise ValueError(f"Wrong camera: {cam_name}")
 
             perturb = self._make_random_se3_perturbation(
                 per_cam.translation_std, per_cam.rotation_std_deg
             )
             perturbed_offset = (base_offset @ perturb).astype(np.float32)
 
-            try:
-                # TODO(issue#127) change API to expose robot_entity
-                link = self.robot._robot_entity.get_link(
-                    self._cameras_link_names[cam_name]
-                )
-                for cam_dict in (self._cameras, self._debug_cameras):
-                    if cam_name in cam_dict:
-                        cam_dict[cam_name].attach(link, perturbed_offset)
-                        cam_dict[cam_name].move_to_attach()
-            except Exception:
-                self._dr_cam_extrinsics_active = False
-                break
+            link = self.manipulator.get_robot_link(link=CAMERAS_LINKS[cam_name])
+            self._cameras[cam_name].attach(link, perturbed_offset)
+            self._cameras[cam_name].move_to_attach()
 
     def _make_random_se3_perturbation(
         self,
