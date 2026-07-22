@@ -36,7 +36,6 @@ class BaseObject(ABC):
     @abstractmethod
     def create(
         self,
-        **kwargs,
     ) -> None:
         """Create the object."""
         ...
@@ -59,5 +58,5 @@ class BaseBox(BaseObject):
     The interface for implementing generic box object.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, device: th.device, properties: ObjectProperties):
+        super().__init__(device=device, properties=properties)
