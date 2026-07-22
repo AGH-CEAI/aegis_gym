@@ -7,16 +7,17 @@ from ..base_objects import BaseBox, ObjectProperties
 
 
 class GenesisBox(BaseBox):
-    def __init__(self, properties: ObjectProperties, device: th.device):
+    def __init__(
+        self, gs_scene: gs.Scene, properties: ObjectProperties, device: th.device
+    ):
         super().__init__(properties=properties, device=device)
+        self._gs_scene = gs_scene
 
     def create(
         self,
-        gs_scene: gs.Scene,
     ) -> None:
-        # TODO change
         p = self.properties
-        self._obj = gs_scene.add_entity(
+        self._obj = self._gs_scene.add_entity(
             gs.morphs.Box(
                 size=p.dims,
                 pos=(0, 0, 0) if not p.pose else p.pose[:3],

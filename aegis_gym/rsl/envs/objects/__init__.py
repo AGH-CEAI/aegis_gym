@@ -1,15 +1,20 @@
 from .base_objects import ObjectType, BaseObject, BaseBox, ObjectProperties
+from .base_objects_factory import BaseObjectsFactory
+
 from .real.ros_grpc_objects import RosGrpcBox
+from .real.ros_grpc_objects_factory import RosGrpcObjectsFactory
 from .sim.genesis_objects import GenesisBox
-from .objects_factory import ObjectsFactory
+from .sim.genesis_objects_factory import GenesisObjectsFactory
 
 
 __all__ = [
-    "ObjectType",
-    "BaseObject",
     "BaseBox",
-    "RosGrpcBox",
+    "BaseObject",
+    "BaseObjectsFactory",
     "GenesisBox",
-    "ObjectsFactory",
+    "GenesisObjectsFactory",
     "ObjectProperties",
+    "ObjectType",
+    "RosGrpcBox",
+    "RosGrpcObjectsFactory",
 ]

@@ -8,7 +8,7 @@ import genesis as gs
 from genesis.vis.camera import Camera
 
 from envs.manipulator import BaseManipulator, GenesisManipulator
-from envs.objects import ObjectsFactory, ObjectType, BaseObject, ObjectProperties
+from envs.objects import GenesisObjectsFactory, ObjectType, BaseObject, ObjectProperties
 from config.types import (
     CameraLink,
     CameraModality,
@@ -326,11 +326,10 @@ class GenesisScene(BaseScene):
             del self.manipulator
 
     def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
-        obj = ObjectsFactory.create_object(
+        f = GenesisObjectsFactory(device=self.device, gs_scene=self.gs_scene)
+        obj = f.create_object(
             obj_type=entity,
             obj_properties=properties,
-            ctrl_type=self.CONTROL_TYPE,
-            device=self.device,
         )
         self._entity_registry[self._global_entity_cnt] = obj
         self._global_entity_cnt += 1

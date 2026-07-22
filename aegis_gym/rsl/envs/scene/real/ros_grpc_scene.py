@@ -6,7 +6,7 @@ import torch as th
 
 from ..base_scene import BaseScene
 from envs.manipulator import BaseManipulator, RosGrpcManipulator
-from envs.objects import ObjectType, BaseObject, ObjectProperties, ObjectsFactory
+from envs.objects import ObjectType, BaseObject, ObjectProperties, RosGrpcObjectsFactory
 from config.types import Control, ExpConfig, RobotCfg
 
 
@@ -72,11 +72,10 @@ class RosGrcpScene(BaseScene):
         return self.policy_dt
 
     def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
-        obj = ObjectsFactory.create_object(
+        f = RosGrpcObjectsFactory(device=self.device)
+        obj = f.create_object(
             obj_type=entity,
             obj_properties=properties,
-            ctrl_type=self.CONTROL_TYPE,
-            device=self.device,
         )
         self._entity_registry[self._global_entity_cnt] = obj
         self._global_entity_cnt += 1
