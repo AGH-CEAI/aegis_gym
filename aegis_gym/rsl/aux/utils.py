@@ -1,13 +1,44 @@
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 import torch.nn as nn
 from clearml import Task, Model, InputModel
 from natsort import natsorted
 
-from config.types import Checkpoint, ExpConfig
+from config import LaunchArgs
+from config.types import Checkpoint, ExpConfig, Algorithm
+from envs import BaseEnv
 from runners import BehaviorCloningRunner, OnPolicyRunner
+
+
+def load_policy(
+    env: BaseEnv, cfg: ExpConfig, alg: Optional[Algorithm] = None
+) -> Callable:
+    args: LaunchArgs = cfg.args
+
+    algorithm = alg or cfg.args.algorithm
+
+    policy_args = {
+        "env": env,
+        "cfg": cfg,
+        "load_cfg_from_clearml": not args.enforce_current_config,
+        "exp_name": args.experiment_name,
+        "clearml_artifact_name": "model",
+    }
+
+    # TODO(issue#120) generalize loading config from ClearML
+    if algorithm == Algorithm.RL:
+        policy_args["clearml_task_id"] = args.load_rl_task_id
+        policy_args["clearml_model_id"] = args.load_rl_model_id
+        return load_rl_policy(**policy_args)
+    if algorithm == Algorithm.BC:
+        policy_args["clearml_task_id"] = args.load_bc_task_id
+        policy_args["clearml_model_id"] = args.load_bc_model_id
+        policy = load_bc_policy(**policy_args)
+        policy.eval()
+        return policy
+    raise ValueError("Unknown learning method")
 
 
 def load_rl_policy(

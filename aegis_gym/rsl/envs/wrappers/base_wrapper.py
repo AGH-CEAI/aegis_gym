@@ -13,9 +13,7 @@ class BaseEnvWrapper(BaseEnv):
     """
 
     def __init__(self, env: BaseEnv):
-        super().__init__(scene=None, cfg=env._cfg)
         self._env = env
-        del self._obs_cache
 
     def __getattr__(self, name: str) -> Any:
         if name == "_env":

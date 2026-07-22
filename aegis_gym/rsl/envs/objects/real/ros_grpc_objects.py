@@ -1,23 +1,21 @@
 from typing import Optional
 
 import torch as th
-import genesis as gs
 
-from ..base_objects import BaseBox
-from ...scene import BaseScene
+from ..base_objects import BaseBox, ObjectProperties
 
 
 class RosGrpcBox(BaseBox):
     def __init__(
         self,
-        scene: BaseScene | gs.Scene,  # TODO(issue128) change BaseScene to RosGrpcScene
+        properties: ObjectProperties,
         device: th.device,
     ):
-        super().__init__(scene=scene, device=device)
+        super().__init__(properties=properties, device=device)
 
-    def create(self, pose: tuple, *args, **kwargs) -> None:
+    def create(self) -> None:
         # TODO(issue#131) read poses from RosGrpc bridge
-        self.pose = th.tensor(pose, device=self.device).repeat(1, 1)
+        self.pose = th.tensor(self.properties.pose, device=self.device).repeat(1, 1)
 
     def get_pose(self, envs_idx: Optional[th.Tensor | int] = None) -> th.Tensor:
         return self.pose.unsqueeze(0)

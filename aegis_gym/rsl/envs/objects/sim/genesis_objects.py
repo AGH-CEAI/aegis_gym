@@ -3,34 +3,32 @@ from typing import Optional
 import torch as th
 import genesis as gs
 
-from ..base_objects import BaseBox
-from envs.scene import BaseScene
+from ..base_objects import BaseBox, ObjectProperties
 
 
 class GenesisBox(BaseBox):
-    def __init__(self, scene: BaseScene | gs.Scene, device: th.device):
-        super().__init__(scene=scene, device=device)
+    def __init__(
+        self, gs_scene: gs.Scene, properties: ObjectProperties, device: th.device
+    ):
+        super().__init__(properties=properties, device=device)
+        self._gs_scene = gs_scene
 
     def create(
         self,
-        dims: tuple[float, float, float],
-        pose: Optional[tuple],
-        fixed: bool = False,
-        collision: bool = False,
-        color: tuple[float, float, float] = (1.0, 0.0, 0.0),
     ) -> None:
-        self._obj = self._scene.add_entity(
+        p = self.properties
+        self._obj = self._gs_scene.add_entity(
             gs.morphs.Box(
-                size=dims,
-                pos=(0, 0, 0) if not pose else pose[:3],
-                quat=None if not pose else pose[3:],
-                fixed=fixed,
-                collision=collision,
+                size=p.dims,
+                pos=(0, 0, 0) if not p.pose else p.pose[:3],
+                quat=None if not p.pose else p.pose[3:],
+                fixed=p.fixed,
+                collision=p.collision,
             ),
             # material=gs.materials.Rigid(gravity_compensation=1),
             surface=gs.surfaces.Rough(
                 diffuse_texture=gs.textures.ColorTexture(
-                    color=color,
+                    color=p.color,
                 ),
             ),
         )

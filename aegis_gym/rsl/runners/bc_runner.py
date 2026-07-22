@@ -12,12 +12,13 @@ import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 
-from envs import BaseManipulator, BaseEnv, IMAGE_MODALITIES
+from envs import BaseManipulator, BaseEnv
 from config import ConfigManager
 from config.types import (
     ExpConfig,
     BCCfg,
     CamerasSetup,
+    IMAGE_MODALITIES,
 )
 
 from .base_runner import BasePolicyRunner
@@ -293,7 +294,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 teacher_action = self._teacher(obs).detach()
 
                 # Get end-effector position
-                robot: BaseManipulator = self.env.robot
+                robot: BaseManipulator = self.env.manipulator
                 ee_pose = robot.get_tcp_pose()
 
                 # Get object pose in camera frame

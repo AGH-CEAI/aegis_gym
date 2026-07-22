@@ -16,10 +16,10 @@ except ImportError:
     )
     raise
 
-from ..base_manipulator import BaseManipulator, CameraID, CameraModality
+from ..base_manipulator import BaseManipulator, CameraModality
 
 # from ...scene import BaseScene
-from config.types import RobotCfg
+from config.types import RobotCfg, CameraName
 
 
 class PoseTransformUtils:
@@ -43,7 +43,6 @@ class RosGrpcManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene,  # TODO(issue#128) introduce proper typing
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,
@@ -55,7 +54,6 @@ class RosGrpcManipulator(BaseManipulator):
         super().__init__(device=device)
 
         self._num_envs = num_envs
-        self._scene = scene
         self._cfg_robot = robot_cfg
         self._policy_dt = policy_dt
         self._disable_vision = disable_vision
@@ -321,7 +319,7 @@ class RosGrpcManipulator(BaseManipulator):
         return result.unsqueeze(dim=0)
 
     def get_camera_image(
-        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+        self, camera: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
         """
         Returns image tensor for the given camera and modality:
@@ -333,10 +331,10 @@ class RosGrpcManipulator(BaseManipulator):
 
         # TODO(issue#125) rewrite the gRPC TensorDict output to match the camera id convention
         cam_name = {
-            CameraID.SCENE_CAMERA: "scene",
-            CameraID.TOOL_LEFT: "left",
-            CameraID.TOOL_RIGHT: "right",
-        }[camera_id]
+            CameraName.CAMERA_SCENE: "scene",
+            CameraName.CAMERA_TOOL_LEFT: "left",
+            CameraName.CAMERA_TOOL_RIGHT: "right",
+        }[camera]
         match modality:
             case CameraModality.RGB:
                 return self._vision[cam_name]

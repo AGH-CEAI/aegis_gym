@@ -1,10 +1,13 @@
 from abc import ABC, abstractmethod
 from enum import auto
-from typing import Callable
+from typing import Callable, Any
 
-from strenum import StrEnum
 import torch as th
+from strenum import StrEnum
 
+
+from config.types import Control, RobotCfg
+from ..objects.base_objects import ObjectProperties, ObjectType
 from ..manipulator.base_manipulator import BaseManipulator
 
 
@@ -20,9 +23,10 @@ class BaseScene(ABC):
     Base class for implementing whole interaction with simulator or real world.
     """
 
-    _randomization_fns: dict[RandomizationType, Callable[[], None]]
+    CONTROL_TYPE: Control
+    _randomization_fns: dict[RandomizationType, Callable[[th.Tensor], None]]
 
-    def __init__(self, device: th.device = th.device("cpu")):
+    def __init__(self, device: th.device):
         super().__init__()
         self._is_build = False
         self.device: th.device = device
@@ -32,14 +36,33 @@ class BaseScene(ABC):
         """Shutdown the scene connection."""
         ...
 
+    def randomize_domain(
+        self, rand_type: RandomizationType, env_idx: th.Tensor
+    ) -> None:
+        """Calls domain randomization function."""
+        if rand_type not in self._randomization_fns:
+            raise IndexError(
+                f"The `{rand_type}` randomization is not defined for `{type(self).__name__}` scene."
+                "TIP: Check available randomizations via `get_available_randomizations()`."
+            )
+        self._randomization_fns[rand_type](env_idx)
+
+    def get_available_randomizations(self) -> frozenset[RandomizationType]:
+        """Returns set of available randomizations types."""
+        return frozenset(self._randomization_fns)
+
     @abstractmethod
-    def add_entity(self, entity: str) -> None:
-        # TODO(issue#37) implement entity enum
+    def get_policy_dt(self) -> float:
+        """Get the value of the policy dt."""
+        ...
+
+    @abstractmethod
+    def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:
         """Add a given entity to the scene."""
         ...
 
     @abstractmethod
-    def add_robot(self) -> None:
+    def add_manipulator(self, cfg: RobotCfg) -> None:
         """Add the Aegis robot to the scene."""
         ...
 
@@ -60,7 +83,7 @@ class BaseScene(ABC):
         """
         Return the `Manipulator` object to control the robot. The scene must be previously build.
         """
-        if not self._is_build():
+        if not self._is_build:
             raise RuntimeError(
                 "The access to the robot can not be given before calling `build()` on the scene!"
             )
@@ -70,6 +93,16 @@ class BaseScene(ABC):
     def _get_manipulator(self) -> BaseManipulator: ...
 
     @abstractmethod
-    def read_state(self) -> None:
+    def update_state(self) -> None:
         """Update the internal state with data from the scene."""
+        ...
+
+    @abstractmethod
+    def pre_step(self) -> None:
+        """Prepare the scene for a new action."""
+        ...
+
+    @abstractmethod
+    def step(self) -> None:
+        """Process the scene step."""
         ...

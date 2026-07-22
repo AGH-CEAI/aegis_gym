@@ -1,22 +1,26 @@
 import time
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypeVar, Callable
 
 import torch as th
 import genesis as gs
 from clearml import Dataset
 from tensordict import TensorDict
 
-from ..base_manipulator import BaseManipulator, CameraID, CameraModality
-from config.types import RobotCfg
+from envs.manipulator import BaseManipulator, CameraModality
+from config.types import RobotCfg, CameraName
+
+RigidLink = TypeVar
 
 
 class GenesisManipulator(BaseManipulator):
     def __init__(
         self,
         num_envs: int,
-        scene: gs.Scene,
+        gs_scene: gs.Scene,
+        cameras_obs_getter: Callable[[CameraName, CameraModality], th.Tensor],
+        available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
         show_cell: bool,
         device: Optional[th.device] = None,
@@ -24,7 +28,9 @@ class GenesisManipulator(BaseManipulator):
         super().__init__(device=device)
 
         self._num_envs = num_envs
-        self._scene = scene
+        self._gs_scene = gs_scene
+        self._observe_camera_fn = cameras_obs_getter
+        self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
 
         # TODO(issue#99): Implement URDF model with cell collision handling
@@ -55,10 +61,12 @@ class GenesisManipulator(BaseManipulator):
                 "cam_scene_rgb_camera_frame",
             ],
         )
-        self._robot_entity = scene.add_entity(material=material, morph=morph)
+        self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
+        self.max_linear_speed = 1.0
+        self.max_angular_speed = 1.0
 
         self._ik_method = cfg_robot.ik_method
 
@@ -178,6 +186,9 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: Optional[bool] = None,
         envs_idx: Optional[th.Tensor] = None,
     ) -> None:
+        action[:, :3] *= self.max_linear_speed
+        action[:, 3:] *= self.max_angular_speed
+
         # Compute joint velocities using inverse velocity kinematics
         match self._ik_method:
             case "gs_ikv":
@@ -370,17 +381,19 @@ class GenesisManipulator(BaseManipulator):
         return fingers.sum(dim=1)
 
     def get_camera_image(
-        self, camera_id: CameraID, modality: CameraModality = CameraModality.RGB
+        self, camera: CameraName, modality: CameraModality = CameraModality.RGB
     ) -> th.Tensor:
-        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
-        raise NotImplementedError(
-            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
-        )
+        return self._observe_camera_fn(camera, modality)
 
     def get_all_cameras_images(
         self, modality: CameraModality = CameraModality.RGB
     ) -> TensorDict:
-        # TODO(issue#127) pass cameras reference to have  the same API for accessing images.
-        raise NotImplementedError(
-            "Currently in Genesis Sim, the manipulator doesn't have access to the cameras observation."
-        )
+        res = {}
+        for cam, cam_modalities in self._available_cameras.items():
+            if modality not in cam_modalities:
+                raise ValueError(f"Camera {cam} doesn't support modality {modality}")
+            res[cam] = self._observe_camera_fn(cam, modality)
+        return TensorDict(res)
+
+    def get_robot_link(self, link: str) -> RigidLink:
+        return self._robot_entity.get_link(link)
