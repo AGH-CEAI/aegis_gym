@@ -1,13 +1,14 @@
 import genesis as gs
 import torch as th
 from clearml import Task
+import logging
 
 from envs import BaseEnv
 from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
 from envs import ReacherEnv
 from runners import OnPolicyRunner, BehaviorCloningRunner
-from config import ConfigManager, LaunchArgs, parse_arguments
+from config import ConfigManager, LaunchArgs, parse_arguments, setup_logger
 from config.types import ExpConfig, Algorithm, Control
 from aux import load_policy
 
@@ -31,6 +32,10 @@ def init_clearml_task(
 
 # TODO(issue#130) Real training with BC doesn't work, mark this down
 def main():
+    # Set logger
+    setup_logger("INFO")  # DEBUG, INFO, WARNING, ERROR
+    logger = logging.getLogger(__name__)
+
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
 
@@ -48,14 +53,14 @@ def main():
     cfg: ExpConfig = ConfigManager.get_config()
 
     env = create_env(cfg)
-    print("[Train] > Setup done")
+    logger.info("[Train] > Setup done")
 
     if args.calibration_move or args.calibration_move_cartesian:
-        print("[Train] > Proceeding to calibration movement")
+        logger.info("[Train] > Proceeding to calibration movement")
         calibration_movment(env, cfg)
         return
 
-    print("[Train] > Proceeding training")
+    logger.info("[Train] > Proceeding training")
     train_runner(env=env, cfg=cfg)
 
 
