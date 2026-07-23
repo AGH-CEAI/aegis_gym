@@ -8,7 +8,14 @@ import torch as th
 from tensordict import TensorDict
 
 try:
-    from aegis_grpc_client import AegisJointIndex, AegisRobotClient
+    from aegis_grpc_client import (
+        AegisJointIndex,
+        AegisJointName,
+        AegisRobotClient,
+        ModalityGroup,
+        StateModality,
+    )
+    from aegis_grpc_client import CameraName as RosGrpcCameraName
 except ImportError:
     print(
         "Failed to import aegis_grpc_client. "
@@ -47,6 +54,7 @@ class RosGrpcManipulator(BaseManipulator):
         policy_dt: float,
         disable_vision: bool = False,
         device: Optional[th.device] = None,
+        server_address: str = "127.0.0.1:50051",
     ):
         if hasattr(self, "_initialized") and self._initialized:
             return
@@ -60,24 +68,30 @@ class RosGrpcManipulator(BaseManipulator):
 
         self.pt = PoseTransformUtils()
 
+        self._cam_map = {
+            CameraName.CAMERA_SCENE: RosGrpcCameraName.CAMERA_SCENE,
+            CameraName.CAMERA_TOOL_LEFT: RosGrpcCameraName.CAMERA_TOOL_LEFT,
+            CameraName.CAMERA_TOOL_RIGHT: RosGrpcCameraName.CAMERA_TOOL_RIGHT,
+        }
+
         if num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
         def_dofs = robot_cfg.default_arm_dof
         self.dof_home_dict = {
-            "shoulder_pan_joint": def_dofs[0],
-            "shoulder_lift_joint": def_dofs[1],
-            "elbow_joint": def_dofs[2],
-            "wrist_1_joint": def_dofs[3],
-            "wrist_2_joint": def_dofs[4],
-            "wrist_3_joint": def_dofs[5],
+            AegisJointName.SHOULDER_PAN_JOINT: def_dofs[0],
+            AegisJointName.SHOULDER_LIFT_JOINT: def_dofs[1],
+            AegisJointName.ELBOW_JOINT: def_dofs[2],
+            AegisJointName.WRIST_1_JOINT: def_dofs[3],
+            AegisJointName.WRIST_2_JOINT: def_dofs[4],
+            AegisJointName.WRIST_3_JOINT: def_dofs[5],
         }
 
         self._loop = asyncio.new_event_loop()
         self._loop_thread = threading.Thread(target=self._run_loop, daemon=True)
         self._loop_thread.start()
 
-        self._robot_client = AegisRobotClient(server_address="127.0.0.1:50051")
+        self._robot_client = AegisRobotClient(server_address=server_address)
         self._run_coro(self._robot_client.connect())
 
         self._gripper_last_action = False  # Forcing first opening
@@ -173,7 +187,7 @@ class RosGrpcManipulator(BaseManipulator):
                 k: th.from_numpy(v)
                 .to(device=self.device, dtype=th.float32)
                 .unsqueeze(dim=0)
-                for k, v in states["state"].items()
+                for k, v in states[ModalityGroup.STATE].items()
             },
             device=self.device,
         )
@@ -185,14 +199,16 @@ class RosGrpcManipulator(BaseManipulator):
                     .to(self.device)
                     .roll(1, dims=-1)
                     .unsqueeze(dim=0)
-                    for k, v in states["vision"].items()
+                    for k, v in states[ModalityGroup.VISION].items()
                 },
                 device=self.device,
             )
         else:
             self._vision = None
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
-        self._state["pose"][3:] = self.pt.quat_xyzw_to_wxyz(self._state["pose"][3:])
+        self._state[StateModality.POSE][3:] = self.pt.quat_xyzw_to_wxyz(
+            self._state[StateModality.POSE][3:]
+        )
 
     def set_joints_pd_gains(
         self,
@@ -288,27 +304,27 @@ class RosGrpcManipulator(BaseManipulator):
     def get_joints_positions(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state["joints"][:, 0]
+        return self._state[StateModality.JOINTS][:, 0]
 
     def get_joints_velocities(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state["joints"][:, 1]
+        return self._state[StateModality.JOINTS][:, 1]
 
     def get_joints_efforts(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state["joints"][:, 2]
+        return self._state[StateModality.JOINTS][:, 2]
 
     def get_ft_wrench(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state["wrench"]
+        return self._state[StateModality.WRENCH]
 
     def get_tcp_pose(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state["pose"]
+        return self._state[StateModality.POSE]
 
     def get_base_pose(self) -> th.Tensor:
         return th.tensor([0, 0, 0, 1, 0, 0, 0], dtype=th.float32, device=self.device)
@@ -329,15 +345,9 @@ class RosGrpcManipulator(BaseManipulator):
         if self._vision is None:
             raise ValueError("Vision disabled.")
 
-        # TODO(issue#125) rewrite the gRPC TensorDict output to match the camera id convention
-        cam_name = {
-            CameraName.CAMERA_SCENE: "scene",
-            CameraName.CAMERA_TOOL_LEFT: "left",
-            CameraName.CAMERA_TOOL_RIGHT: "right",
-        }[camera]
         match modality:
             case CameraModality.RGB:
-                return self._vision[cam_name]
+                return self._vision[self._cam_map[camera]]
             case _:
                 raise ValueError(
                     f"Not supported modality: {modality} ({modality.name})."

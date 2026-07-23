@@ -25,7 +25,7 @@ class CameraName(StrEnum):
     CAMERA_SCENE_LEFT = "cam_scene_left"
     CAMERA_SCENE_RIGHT = "cam_scene_right"
     CAMERA_TOOL_LEFT = "cam_tool_left"
-    CAMERA_TOOL_RIGHT = "cam_right_cam"
+    CAMERA_TOOL_RIGHT = "cam_tool_right"
 
 
 class CameraLink(StrEnum):

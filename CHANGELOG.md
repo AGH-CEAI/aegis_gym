@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-144](https://github.com/AGH-CEAI/aegis_gym/pull/144) - Using new strenum literals from `aegis_grpc` client.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: `GraspEnv` was reworked into `ReacherEnv` using all previous abstractions.
 - [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: Sliced `BehaviorCloning` into smaller files.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - AegisGrasp cleanup p.4: Moved all debug preview code from the `grasp_env.py` into a new env-wrapper: `ObsPreviewEnvWrapper`.
