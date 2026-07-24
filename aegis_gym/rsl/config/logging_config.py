@@ -1,59 +1,88 @@
+from __future__ import annotations
+
 import logging
-from pathlib import Path
+from typing import ClassVar
+
+_INITIALIZED = False
+
+DEFAULT_CONSOLE_LEVEL = logging.INFO
+APP_LOGGER_NAME = "app_logger"
 
 
 class ColoredFormatter(logging.Formatter):
-    COLORS = {
-        logging.DEBUG: "\033[0m",  # Gray
-        logging.INFO: "\033[0m",  # Default
-        logging.WARNING: "\033[33m",  # Yellow
-        logging.ERROR: "\033[31m",  # Red
-        logging.CRITICAL: "\033[1;31m",  # Bright red
+    COLORS: ClassVar[dict[int, str]] = {
+        logging.DEBUG: "\033[90m",
+        logging.INFO: "\033[0m",
+        logging.WARNING: "\033[33m",
+        logging.ERROR: "\033[31m",
+        logging.CRITICAL: "\033[1;31m",
     }
 
-    RESET = "\033[0m"
+    RESET: ClassVar[str] = "\033[0m"
 
     def format(self, record: logging.LogRecord) -> str:
-        color = self.COLORS.get(record.levelno, self.RESET)
-        message = super().format(record)
+        copied_record = logging.makeLogRecord(record.__dict__.copy())
+
+        prefix = f"{APP_LOGGER_NAME}."
+
+        if copied_record.name.startswith(prefix):
+            copied_record.short_name = copied_record.name[len(prefix) :]
+        else:
+            copied_record.short_name = copied_record.name
+
+        color = self.COLORS.get(copied_record.levelno, self.RESET)
+        message = super().format(copied_record)
+
         return f"{color}{message}{self.RESET}"
 
 
-def setup_logger(level: str = "INFO") -> None:
-    log_directory = Path("logs")
-    log_directory.mkdir(parents=True, exist_ok=True)
+def lean_format() -> ColoredFormatter:
+    fmt = "[%(short_name)s] [%(asctime)s] [%(levelname)s] %(message)s"
 
-    log_format = (
-        "%(asctime)s | %(levelname)-8s | %(name)s|%(filename)s:%(lineno)d | %(message)s"
+    return ColoredFormatter(
+        fmt=fmt,
+        datefmt="%H:%M:%S",
     )
 
-    date_format = "%H:%M:%S"
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level.upper())
+def terminal_handler(level: int) -> logging.StreamHandler:
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
+    handler.setFormatter(lean_format())
+    return handler
 
-    root_logger.handlers.clear()
 
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(level.upper())
-    console_handler.setFormatter(
-        ColoredFormatter(
-            fmt=log_format,
-            datefmt=date_format,
-        )
-    )
+def setup_logger(
+    console_level: int = DEFAULT_CONSOLE_LEVEL,
+    force: bool = False,
+) -> None:
+    global _INITIALIZED
 
-    file_handler = logging.FileHandler(
-        log_directory / "app.log",
-        encoding="utf-8",
-    )
-    file_handler.setLevel(level.upper())
-    file_handler.setFormatter(
-        logging.Formatter(
-            fmt=log_format,
-            datefmt=date_format,
-        )
-    )
+    if _INITIALIZED and not force:
+        return
 
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
+    app_logger = logging.getLogger(APP_LOGGER_NAME)
+    app_logger.setLevel(console_level)
+
+    app_logger.propagate = False
+
+    for handler in app_logger.handlers[:]:
+        app_logger.removeHandler(handler)
+        handler.close()
+
+    app_logger.addHandler(terminal_handler(console_level))
+
+    _INITIALIZED = True
+
+
+def get_logger(name: str) -> logging.Logger:
+    if name == APP_LOGGER_NAME or name.startswith(f"{APP_LOGGER_NAME}."):
+        logger_name = name
+    else:
+        logger_name = f"{APP_LOGGER_NAME}.{name}"
+
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.NOTSET)
+    logger.propagate = True
+
+    return logger

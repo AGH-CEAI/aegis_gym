@@ -1,25 +1,28 @@
 import asyncio
 import atexit
 import threading
-from typing import Optional, Any
 from concurrent.futures import Future
+from typing import Any, Optional
 
 import torch as th
+from config import get_logger
 from tensordict import TensorDict
+
+logger = get_logger(__name__)
 
 try:
     from aegis_grpc_client import AegisJointIndex, AegisRobotClient
 except ImportError:
-    print(
+    logger.info(
         "Failed to import aegis_grpc_client. "
         "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
     )
     raise
 
-from ..base_manipulator import BaseManipulator, CameraModality
-
 # from ...scene import BaseScene
-from config.types import RobotCfg, CameraName
+from config.types import CameraName, RobotCfg
+
+from ..base_manipulator import BaseManipulator, CameraModality
 
 
 class PoseTransformUtils:

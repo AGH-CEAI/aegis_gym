@@ -1,26 +1,25 @@
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import torch as th
+from aux import load_policy
 from clearml import Task
-from tqdm import tqdm
-
-from config import ConfigManager, LaunchArgs, parse_arguments
+from config import ConfigManager, LaunchArgs, get_logger, parse_arguments, setup_logger
 from config.types import (
-    ExpConfig,
-    DebugCfg,
-    Algorithm,
     IMAGE_MODALITIES,
+    Algorithm,
+    DebugCfg,
+    ExpConfig,
     Modality,
 )
-from envs.wrappers import ObsPreviewEnvWrapper
 from envs import BaseEnv
-
-from train import init_clearml_task, create_env
-from aux import load_policy
+from envs.wrappers import ObsPreviewEnvWrapper
+from tqdm import tqdm
+from train import create_env, init_clearml_task
 
 
 def main():
+    logger = get_logger("Eval")
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
 
@@ -41,13 +40,13 @@ def main():
     if cfg.debug_cfg.enabled and (
         cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
     ):
-        print("[Eval] >>> Wrapping env with ObsPreviewEnvWrapper")
+        logger.ingo(">>> Wrapping env with ObsPreviewEnvWrapper")
         env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
-    print(
-        f"[Eval] The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
+    logger.info(
+        f"The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"
     )
-    print("[Eval] Setup done")
+    logger.info("Setup done")
 
     with th.no_grad():
         if is_checkpoints_sweep_required(args):
@@ -55,21 +54,22 @@ def main():
 
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
 
-    print("[Eval] Finished evaluation script")
+    logger.info("Finished evaluation script")
 
 
 def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
+    logger = get_logger("Eval")
     sweep = (args.algorithm == Algorithm.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     )
     if args.algorithm == Algorithm.RL and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
     ):
-        print(
-            "[Eval] WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
+        logger.warning(
+            "WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
     if sweep and args.enable_recording:
-        print("[Eval] WARNING: record is ignored during multi-checkpoint sweep")
+        logger.warning("WARNING: record is ignored during multi-checkpoint sweep")
     return sweep
 
 
@@ -107,6 +107,7 @@ def run_eval(
     device: th.device,
     debug_cfg: DebugCfg,
 ) -> dict[str, float]:
+    logger = get_logger("Eval")
     total_rewards = th.zeros(env.num_envs, device=device)
     episode_lengths = th.zeros(env.num_envs, device=device)
 
@@ -137,7 +138,7 @@ def run_eval(
         total_rewards += rews
         episode_lengths += 1
 
-    print("[Eval] Finished model inference")
+    logger.info("Finished model inference")
 
     end_time = time.perf_counter()
     total_inference_time += end_time - start_time
@@ -156,13 +157,14 @@ def run_eval(
 
 
 def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
+    print_logger = get_logger("Eval")
     info_str = (
         f"Mean reward: {metrics['mean_reward']:.6f}\n"
         f"Mean episode length: {metrics['mean_episode_length']:.0f}\n"
         f"Mean inference time: {metrics['mean_inference_time_s']:.6f}\n"
         f"FPS: {metrics['policy_fps']:.2f}"
     )
-    print(info_str)
+    print_logger.info(info_str)
 
     logger = task.get_logger()
     logger.report_scalar("Eval/mean_reward", "series", metrics["mean_reward"], step)
@@ -176,7 +178,10 @@ def log_metrics(task: Task, metrics: dict[str, float], step: int = 0) -> None:
 
 
 if __name__ == "__main__":
+    setup_logger("INFO")
+    logger = get_logger("Train")
+
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n\n[Eval] > Exiting (invoked by user)")
+        logger.info("\n\n\n[Eval] > Exiting (invoked by user)")

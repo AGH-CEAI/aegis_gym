@@ -1,16 +1,15 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
-
 import torch as th
+from config import get_logger
+from config.types import IMAGE_MODALITIES, DebugCfg, Modality
 from tensordict import TensorDict
 
-from config.types import DebugCfg, Modality, IMAGE_MODALITIES
+from ..base_env import BaseEnv, ResetReturn, StepReturn
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, ResetReturn
 
 
 class ObsPreviewEnvWrapper(BaseEnvWrapper):
@@ -22,7 +21,7 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         super().__init__(env=env)
         self._cfg = cfg_debug
         self._modalities = self._env.available_modalities
-        self._record_dir: Optional[Path] = None
+        self._record_dir: Path | None = None
         self._frame_count: int = 0
 
         if not self._cfg.enabled:
@@ -73,12 +72,11 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         self._frame_count += 1
 
     def _create_record_dir(self) -> Path:
+        logger = get_logger("ObsPreviewEnvWrapper")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         record_dir = self._cfg.record_dir / f"obs_preview_{timestamp}"
         record_dir.mkdir(parents=True, exist_ok=True)
-        print(
-            f"[ObsPreviewEnvWrapper] Recording observation preview frames to {record_dir}"
-        )
+        logger.info(f"Recording observation preview frames to {record_dir}")
         return record_dir
 
     def _format_visual_obs(

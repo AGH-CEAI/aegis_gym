@@ -1,20 +1,18 @@
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any
 
-import torch.nn as nn
-from clearml import Task, Model, InputModel
-from natsort import natsorted
-
-from config import LaunchArgs
-from config.types import Checkpoint, ExpConfig, Algorithm
+from clearml import InputModel, Model, Task
+from config import LaunchArgs, get_logger
+from config.types import Algorithm, Checkpoint, ExpConfig
 from envs import BaseEnv
+from natsort import natsorted
 from runners import BehaviorCloningRunner, OnPolicyRunner
+from torch import nn
 
 
-def load_policy(
-    env: BaseEnv, cfg: ExpConfig, alg: Optional[Algorithm] = None
-) -> Callable:
+def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> Callable:
     args: LaunchArgs = cfg.args
 
     algorithm = alg or cfg.args.algorithm
@@ -45,12 +43,13 @@ def load_rl_policy(
     env: Any,
     cfg: ExpConfig,
     load_cfg_from_clearml: bool = True,
-    exp_name: Optional[str] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
-    print("[Policy Loader] Resolving RL checkpoint")
+    logger = get_logger("Policy Loader")
+    logger.info("Resolving RL checkpoint")
     log_dir = cfg.logger_cfg.local_log_dir
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
@@ -60,7 +59,7 @@ def load_rl_policy(
         clearml_artifact_name=clearml_artifact_name,
         local_checkpoint_pattern=r"model_\d+\.pt",
     )
-    print(f"[Policy Loader] Resolved RL checkpoint path: {last_ckpt}")
+    logger.info(f"Resolved RL checkpoint path: {last_ckpt}")
     if load_cfg_from_clearml:
         if clearml_task_id is None and clearml_model_id is not None:
             clearml_task_id = InputModel(model_id=clearml_model_id).task
@@ -76,22 +75,22 @@ def load_rl_policy(
             # TODO(issue#120) this is wrong: we can not apply patches from ConfigManager
             # if ANY kind of extra modificiation is performed, the ConfigManager should be involved
             # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
-            print(
-                f"[Policy Loader] WARNING: There is no current option to overwrite the RL config by the configuration from task: {clearml_task_id}."
+            logger.warning(
+                f"WARNING: There is no current option to overwrite the RL config by the configuration from task: {clearml_task_id}."
             )
         else:
-            print(
-                f"[Policy Loader] Failed to obtain the RL config from task {clearml_task_id}. Proceeding with the current one"
+            logger.info(
+                f"Failed to obtain the RL config from task {clearml_task_id}. Proceeding with the current one"
             )
     else:
-        print("[Policy Loader] Keeping the current RL config")
+        logger.info("Keeping the current RL config")
 
     runner = OnPolicyRunner(
         env=env,
         cfg=cfg,
     )
     runner.load(last_ckpt)
-    print("[Policy Loader] Loaded RL checkpoint")
+    logger.info("Loaded RL checkpoint")
     return runner.get_inference_policy(device=cfg.get_device())
 
 
@@ -99,13 +98,14 @@ def load_bc_policy(
     env: Any,
     cfg: ExpConfig,
     load_cfg_from_clearml: bool = True,
-    exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
-    print("[Policy Loader] Resolving BC checkpoint")
+    logger = get_logger("Policy Loader")
+    logger.info("Resolving BC checkpoint")
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
         log_dir=log_dir,
@@ -114,7 +114,7 @@ def load_bc_policy(
         clearml_artifact_name=clearml_artifact_name,
         local_checkpoint_pattern=r"checkpoint_\d+\.pt",
     )
-    print(f"[Policy Loader] Resolved BC checkpoint path: {last_ckpt}")
+    logger.info(f"Resolved BC checkpoint path: {last_ckpt}")
     if load_cfg_from_clearml:
         if clearml_task_id is None and clearml_model_id is not None:
             clearml_task_id = InputModel(model_id=clearml_model_id).task
@@ -126,15 +126,15 @@ def load_bc_policy(
         cfg_from_clearml = task.get_configuration_object_as_dict("bc_cfg")
         if cfg_from_clearml:
             # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
-            print(
-                f"[Policy Loader] WARNING: There is no current option to overwrite the BC config by the configuration from task: {clearml_task_id}."
+            logger.warning(
+                f"WARNING: There is no current option to overwrite the BC config by the configuration from task: {clearml_task_id}."
             )
         else:
-            print(
-                f"[Policy Loader] Failed to obtain the BC config from task {clearml_task_id}. Proceeding with the current one"
+            logger.info(
+                f"Failed to obtain the BC config from task {clearml_task_id}. Proceeding with the current one"
             )
     else:
-        print("[Policy Loader] Keeping the current BC config")
+        logger.info("Keeping the current BC config")
 
     bc_runner = BehaviorCloningRunner(
         env=env,
@@ -142,36 +142,37 @@ def load_bc_policy(
         teacher=None,
     )
     bc_runner.load(last_ckpt)
-    print("[Policy Loader] Loaded BC checkpoint")
+    logger.info("Loaded BC checkpoint")
     return bc_runner.get_inference_policy(device=cfg.get_device())
 
 
 def resolve_checkpoint(
-    exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
     local_checkpoint_pattern: str = r"model_\d+\.pt",
 ) -> Path:
-    print("[Policy Loader] Resolving method and path to load the policy model")
+    logger = get_logger("Policy Loader")
+    logger.info("Resolving method and path to load the policy model")
 
     if clearml_model_id is not None:
-        print(f"[Policy Loader] Loading from ClearML model {clearml_model_id}")
+        logger.info(f"Loading from ClearML model {clearml_model_id}")
         clearml_model = Model(model_id=clearml_model_id)
         ckpt = Path(clearml_model.get_weights(raise_on_error=True))
-        print(f"[Policy Loader] Resolved ClearML model {clearml_model_id} to {ckpt}")
+        logger.info(f"Resolved ClearML model {clearml_model_id} to {ckpt}")
         return ckpt
 
     if clearml_task_id is not None:
-        print(f"[Policy Loader] Loading from ClearML task {clearml_task_id}")
+        logger.info(f"Loading from ClearML task {clearml_task_id}")
         ckpt = Path(
             get_latest_clearml_checkpoint(clearml_task_id, clearml_artifact_name)
         )
-        print(f"[Policy Loader] Resolved ClearML task {clearml_task_id} to {ckpt}")
+        logger.info(f"Resolved ClearML task {clearml_task_id} to {ckpt}")
         return ckpt
 
-    print("[Policy Loader] Loading from local file system")
+    logger.info("Loading from local file system")
     if log_dir is None and exp_name is None:
         raise ValueError(
             "Cannot resolve a checkpoint: provide log_dir, exp_name, "
@@ -179,7 +180,7 @@ def resolve_checkpoint(
         )
     resolved_log_dir = log_dir or Path("logs") / f"{exp_name}_rl"
     ckpt = resolve_latest_local_checkpoint(resolved_log_dir, local_checkpoint_pattern)
-    print(f"[Policy Loader] Resolved local checkpoint → {ckpt}")
+    logger.info(f"Resolved local checkpoint → {ckpt}")
     return ckpt
 
 
@@ -190,8 +191,9 @@ def get_latest_clearml_checkpoint(
     List all artifacts matching a prefix pattern (e.g. 'model_100',
     'model_checkpoint_200') and return the local path of the most recent one.
     """
-    print(
-        f"[Policy Loader] Loading the latest checkpoint from ClearML task ID: {clearml_task_id}"
+    logger = get_logger("Policy Loader")
+    logger.info(
+        f"Loading the latest checkpoint from ClearML task ID: {clearml_task_id}"
     )
     task = Task.get_task(task_id=clearml_task_id)
 
@@ -214,10 +216,10 @@ def get_latest_clearml_checkpoint(
     # Pick the one with the highest iteration number
     matched.sort(key=lambda x: x[0])
     for iteration, name in matched:
-        print(f"[Policy Loader] Found checkpoint: {name} (iter {iteration})")
+        logger.info(f"Found checkpoint: {name} (iter {iteration})")
 
     latest_iter, latest_name = matched[-1]
-    print(f"[Policy Loader] Selecting latest: {latest_name} (iter {latest_iter})")
+    logger.info(f"Selecting latest: {latest_name} (iter {latest_iter})")
 
     local_path = task.artifacts[latest_name].get_local_copy()
     if local_path is None:
@@ -241,24 +243,25 @@ def resolve_latest_local_checkpoint(log_dir: Path, r_pattern: str) -> Path:
 
 
 def get_bc_checkpoints(
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> list[Checkpoint]:
     """
     Returns sorted list of all BC checkpoints.
     """
+    logger = get_logger("Policy Loader")
     if clearml_model_id is not None:
-        print(f"[Policy Loader] Loading from ClearML model {clearml_model_id}")
+        logger.info(f"Loading from ClearML model {clearml_model_id}")
         clearml_model = Model(model_id=clearml_model_id)
         ckpt = Path(clearml_model.get_weights(raise_on_error=True))
-        print(f"[Policy Loader] Resolved ClearML model {clearml_model_id} to {ckpt}")
+        logger.info(f"Resolved ClearML model {clearml_model_id} to {ckpt}")
         return [Checkpoint(0, ckpt)]
 
     if clearml_task_id is not None:
-        print(
-            f"[Policy Loader] Loading all BC checkpoints from ClearML task ID: {clearml_task_id}"
+        logger.info(
+            f"Loading all BC checkpoints from ClearML task ID: {clearml_task_id}"
         )
         task = Task.get_task(task_id=clearml_task_id)
         pattern = re.compile(rf"^{re.escape(clearml_artifact_name)}_(\d+)$")
@@ -282,15 +285,11 @@ def get_bc_checkpoints(
 
         results = sorted(matched)
         for ckpt in results:
-            print(
-                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
-            )
+            logger.info(f"Found checkpoint: {ckpt.path.name} (iter {ckpt.step})")
         return results
 
     if log_dir is not None:
-        print(
-            f"[Policy Loader] Loading all BC checkpoints from local filesystem: {log_dir}"
-        )
+        logger.info(f"Loading all BC checkpoints from local filesystem: {log_dir}")
         if not log_dir.exists():
             raise FileNotFoundError(f"Log directory {log_dir} does not exist")
         pattern = re.compile(r"checkpoint_(\d+)\.pt")
@@ -306,9 +305,7 @@ def get_bc_checkpoints(
             )
         results = sorted(matched)
         for ckpt in results:
-            print(
-                f"[Policy Loader] Found checkpoint: {ckpt.path.name} (iter {ckpt.step})"
-            )
+            logger.info(f"Found checkpoint: {ckpt.path.name} (iter {ckpt.step})")
         return results
 
     raise ValueError("Cannot resolve a checkpoint")

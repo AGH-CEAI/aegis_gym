@@ -1,11 +1,10 @@
-from typing import Optional, Iterator
-
-from strenum import StrEnum
+from collections.abc import Iterator
 
 import torch as th
-import torch.nn as nn
-
-from config.types import PolicyBCCfg, FusionCfg, VisionEncoderCfg
+from config import get_logger
+from config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
+from strenum import StrEnum
+from torch import nn
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,
@@ -58,6 +57,8 @@ class Policy(nn.Module):
     ):
         super().__init__()
 
+        logger = get_logger("Policy")
+
         self.device = device
         self._cfg = cfg_policy
         self.num_cameras = num_cameras
@@ -65,9 +66,9 @@ class Policy(nn.Module):
         self.fusion_type = self._cfg.fusion_type
         self.use_pose_head = self._cfg.use_pose_head
 
-        print(f"Encoder type: {self.encoder_type}")
-        print(f"Fusion type: {self.fusion_type}")
-        print(f"Use pose head: {self.use_pose_head}")
+        logger.info(f"Encoder type: {self.encoder_type}")
+        logger.info(f"Fusion type: {self.fusion_type}")
+        logger.info(f"Use pose head: {self.use_pose_head}")
 
         self.vision_encoder = self._build_vision_encoder().to(device)
         self.feature_fusion = self._build_fusion(
@@ -79,10 +80,10 @@ class Policy(nn.Module):
 
         action_input_dim = vision_obs_dim + state_obs_dim
 
-        print(f"Vision obs dim: {vision_obs_dim}")
-        print(f"State obs dim: {state_obs_dim}")
+        logger.info(f"Vision obs dim: {vision_obs_dim}")
+        logger.info(f"State obs dim: {state_obs_dim}")
 
-        print(f"Action head input dim: {action_input_dim}")
+        logger.info(f"Action head input dim: {action_input_dim}")
         self.action_head = self._build_mlp(
             input_dim=action_input_dim,
             hidden_dims=self._cfg.action_head_hidden_dims,
@@ -92,7 +93,7 @@ class Policy(nn.Module):
         self.pose_head: nn.Sequential | None = None
         if self.use_pose_head:
             pose_input_dim = self.feature_fusion.pose_input_dim
-            print(f"Pose head input dim: {pose_input_dim}")
+            logger.info(f"Pose head input dim: {pose_input_dim}")
             self.pose_head = self._build_mlp(
                 input_dim=pose_input_dim,
                 hidden_dims=self._cfg.pose_head_hidden_dims,
@@ -101,7 +102,7 @@ class Policy(nn.Module):
         self.to(device)
 
     def forward(
-        self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
     ) -> th.Tensor:
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(features)
@@ -271,7 +272,7 @@ class ExperienceBuffer:
         state_dim: int,
         action_dim: int,
         device: str = "cpu",
-        dtype: Optional[th.dtype] = None,
+        dtype: th.dtype | None = None,
     ):
         self._num_envs = num_envs
         self._max_size = max_size

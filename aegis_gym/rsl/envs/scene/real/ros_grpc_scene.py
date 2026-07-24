@@ -3,11 +3,12 @@ import time
 from typing import Any
 
 import torch as th
+from config import get_logger
+from config.types import Control, ExpConfig, RobotCfg
+from envs.manipulator import BaseManipulator, RosGrpcManipulator
+from envs.objects import BaseObject, ObjectProperties, ObjectType, RosGrpcObjectsFactory
 
 from ..base_scene import BaseScene
-from envs.manipulator import BaseManipulator, RosGrpcManipulator
-from envs.objects import ObjectType, BaseObject, ObjectProperties, RosGrpcObjectsFactory
-from config.types import Control, ExpConfig, RobotCfg
 
 
 class RosGrcpScene(BaseScene):
@@ -16,6 +17,7 @@ class RosGrcpScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
+        logger = get_logger(__name__)
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
@@ -30,7 +32,7 @@ class RosGrcpScene(BaseScene):
         self.disable_vision = cfg.args.disable_vision
         self._extract_config()
 
-        print(
+        logger.info(
             f"[RosGrpcScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 

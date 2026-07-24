@@ -1,26 +1,27 @@
-import yaml
-from typing import Optional, Callable
+from collections.abc import Callable
 from pathlib import Path
 
 import torch as th
+import yaml
 from clearml import Task
 
 from .args_parser import LaunchArgs, parse_arguments
+from .logging_config import get_logger
 from .types import (
+    BCCfg,
     Control,
+    DebugCfg,
+    DomainRandomizationCfg,
+    EnvCfg,
     ExpConfig,
     LoggerCfg,
     RLCfg,
-    BCCfg,
-    EnvCfg,
     RobotCfg,
-    DomainRandomizationCfg,
-    DebugCfg,
 )
 
 
 class ConfigManager:
-    _global_cfg: Optional[ExpConfig] = None
+    _global_cfg: ExpConfig | None = None
 
     @classmethod
     def get_config(cls) -> ExpConfig:
@@ -32,9 +33,9 @@ class ConfigManager:
     def setup_config(
         cls,
         argv: list[str] | LaunchArgs,
-        extra_argparser: Optional[Callable] = None,
-        device: Optional[th.device] = None,
-        task: Optional[Task] = None,
+        extra_argparser: Callable | None = None,
+        device: th.device | None = None,
+        task: Task | None = None,
     ) -> None:
         """
         Initializes the global config based on the launch arguments.
@@ -52,10 +53,11 @@ class ConfigManager:
     def _initalize_config(
         cls,
         argv: list[str] | LaunchArgs,
-        extra_argparser: Optional[Callable],
-        device: Optional[th.device],
-        task: Optional[Task],
+        extra_argparser: Callable | None,
+        device: th.device | None,
+        task: Task | None,
     ) -> ExpConfig:
+        logger = get_logger("Initialize config")
         if not isinstance(argv, LaunchArgs):
             args: LaunchArgs = parse_arguments(
                 argv=argv, extra_argparser=extra_argparser
@@ -65,12 +67,12 @@ class ConfigManager:
 
         cfg_dict = cls._get_default_config_dict()
         if args.config_path is not None:
-            print(f"Patching default config with file: {args.config_path}")
+            logger.info(f"Patching default config with file: {args.config_path}")
             cfg_file_dict = cls._load_yaml(args.config_path)
             cfg_dict.update(cfg_file_dict)
 
         if not args.enforce_current_config and task is not None:
-            print(f"Connecting config to the ClearML task id {task.task_id}")
+            logger.info(f"Connecting config to the ClearML task id {task.task_id}")
             for cfg_sec_name, cfg_sec_dict in cfg_dict.items():
                 connected = task.connect_configuration(
                     cfg_sec_dict,
@@ -127,7 +129,7 @@ class ConfigManager:
             cfg_dict["env"]["num_envs"] = 1
 
         # Add project_suffix to the logger outputs
-        project_suffix = f"_{str(args.algorithm)}-{str(args.control_type)}"
+        project_suffix = f"_{args.algorithm!s}-{args.control_type!s}"
         cfg_dict["logger"]["wandb_project"] += project_suffix
         cfg_dict["logger"]["clearml_project"] += project_suffix
         cfg_dict["logger"]["neptune_project"] += project_suffix

@@ -1,28 +1,27 @@
 import math
-from typing import Optional, Any
-
-import numpy as np
-import torch as th
+from typing import Any
 
 import genesis as gs
-from genesis.vis.camera import Camera
-
-from envs.manipulator import BaseManipulator, GenesisManipulator
-from envs.objects import GenesisObjectsFactory, ObjectType, BaseObject, ObjectProperties
+import numpy as np
+import torch as th
+from config import get_logger
 from config.types import (
+    CAMERAS_LINKS,
     CameraLink,
     CameraModality,
     CameraName,
-    CAMERAS_LINKS,
     CamerasSetup,
     Control,
     EnvCfg,
     ExpConfig,
     RobotCfg,
 )
-from ..base_scene import BaseScene, RandomizationType
-
+from envs.manipulator import BaseManipulator, GenesisManipulator
+from envs.objects import BaseObject, GenesisObjectsFactory, ObjectProperties, ObjectType
 from envs.plotjuggler_udp import PlotJugglerUDP
+from genesis.vis.camera import Camera
+
+from ..base_scene import BaseScene, RandomizationType
 
 
 class GenesisScene(BaseScene):
@@ -31,6 +30,7 @@ class GenesisScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
+        logger = get_logger(__name__)
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
@@ -47,7 +47,7 @@ class GenesisScene(BaseScene):
         self._enable_pj_logging = cfg.args.enable_plotjuggler
         self._setup_pj_server()
 
-        print(
+        logger.info(
             f"[GenesisScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
         )
 
@@ -92,7 +92,8 @@ class GenesisScene(BaseScene):
         self.reward_scales = self._cfg_env.reward_scales
 
     def _setup_pj_server(self) -> None:
-        self._pj: Optional[PlotJugglerUDP] = None
+        logger = get_logger(__name__)
+        self._pj: PlotJugglerUDP | None = None
         if not self._enable_pj_logging:
             return
         ip = "127.0.0.1"
@@ -106,7 +107,7 @@ class GenesisScene(BaseScene):
             "wrist_3_joint",
         ]
         self._pj = PlotJugglerUDP(host=ip, port=port)
-        print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
+        logger.info(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
@@ -140,7 +141,7 @@ class GenesisScene(BaseScene):
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=int(60),
+                max_FPS=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -235,7 +236,7 @@ class GenesisScene(BaseScene):
         pos: tuple[float, float, float],
         fov: int,  # deg
         lookat: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        resolution: Optional[tuple] = None,
+        resolution: tuple | None = None,
         show_cameras_gui: bool = False,
     ):
         if resolution is None:

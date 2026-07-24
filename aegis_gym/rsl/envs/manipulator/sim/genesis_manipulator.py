@@ -1,15 +1,16 @@
 import time
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, TypeVar, Callable
+from typing import TypeVar
 
-import torch as th
 import genesis as gs
+import torch as th
 from clearml import Dataset
-from tensordict import TensorDict
-
+from config import get_logger
+from config.types import CameraName, RobotCfg
 from envs.manipulator import BaseManipulator, CameraModality
-from config.types import RobotCfg, CameraName
+from tensordict import TensorDict
 
 RigidLink = TypeVar
 
@@ -23,10 +24,11 @@ class GenesisManipulator(BaseManipulator):
         available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
         show_cell: bool,
-        device: Optional[th.device] = None,
+        device: th.device | None = None,
     ):
         super().__init__(device=device)
 
+        logger = get_logger("Genesis::Manipulator")
         self._num_envs = num_envs
         self._gs_scene = gs_scene
         self._observe_camera_fn = cameras_obs_getter
@@ -40,11 +42,9 @@ class GenesisManipulator(BaseManipulator):
             self._urdf_model_id = cfg_robot.urdf_id_no_cell
 
         if self._urdf_model_id:
-            print(
-                f"[GraspEnv::Manipulator] URDF ClearML dataset ID: {self._urdf_model_id}"
-            )
+            logger.info(f"URDF ClearML dataset ID: {self._urdf_model_id}")
         self._urdf_path = self._resolve_aegis_urdf()
-        print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
+        logger.info(f"URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
         material = gs.materials.Rigid(gravity_compensation=1.0)
@@ -156,8 +156,8 @@ class GenesisManipulator(BaseManipulator):
 
     def set_joints_pd_gains(
         self,
-        kp_gain: Optional[th.Tensor] = None,
-        kv_gain: Optional[th.Tensor] = None,
+        kp_gain: th.Tensor | None = None,
+        kv_gain: th.Tensor | None = None,
     ) -> None:
         """
         Sets joints gains. Must be called after the build of the Genesis scene.
@@ -183,8 +183,8 @@ class GenesisManipulator(BaseManipulator):
     def ctrl_apply_vel_action(
         self,
         action: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         action[:, :3] *= self.max_linear_speed
         action[:, 3:] *= self.max_angular_speed
@@ -282,7 +282,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([q_vel, finger_zeros], dim=-1)
 
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
+        self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
@@ -290,8 +290,8 @@ class GenesisManipulator(BaseManipulator):
     def ctrl_go_to_goal(
         self,
         goal_pose: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
@@ -307,7 +307,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
@@ -322,7 +322,7 @@ class GenesisManipulator(BaseManipulator):
             position=default_joint_angles, envs_idx=idx
         )
 
-    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
@@ -333,7 +333,7 @@ class GenesisManipulator(BaseManipulator):
 
         self._robot_entity.control_dofs_position(position=q_pos)
 
-    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx
             if envs_idx is not None
