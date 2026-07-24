@@ -36,7 +36,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         return self._augment(obs)
 
     def _augment(self, obs: TensorDict) -> TensorDict:
-        image_keys = [m for m in obs if Modality(m) in IMAGE_MODALITIES]
+        image_keys = [m for m in obs.keys() if Modality(m) in IMAGE_MODALITIES]  # noqa: SIM118
         if not image_keys:
             return obs
 
