@@ -75,9 +75,6 @@ class RosGrpcManipulator(BaseManipulator):
             CameraName.CAMERA_TOOL_RIGHT: RosGrpcCameraName.CAMERA_TOOL_RIGHT,
         }
 
-        if num_envs > 1:
-            raise ValueError("num_envs > 1 not supported for single robot station")
-
         def_dofs = robot_cfg.default_arm_dof
         self.dof_home_dict = {
             AegisJointName.SHOULDER_PAN_JOINT: def_dofs[0],

@@ -22,6 +22,9 @@ class RosGrcpScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
+        if cfg.args.num_envs > 1:
+            raise ValueError("num_envs > 1 not supported for single robot station")
+
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
