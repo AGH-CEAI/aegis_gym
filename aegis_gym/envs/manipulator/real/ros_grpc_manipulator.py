@@ -54,7 +54,7 @@ class RosGrpcManipulator(BaseManipulator):
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,
-        device: th.device | None = None,
+        device: th.Device | None = None,
         server_address: str = "127.0.0.1:50051",
     ):
         if hasattr(self, "_initialized") and self._initialized:

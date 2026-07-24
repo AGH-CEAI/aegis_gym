@@ -38,7 +38,7 @@ class OnPolicyRunner(BasePolicyRunner):
     def load(self, path: Path) -> None:
         self.runner.load(path=str(path))
 
-    def get_inference_policy(self, device: th.Device | None = None) -> Any:
+    def get_inference_policy(self, device: th.device | None = None) -> Any:
         device = device or th.device("cpu")
         return self.runner.get_inference_policy(device=str(device))
 
