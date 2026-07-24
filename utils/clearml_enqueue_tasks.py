@@ -16,13 +16,13 @@ import json
 import logging
 import sys
 import time
-from typing import Iterable, Any
+from collections.abc import Iterable
+from typing import Any
 
 from clearml import Task
 from clearml.automation import ClearmlJob
+from helpers.logging import setup_logging, timed
 from tqdm import tqdm
-
-from helpers.logging import timed, setup_logging
 
 TASKS_NUM_SAFEGUARD_LIMIT = 100
 
@@ -100,8 +100,8 @@ def enqueue_tasks(
     base_task: Task,
     tasks_num: int,
     queue_name: str,
-    tags: Iterable[str] = None,
-    parameters: dict[str, Any] = None,
+    tags: Iterable[str] | None = None,
+    parameters: dict[str, Any] | None = None,
 ) -> None:
     """
     Enqueue a batch of tasks to a given ClearML queue.
@@ -123,8 +123,7 @@ def enqueue_tasks(
     TEMPLATE_PREFIX = "TEMPLATE_"
 
     base_name = base_task.name
-    if base_name.startswith(TEMPLATE_PREFIX):
-        base_name = base_name[len(TEMPLATE_PREFIX) :]
+    base_name = base_name.removeprefix(TEMPLATE_PREFIX)
 
     for cnt in tqdm(range(tasks_num), desc="Scheduling", unit="task"):
         task_name = f"{base_name}_{cnt}"

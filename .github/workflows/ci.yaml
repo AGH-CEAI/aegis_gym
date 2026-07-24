@@ -1,5 +1,5 @@
 ---
-name: Package build (or release)
+name: Package build & tests
 
 on:
   push:
@@ -29,9 +29,8 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # TODO(issue#52) reactive automatic tests
-      # - name: Run tests
-      #   run: uv run pytest -v -s
+      - name: Run tests
+        run: uv run --extra test pytest -v -s
 
       - name: Build package
         run: uv build

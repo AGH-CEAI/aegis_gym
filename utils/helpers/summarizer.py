@@ -2,15 +2,14 @@ import colorsys
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import plotly.graph_objects as go
-from clearml import Task, TaskTypes, Logger
+from clearml import Logger, Task, TaskTypes
+from helpers.data_getter import N_JOBS, DataGetter, SummaryType
 from joblib import Parallel, delayed
-
-from helpers.data_getter import DataGetter, SummaryType, N_JOBS
 
 
 def _add_task_tags(t_id: str, tags: list[str]) -> None:
@@ -56,11 +55,8 @@ class Summarizer:
         self,
         tasks_data: DataGetter,
         summary_task_name: str = DEFAULT_SUMMARY_TASK_NAME,
-        summary_task_tags: list[str] = None,
-        summary_types: list[SummaryType] = [
-            SummaryType.MEAN_STD,
-            SummaryType.MEAN_MINMAX,
-        ],
+        summary_task_tags: list[str] | None = None,
+        summary_types: list[SummaryType] | None = None,
         plots_backend: Literal["matplotlib", "plotly", "None"] = "plotly",
         experiments_summary_mode: bool = False,
         n_jobs: int = N_JOBS,
@@ -72,6 +68,8 @@ class Summarizer:
         plot_merged_metrics - Instead of calculating means, plot every task on the plot
         """
 
+        if summary_types is None:
+            summary_types = [SummaryType.MEAN_STD, SummaryType.MEAN_MINMAX]
         self.log = logging.getLogger(__name__)
         self.plots_backend = plots_backend
         self.enable_summary_processing = experiments_summary_mode
@@ -99,7 +97,7 @@ class Summarizer:
         self.log.info(f"Summary type(s): {[str(x) for x in self.summary_types]}")
         self.log.info(f"Using `{self.plots_backend}` for plots backend.")
 
-    def _get_x_axis(self) -> Optional[list[float]]:
+    def _get_x_axis(self) -> list[float] | None:
         self.log.info("Obtaining X axis")
 
         x_axis = next(
@@ -188,7 +186,7 @@ class Summarizer:
 
         self.log.info("Caching tasks from ClearML for parallel processing.")
         tasks_cache = {}
-        for t_id, _ in self.tasks.items():
+        for t_id in self.tasks:
             tasks_cache[t_id] = Task.get_task(task_id=t_id)
 
         self.log.info("Proceeding to parallel statistical summarization.")
@@ -276,9 +274,7 @@ class Summarizer:
             tags = [f"{tag_for_tasks}:{summary_task.task_id}"]
             self.log.info("Adding tag(s) to the source tasks.")
             with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
-                parallel(
-                    delayed(_add_task_tags)(t_id, tags) for t_id in self.tasks.keys()
-                )
+                parallel(delayed(_add_task_tags)(t_id, tags) for t_id in self.tasks)
             self.log.info(f"Added tag(s) {tags} to {len(self.tasks)} source tasks.")
 
         summary_task.set_parameter("summarize/tags_filter", str(self.i_tags_filter))
@@ -289,8 +285,8 @@ class Summarizer:
         caught_exception = False
         try:
             self._summarize(summary_task)
-        except Exception as e:
-            self.log.exception(f"Caught an exception: {e}")
+        except Exception:
+            self.log.exception("Caught an exception.")
             caught_exception = True
         finally:
             self.log.info("Closing the summary task.")
@@ -308,7 +304,7 @@ class Summarizer:
 
         with Parallel(n_jobs=self.n_jobs, backend="threading") as parallel:
             results = parallel(
-                delayed(_cleanup_task_tags)(t_id, tag) for t_id in self.tasks.keys()
+                delayed(_cleanup_task_tags)(t_id, tag) for t_id in self.tasks
             )
 
         cleaned_tasks = sum(r[0] for r in results)
@@ -427,7 +423,7 @@ class Summarizer:
                     go.Scatter(
                         x=x,
                         y=mean,
-                        line=dict(color=line_color, width=2),
+                        line={"color": line_color, "width": 2},
                         hovertemplate="mean: %{y:.4f}<extra></extra>",
                         name=series_name,
                     )
@@ -440,7 +436,7 @@ class Summarizer:
                         y=np.concatenate([maximum, minimum[::-1]]),
                         fill="toself",
                         fillcolor=fill_color,
-                        line=dict(color=line_color),
+                        line={"color": line_color},
                         hoverinfo="skip",
                         name=f"{series_name}-range",
                     )
@@ -449,7 +445,7 @@ class Summarizer:
                     go.Scatter(
                         x=x,
                         y=mean,
-                        line=dict(color=line_color, width=2),
+                        line={"color": line_color, "width": 2},
                         hovertemplate="mean: %{y:.4f}<extra></extra>",
                         name=series_name,
                     )
@@ -462,7 +458,7 @@ class Summarizer:
                         y=np.concatenate([mean + std, (mean - std)[::-1]]),
                         fill="toself",
                         fillcolor=fill_color,
-                        line=dict(color=line_color),
+                        line={"color": line_color},
                         hoverinfo="skip",
                         name=f"{series_name}-std",
                     )
@@ -471,7 +467,7 @@ class Summarizer:
                     go.Scatter(
                         x=x,
                         y=mean,
-                        line=dict(color=line_color, width=2),
+                        line={"color": line_color, "width": 2},
                         hovertemplate="mean: %{y:.4f}<extra></extra>",
                         name=series_name,
                     )

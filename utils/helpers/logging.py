@@ -1,6 +1,7 @@
 import functools
 import logging
 from time import perf_counter
+from typing import ClassVar
 
 try:
     import matplotlib
@@ -42,7 +43,7 @@ class CustomFormatter(logging.Formatter):
     reset = "\x1b[0m"
     format = "[%(asctime)s][%(levelname)s] %(message)s"
 
-    FORMATS = {
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: grey + format + reset,
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,

@@ -13,7 +13,6 @@ Handles URDF + STL/DAE models as a versioned dataset.
 import argparse
 import logging
 from pathlib import Path
-from typing import Optional
 
 from clearml import Dataset
 
@@ -25,9 +24,9 @@ def upload_robot_assets(
     robot_folder_path: str,
     dataset_name: str = "robot_simulator_assets",
     dataset_project: str = "DeepRL",
-    parent: str = None,
-    output_storage: Optional[str] = None,  # None = use default ClearML file server
-    description: Optional[str] = None,
+    parent: str | None = None,
+    output_storage: str | None = None,  # None = use default ClearML file server
+    description: str | None = None,
 ):
     """
     Upload robot simulator folder to ClearML Dataset.

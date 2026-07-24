@@ -1,8 +1,9 @@
 import functools
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Iterable, Optional, Any
+from typing import Any
 
 from clearml import Task
 from clearml.backend_api.services import projects as projects_service
@@ -44,8 +45,8 @@ class DataGetter:
         project_name: str,
         tags_select: Iterable[str],
         recursive_projects: bool = False,
-        metrics_paths: Optional[list[str]] = None,
-        max_samples: Optional[int] = None,
+        metrics_paths: list[str] | None = None,
+        max_samples: int | None = None,
         merge_summaries_metrics: bool = False,
         n_jobs: int = N_JOBS,
     ):
@@ -267,7 +268,7 @@ class DataGetter:
 
     def _extract_task_paths(
         self, t_id: str, t_data: dict, skip_time_series: bool = True
-    ) -> Optional[set[str]]:
+    ) -> set[str] | None:
         if not t_data:
             return None
 
@@ -313,7 +314,7 @@ class DataGetter:
 
         return sorted(results)
 
-    def _map_series_names(self, series_name: str) -> Optional[str]:
+    def _map_series_names(self, series_name: str) -> str | None:
         # Hardcoded mapping for storing new data. Returns None if there is need to drop the data.
         if not self.merge_summaries_metrics:
             return series_name
