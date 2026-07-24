@@ -41,6 +41,10 @@ Check the corresponding [README.md](./container/README.md).
 
 ## Run
 
+> [!TIP]
+> Use the `-h` flag for `train.py` and `eval.py` scripts to print extensive information regarding all launch arguments.
+
+
 ### Build & install
 ```bash
 uv build
@@ -51,14 +55,14 @@ uv build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-
 
 ### Train
 ```bash
-# Add flag `--control=ros` for real station control
+# Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 train.py -a=rl --num-envs=5 --max-iterations=10 -e REACHER_TRAIN
 python3 train.py -a=bc --num-envs=2 --max-iterations=50 --load-rl-task=<CLEARML_TASK_ID> -e REACHER_TRAIN
 ```
 
 ### Evaluation
 ```bash
-# Add flag `--control=ros` for real station control
+# Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 eval.py -a=rl --num-envs=1 --load-rl-task=<CLEARML_TASK_ID> -e EVAL_REACHER
 python3 eval.py -a=bc --num-envs=10 --load-bc-task=<CLEARML_TASK_ID> -e EVAL_REACHER
 ```
