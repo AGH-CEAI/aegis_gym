@@ -1,56 +1,57 @@
-import sys
 import ast
+import sys
 from argparse import ArgumentParser
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any
 
 from .types import Algorithm, Control
 
 
 @dataclass(slots=True, frozen=True)
 class LaunchArgs:
-    config_path: Optional[Path]
+    config_path: Path | None
 
-    experiment_name: Optional[str]
-    disable_headless: Optional[bool]
-    num_envs: Optional[int]
-    episode_length_s: Optional[float]
-    project_name: Optional[str]
+    experiment_name: str | None
+    disable_headless: bool | None
+    num_envs: int | None
+    episode_length_s: float | None
+    project_name: str | None
 
-    enable_plotjuggler: Optional[bool]
-    max_iterations: Optional[int]
-    algorithm: Optional[Algorithm]
+    enable_plotjuggler: bool | None
+    max_iterations: int | None
+    algorithm: Algorithm | None
 
     # TODO(issue#111) think how to generalize it (multiple models for an experiments)
     # IDEA: connect model_id to somekind of architecture info/store architecture config in the model.
     # IDEA: move rl/bc model passing to a configuration file:
-    load_rl_task_id: Optional[str]
-    load_rl_model_id: Optional[str]
-    load_bc_task_id: Optional[str]
-    load_bc_model_id: Optional[str]
+    load_rl_task_id: str | None
+    load_rl_model_id: str | None
+    load_bc_task_id: str | None
+    load_bc_model_id: str | None
 
-    enforce_current_config: Optional[bool]
-    control_type: Optional[Control]
+    enforce_current_config: bool | None
+    control_type: Control | None
 
-    calibration_move: Optional[list]
-    calibration_move_cartesian: Optional[list]
-    calibration_steps: Optional[int]
+    calibration_move: list | None
+    calibration_move_cartesian: list | None
+    calibration_steps: int | None
 
-    visualize_camera: Optional[bool]
-    disable_vision: Optional[bool]
+    visualize_camera: bool | None
+    disable_vision: bool | None
 
-    debug_enable: Optional[bool]
-    debug_preview_vis_obs: Optional[bool]
-    debug_record_vis_obs: Optional[bool]
-    debug_record_dir: Optional[Path]
+    debug_enable: bool | None
+    debug_preview_vis_obs: bool | None
+    debug_record_vis_obs: bool | None
+    debug_record_dir: Path | None
 
-    enable_recording: Optional[bool]
-    video_path: Optional[Path]
-    load_from_pickle: Optional[bool]
-    bc_all_checkpoints: Optional[bool]
-    bc_eval_every: Optional[int]
-    seed: Optional[int]
+    enable_recording: bool | None
+    video_path: Path | None
+    load_from_pickle: bool | None
+    bc_all_checkpoints: bool | None
+    bc_eval_every: int | None
+    seed: int | None
 
     _args_raw: Any
 
@@ -62,9 +63,9 @@ class LaunchArgs:
 
 
 def parse_arguments(
-    argv: Optional[list[str]] = None, extra_argparser: Optional[Callable] = None
+    argv: list[str] | None = None, extra_argparser: Callable | None = None
 ) -> LaunchArgs:
-    def str_to_list(arg: Optional[str]) -> Optional[list[float]]:
+    def str_to_list(arg: str | None) -> list[float] | None:
         if arg is None:
             return None
         return ast.literal_eval(arg)

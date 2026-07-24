@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+
 from .base_cfg import BaseCfg, ToggleCfg
 
 

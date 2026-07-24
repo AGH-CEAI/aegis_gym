@@ -1,8 +1,8 @@
 import asyncio
 import atexit
 import threading
-from typing import Optional, Any
 from concurrent.futures import Future
+from typing import Any, Optional
 
 import torch as th
 from tensordict import TensorDict
@@ -23,7 +23,8 @@ except ImportError:
     )
     raise
 
-from aegis_gym.config.types import RobotCfg, CameraName
+from aegis_gym.config.types import CameraName, RobotCfg
+
 from ..base_manipulator import BaseManipulator, CameraModality
 
 
@@ -42,7 +43,7 @@ class RosGrpcManipulator(BaseManipulator):
 
     def __new__(cls, *args, **kwargs) -> "RosGrpcManipulator":
         if cls._instance is None:
-            cls._instance = super(RosGrpcManipulator, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(
@@ -51,7 +52,7 @@ class RosGrpcManipulator(BaseManipulator):
         robot_cfg: RobotCfg,
         policy_dt: float,
         disable_vision: bool = False,
-        device: Optional[th.device] = None,
+        device: th.device | None = None,
         server_address: str = "127.0.0.1:50051",
     ):
         if hasattr(self, "_initialized") and self._initialized:
@@ -102,8 +103,8 @@ class RosGrpcManipulator(BaseManipulator):
         self._servo_enabled = False
 
         # Prepare initial observation
-        self._state: Optional[TensorDict] = None
-        self._vision: Optional[TensorDict] = None
+        self._state: TensorDict | None = None
+        self._vision: TensorDict | None = None
         self.read_state()
 
         # shutdown() will be called at interpreter exit
@@ -210,8 +211,8 @@ class RosGrpcManipulator(BaseManipulator):
 
     def set_joints_pd_gains(
         self,
-        kp_gain: Optional[th.Tensor] = None,
-        kv_gain: Optional[th.Tensor] = None,
+        kp_gain: th.Tensor | None = None,
+        kv_gain: th.Tensor | None = None,
     ) -> None:
         raise NotImplementedError(
             "Setting PD gains is not supported for the ROS<->gRPC bridge."
@@ -220,8 +221,8 @@ class RosGrpcManipulator(BaseManipulator):
     def ctrl_apply_vel_action(
         self,
         action: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         self._servo_enable()
         # Control only one real robot
@@ -242,15 +243,15 @@ class RosGrpcManipulator(BaseManipulator):
             self.ctrl_gripper_close()
 
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
+        self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
         raise NotImplementedError
 
     def ctrl_go_to_goal(
         self,
         goal_pose: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         self._servo_disable()
 
@@ -274,7 +275,7 @@ class RosGrpcManipulator(BaseManipulator):
         else:
             self.ctrl_gripper_close()
 
-    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         self._servo_disable()
         self._run_coro(
             self._robot_client.goto_joints(
@@ -283,13 +284,13 @@ class RosGrpcManipulator(BaseManipulator):
             )
         )
 
-    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         if self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_open())
         self._gripper_last_action = True
 
-    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: th.Tensor | None = None) -> None:
         if not self._gripper_last_action:
             return
         self._run_coro(self._robot_client.gripper_close())

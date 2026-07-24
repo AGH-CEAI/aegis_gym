@@ -1,28 +1,26 @@
 import time
-from typing import Any
 from collections import deque
-
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch as th
-import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
+from torch import nn
 
-from aegis_gym.envs import BaseManipulator, BaseEnv
 from aegis_gym.config import ConfigManager
 from aegis_gym.config.types import (
-    ExpConfig,
+    IMAGE_MODALITIES,
     BCCfg,
     CamerasSetup,
-    IMAGE_MODALITIES,
+    ExpConfig,
 )
+from aegis_gym.envs import BaseEnv, BaseManipulator
 
 from .base_runner import BasePolicyRunner
-from .bc_policy import Policy, ExperienceBuffer, ResetLastLayerTarget
+from .bc_policy import ExperienceBuffer, Policy, ResetLastLayerTarget
 
 
 class BehaviorCloningRunner(BasePolicyRunner):
@@ -32,7 +30,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self,
         env: BaseEnv,
         cfg: ExpConfig,
-        teacher: Optional[nn.Module],
+        teacher: nn.Module | None,
     ):
         super().__init__(env=env, cfg=cfg)
 

@@ -1,7 +1,5 @@
-from typing import Optional
-
-import torch as th
 import genesis as gs
+import torch as th
 
 from ..base_objects import BaseBox, ObjectProperties
 
@@ -33,7 +31,7 @@ class GenesisBox(BaseBox):
             ),
         )
 
-    def get_pose(self, envs_idx: Optional[th.Tensor | int] = None) -> th.Tensor:
+    def get_pose(self, envs_idx: th.Tensor | int | None = None) -> th.Tensor:
         pos = self._obj.get_pos()
         quat = self._obj.get_quat()
         res = th.cat([pos, quat], dim=1)
@@ -42,7 +40,7 @@ class GenesisBox(BaseBox):
         return res[envs_idx, :]
 
     def set_pose(
-        self, pose: th.Tensor, envs_idx: Optional[th.Tensor | int] = None
+        self, pose: th.Tensor, envs_idx: th.Tensor | int | None = None
     ) -> None:
         self._obj.set_pos(pos=pose[:, :3], envs_idx=envs_idx)
         self._obj.set_quat(quat=pose[:, 3:], envs_idx=envs_idx)

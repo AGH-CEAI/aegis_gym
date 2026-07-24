@@ -2,17 +2,13 @@ import genesis as gs
 import torch as th
 from clearml import Task
 
-from aegis_gym.envs import BaseEnv
-from aegis_gym.envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
-
-from aegis_gym.envs import ReacherEnv
-from aegis_gym.runners import OnPolicyRunner, BehaviorCloningRunner
-from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
-from aegis_gym.config.types import ExpConfig, Algorithm, Control
 from aegis_gym.aux import load_policy
-
-
+from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
+from aegis_gym.config.types import Algorithm, Control, ExpConfig
+from aegis_gym.envs import BaseEnv, ReacherEnv
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
+from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
+from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
 
 def init_clearml_task(
@@ -23,8 +19,8 @@ def init_clearml_task(
 ) -> Task:
     assert None not in (project_name, algorithm, control, exp_name)
     return Task.init(
-        project_name=f"{project_name}_{str(algorithm)}-{str(control)}",
-        task_name=f"{exp_name}_{str(algorithm)}",
+        project_name=f"{project_name}_{algorithm!s}-{control!s}",
+        task_name=f"{exp_name}_{algorithm!s}",
         reuse_last_task_id=True,
     )
 

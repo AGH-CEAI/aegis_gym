@@ -1,11 +1,10 @@
-from typing import Optional, Iterator
-
-from strenum import StrEnum
+from collections.abc import Iterator
 
 import torch as th
-import torch.nn as nn
+from strenum import StrEnum
+from torch import nn
 
-from aegis_gym.config.types import PolicyBCCfg, FusionCfg, VisionEncoderCfg
+from aegis_gym.config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,
@@ -101,7 +100,7 @@ class Policy(nn.Module):
         self.to(device)
 
     def forward(
-        self, rgb_obs: th.Tensor, state_obs: Optional[th.Tensor] = None
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
     ) -> th.Tensor:
         features = self.vision_encoder(rgb_obs)
         fused = self.feature_fusion(features)
@@ -271,7 +270,7 @@ class ExperienceBuffer:
         state_dim: int,
         action_dim: int,
         device: str = "cpu",
-        dtype: Optional[th.dtype] = None,
+        dtype: th.dtype | None = None,
     ):
         self._num_envs = num_envs
         self._max_size = max_size

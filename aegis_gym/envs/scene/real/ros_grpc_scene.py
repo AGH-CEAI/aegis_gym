@@ -4,14 +4,14 @@ from typing import Any
 
 import torch as th
 
+from aegis_gym.config.types import Control, ExpConfig, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, RosGrpcManipulator
 from aegis_gym.envs.objects import (
-    ObjectType,
     BaseObject,
     ObjectProperties,
+    ObjectType,
     RosGrpcObjectsFactory,
 )
-from aegis_gym.config.types import Control, ExpConfig, RobotCfg
 
 from ..base_scene import BaseScene
 

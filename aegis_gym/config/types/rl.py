@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal
 
 from .base_cfg import BaseCfg
 
@@ -20,8 +20,8 @@ class AlgorithmCfg(BaseCfg):
     lam: float
     max_grad_norm: float
     normalize_advantage_per_mini_batch: bool
-    rnd_cfg: Optional[dict]
-    symmetry_cfg: Optional[dict]
+    rnd_cfg: dict | None
+    symmetry_cfg: dict | None
 
 
 @dataclass(slots=True)

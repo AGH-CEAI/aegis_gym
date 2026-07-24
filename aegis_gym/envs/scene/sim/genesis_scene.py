@@ -1,31 +1,31 @@
 import math
-from typing import Optional, Any
-
-import numpy as np
-import torch as th
+from typing import Any
 
 import genesis as gs
+import numpy as np
+import torch as th
 from genesis.vis.camera import Camera
 
-from aegis_gym.envs.manipulator import BaseManipulator, GenesisManipulator
-from aegis_gym.envs.objects import (
-    GenesisObjectsFactory,
-    ObjectType,
-    BaseObject,
-    ObjectProperties,
-)
-from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
 from aegis_gym.config.types import (
+    CAMERAS_LINKS,
     CameraLink,
     CameraModality,
     CameraName,
-    CAMERAS_LINKS,
     CamerasSetup,
     Control,
     EnvCfg,
     ExpConfig,
     RobotCfg,
 )
+from aegis_gym.envs.manipulator import BaseManipulator, GenesisManipulator
+from aegis_gym.envs.objects import (
+    BaseObject,
+    GenesisObjectsFactory,
+    ObjectProperties,
+    ObjectType,
+)
+from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
+
 from ..base_scene import BaseScene, RandomizationType
 
 
@@ -96,7 +96,7 @@ class GenesisScene(BaseScene):
         self.reward_scales = self._cfg_env.reward_scales
 
     def _setup_pj_server(self) -> None:
-        self._pj: Optional[PlotJugglerUDP] = None
+        self._pj: PlotJugglerUDP | None = None
         if not self._enable_pj_logging:
             return
         ip = "127.0.0.1"
@@ -144,7 +144,7 @@ class GenesisScene(BaseScene):
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=int(60),
+                max_FPS=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -239,7 +239,7 @@ class GenesisScene(BaseScene):
         pos: tuple[float, float, float],
         fov: int,  # deg
         lookat: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        resolution: Optional[tuple] = None,
+        resolution: tuple | None = None,
         show_cameras_gui: bool = False,
     ):
         if resolution is None:

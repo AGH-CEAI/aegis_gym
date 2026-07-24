@@ -1,18 +1,19 @@
 from abc import abstractmethod
-from typing import NamedTuple, Optional, Callable, Collection
-
+from collections.abc import Callable, Collection
+from typing import NamedTuple
 
 import torch as th
-from tensordict import TensorDict
 from rsl_rl.env import VecEnv
+from tensordict import TensorDict
 
 from aegis_gym.config.types import (
-    EnvCfg,
-    DomainRandomizationCfg,
-    ExpConfig,
     CamerasSetup,
+    DomainRandomizationCfg,
+    EnvCfg,
+    ExpConfig,
     Modality,
 )
+
 from .scene.base_scene import BaseScene
 
 
@@ -113,7 +114,7 @@ class BaseEnv(VecEnv):
         return self._obs_cache_get(frozenset({modality}))[modality]
 
     def get_modality_observations(
-        self, modalities: Optional[Collection[Modality]] = None
+        self, modalities: Collection[Modality] | None = None
     ) -> TensorDict:
         """
         Returns observations at the current state. Not implicitly compatible with rsl_rl.
@@ -125,7 +126,7 @@ class BaseEnv(VecEnv):
         return self._obs_cache_get(modalities)
 
     def _resolve_modalities(
-        self, modalities: Optional[Collection[Modality]]
+        self, modalities: Collection[Modality] | None
     ) -> frozenset[Modality]:
         if modalities is None:
             return self.DEFAULT_MODALITIES

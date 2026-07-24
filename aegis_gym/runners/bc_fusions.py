@@ -1,6 +1,6 @@
 import torch as th
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 # TODO(enc_mem_dec): Remove this file and source it from the enc_mem_dec package.
 

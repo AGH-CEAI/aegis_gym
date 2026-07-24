@@ -2,15 +2,16 @@ from abc import ABC
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Type, TypeVar, get_type_hints, get_args, get_origin
+from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
+from typing_extensions import Self
 
 T = TypeVar("T")
 
 
 class BaseCfg(ABC):
     @classmethod
-    def from_dict(cls: Type[T], data: dict[str, Any] | None = None) -> T:
+    def from_dict(cls, data: dict[str, Any] | None = None) -> Self:
         """
         Recursively build dataclass from partial dict.
         Missing values use dataclass defaults.

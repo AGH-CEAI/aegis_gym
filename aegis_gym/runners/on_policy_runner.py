@@ -2,11 +2,11 @@ from pathlib import Path
 from typing import Any
 
 import torch as th
-
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
 
 from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
+
 from .base_runner import BasePolicyRunner
 
 

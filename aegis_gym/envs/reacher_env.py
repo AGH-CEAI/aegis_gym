@@ -3,11 +3,11 @@ import math
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.config.types import ExpConfig, CameraName
-from aegis_gym.envs.base_env import BaseEnv, Modality, StepReturn, ResetReturn
-from aegis_gym.envs.objects import ObjectType, BaseBox, ObjectProperties
-from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.aux import transform_by_quat, transform_quat_by_quat
+from aegis_gym.config.types import CameraName, ExpConfig
+from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
+from aegis_gym.envs.manipulator import BaseManipulator
+from aegis_gym.envs.objects import BaseBox, ObjectProperties, ObjectType
 
 from .scene import BaseScene
 

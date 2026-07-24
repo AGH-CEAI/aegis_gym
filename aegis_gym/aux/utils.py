@@ -1,20 +1,19 @@
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional, Callable
+from typing import Any
 
-import torch.nn as nn
-from clearml import Task, Model, InputModel
+from clearml import InputModel, Model, Task
 from natsort import natsorted
+from torch import nn
 
 from aegis_gym.config import LaunchArgs
-from aegis_gym.config.types import Checkpoint, ExpConfig, Algorithm
+from aegis_gym.config.types import Algorithm, Checkpoint, ExpConfig
 from aegis_gym.envs import BaseEnv
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
 
-def load_policy(
-    env: BaseEnv, cfg: ExpConfig, alg: Optional[Algorithm] = None
-) -> Callable:
+def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> Callable:
     args: LaunchArgs = cfg.args
 
     algorithm = alg or cfg.args.algorithm
@@ -45,9 +44,9 @@ def load_rl_policy(
     env: Any,
     cfg: ExpConfig,
     load_cfg_from_clearml: bool = True,
-    exp_name: Optional[str] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
     print("[Policy Loader] Resolving RL checkpoint")
@@ -99,10 +98,10 @@ def load_bc_policy(
     env: Any,
     cfg: ExpConfig,
     load_cfg_from_clearml: bool = True,
-    exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
     print("[Policy Loader] Resolving BC checkpoint")
@@ -147,10 +146,10 @@ def load_bc_policy(
 
 
 def resolve_checkpoint(
-    exp_name: Optional[str] = None,
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    exp_name: str | None = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
     local_checkpoint_pattern: str = r"model_\d+\.pt",
 ) -> Path:
@@ -241,9 +240,9 @@ def resolve_latest_local_checkpoint(log_dir: Path, r_pattern: str) -> Path:
 
 
 def get_bc_checkpoints(
-    log_dir: Optional[Path] = None,
-    clearml_task_id: Optional[str] = None,
-    clearml_model_id: Optional[str] = None,
+    log_dir: Path | None = None,
+    clearml_task_id: str | None = None,
+    clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> list[Checkpoint]:
     """

@@ -1,23 +1,22 @@
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import torch as th
 from clearml import Task
 from tqdm import tqdm
 
+from aegis_gym.aux import load_policy
 from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
 from aegis_gym.config.types import (
-    ExpConfig,
-    DebugCfg,
-    Algorithm,
     IMAGE_MODALITIES,
+    Algorithm,
+    DebugCfg,
+    ExpConfig,
     Modality,
 )
-from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
 from aegis_gym.envs import BaseEnv
-
-from train import init_clearml_task, create_env
-from aegis_gym.aux import load_policy
+from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
+from train import create_env, init_clearml_task
 
 
 def main():

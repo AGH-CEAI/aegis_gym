@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from pathlib import Path
 from enum import auto
+from pathlib import Path
 
 from strenum import StrEnum
 

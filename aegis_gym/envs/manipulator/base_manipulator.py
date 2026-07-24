@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.config.types import CameraName, CameraModality
+from aegis_gym.config.types import CameraModality, CameraName
 
 
 class BaseManipulator(ABC):
@@ -16,7 +15,7 @@ class BaseManipulator(ABC):
         ignore it or assert it is None.
     """
 
-    def __init__(self, device: Optional[th.device] = None):
+    def __init__(self, device: th.device | None = None):
         self.device: th.device = device or th.device("cpu")
 
     @abstractmethod
@@ -38,8 +37,8 @@ class BaseManipulator(ABC):
     @abstractmethod
     def set_joints_pd_gains(
         self,
-        kp_gain: Optional[th.Tensor] = None,
-        kv_gain: Optional[th.Tensor] = None,
+        kp_gain: th.Tensor | None = None,
+        kv_gain: th.Tensor | None = None,
     ) -> None:
         """Simulation only: Sets the gains from [0..1]. Accepts sizes [n_dofs]."""
         ...
@@ -48,8 +47,8 @@ class BaseManipulator(ABC):
     def ctrl_apply_vel_action(
         self,
         action: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         """
         Apply the action (velocity servoing) to the robot.
@@ -63,7 +62,7 @@ class BaseManipulator(ABC):
 
     @abstractmethod
     def ctrl_apply_joints_diff_action(
-        self, joints_diff: th.Tensor, envs_idx: Optional[th.Tensor] = None
+        self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
         """
         Apply the action (joints difference) to the robot.
@@ -77,8 +76,8 @@ class BaseManipulator(ABC):
     def ctrl_go_to_goal(
         self,
         goal_pose: th.Tensor,
-        open_gripper: Optional[bool] = None,
-        envs_idx: Optional[th.Tensor] = None,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
     ) -> None:
         """
         Apply the goal_pose (position target) to the robot.
@@ -91,17 +90,17 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
-    def ctrl_go_to_home(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         """Move to the home joint configuration."""
         ...
 
     @abstractmethod
-    def ctrl_gripper_open(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         """Open the gripper to its maximum width."""
         ...
 
     @abstractmethod
-    def ctrl_gripper_close(self, envs_idx: Optional[th.Tensor] = None) -> None:
+    def ctrl_gripper_close(self, envs_idx: th.Tensor | None = None) -> None:
         """Close the gripper to its minimum width."""
         ...
 

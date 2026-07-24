@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import auto
-from typing import Callable, Any
+from typing import Any
 
 import torch as th
 from strenum import StrEnum
 
-
 from aegis_gym.config.types import Control, RobotCfg
-from ..objects.base_objects import ObjectProperties, ObjectType
+
 from ..manipulator.base_manipulator import BaseManipulator
+from ..objects.base_objects import ObjectProperties, ObjectType
 
 
 class RandomizationType(StrEnum):

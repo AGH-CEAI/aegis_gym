@@ -2,12 +2,11 @@
 
 from clearml import Task
 from clearml.automation import (
-    HyperParameterOptimizer,
-    UniformParameterRange,
-    UniformIntegerParameterRange,
     DiscreteParameterRange,
+    HyperParameterOptimizer,
+    UniformIntegerParameterRange,
+    UniformParameterRange,
 )
-
 
 # USER CONFIG
 

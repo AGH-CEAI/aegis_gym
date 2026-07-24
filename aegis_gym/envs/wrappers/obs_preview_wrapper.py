@@ -1,16 +1,15 @@
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
-
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.config.types import DebugCfg, Modality, IMAGE_MODALITIES
+from aegis_gym.config.types import IMAGE_MODALITIES, DebugCfg, Modality
+
+from ..base_env import BaseEnv, ResetReturn, StepReturn
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, ResetReturn
 
 
 class ObsPreviewEnvWrapper(BaseEnvWrapper):
@@ -22,7 +21,7 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         super().__init__(env=env)
         self._cfg = cfg_debug
         self._modalities = self._env.available_modalities
-        self._record_dir: Optional[Path] = None
+        self._record_dir: Path | None = None
         self._frame_count: int = 0
 
         if not self._cfg.enabled:

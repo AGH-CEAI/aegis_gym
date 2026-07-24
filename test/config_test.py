@@ -2,14 +2,14 @@ from dataclasses import fields
 
 import pytest
 
-from aegis_gym.config import LaunchArgs, parse_arguments
 from aegis_gym.config import ConfigManager as cm
+from aegis_gym.config import LaunchArgs, parse_arguments
 from aegis_gym.config.types import (
     Algorithm,
-    Control,
-    CNNLayerCfg,
-    VisionEncoderCfg,
     CamerasSetup,
+    CNNLayerCfg,
+    Control,
+    VisionEncoderCfg,
 )
 
 

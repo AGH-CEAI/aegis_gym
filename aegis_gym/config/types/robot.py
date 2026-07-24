@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Literal
+
 from .base_cfg import BaseCfg
 
 
