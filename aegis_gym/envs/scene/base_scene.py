@@ -6,7 +6,7 @@ import torch as th
 from strenum import StrEnum
 
 
-from config.types import Control, RobotCfg
+from aegis_gym.config.types import Control, RobotCfg
 from ..objects.base_objects import ObjectProperties, ObjectType
 from ..manipulator.base_manipulator import BaseManipulator
 

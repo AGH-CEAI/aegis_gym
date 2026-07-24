@@ -3,13 +3,13 @@ import math
 import torch as th
 from tensordict import TensorDict
 
-from config.types import ExpConfig, CameraName
-from envs.base_env import BaseEnv, Modality, StepReturn, ResetReturn
-from envs.objects import ObjectType, BaseBox, ObjectProperties
-from envs.manipulator import BaseManipulator
+from aegis_gym.config.types import ExpConfig, CameraName
+from aegis_gym.envs.base_env import BaseEnv, Modality, StepReturn, ResetReturn
+from aegis_gym.envs.objects import ObjectType, BaseBox, ObjectProperties
+from aegis_gym.envs.manipulator import BaseManipulator
+from aegis_gym.aux import transform_by_quat, transform_quat_by_quat
 
 from .scene import BaseScene
-from aux import transform_by_quat, transform_quat_by_quat
 
 
 class ReacherEnv(BaseEnv):

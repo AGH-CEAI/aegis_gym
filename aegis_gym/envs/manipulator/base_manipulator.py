@@ -4,7 +4,7 @@ from typing import Optional
 import torch as th
 from tensordict import TensorDict
 
-from config.types import CameraName, CameraModality
+from aegis_gym.config.types import CameraName, CameraModality
 
 
 class BaseManipulator(ABC):

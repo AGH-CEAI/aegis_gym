@@ -5,19 +5,19 @@ import torch as th
 from clearml import Task
 from tqdm import tqdm
 
-from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import (
+from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
+from aegis_gym.config.types import (
     ExpConfig,
     DebugCfg,
     Algorithm,
     IMAGE_MODALITIES,
     Modality,
 )
-from envs.wrappers import ObsPreviewEnvWrapper
-from envs import BaseEnv
+from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
+from aegis_gym.envs import BaseEnv
 
 from train import init_clearml_task, create_env
-from aux import load_policy
+from aegis_gym.aux import load_policy
 
 
 def main():

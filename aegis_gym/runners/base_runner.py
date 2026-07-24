@@ -4,8 +4,8 @@ from typing import Any
 
 import torch as th
 
-from envs import BaseEnv
-from config.types import ExpConfig, RLCfg, LoggerCfg
+from aegis_gym.envs import BaseEnv
+from aegis_gym.config.types import ExpConfig, RLCfg, LoggerCfg
 
 
 class BasePolicyRunner(ABC):

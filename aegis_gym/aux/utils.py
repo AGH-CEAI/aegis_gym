@@ -6,10 +6,10 @@ import torch.nn as nn
 from clearml import Task, Model, InputModel
 from natsort import natsorted
 
-from config import LaunchArgs
-from config.types import Checkpoint, ExpConfig, Algorithm
-from envs import BaseEnv
-from runners import BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.config import LaunchArgs
+from aegis_gym.config.types import Checkpoint, ExpConfig, Algorithm
+from aegis_gym.envs import BaseEnv
+from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
 
 def load_policy(

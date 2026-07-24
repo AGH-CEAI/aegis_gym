@@ -23,10 +23,8 @@ except ImportError:
     )
     raise
 
+from aegis_gym.config.types import RobotCfg, CameraName
 from ..base_manipulator import BaseManipulator, CameraModality
-
-# from ...scene import BaseScene
-from config.types import RobotCfg, CameraName
 
 
 class PoseTransformUtils:

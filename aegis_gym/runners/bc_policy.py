@@ -5,7 +5,7 @@ from strenum import StrEnum
 import torch as th
 import torch.nn as nn
 
-from config.types import PolicyBCCfg, FusionCfg, VisionEncoderCfg
+from aegis_gym.config.types import PolicyBCCfg, FusionCfg, VisionEncoderCfg
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,

@@ -8,8 +8,8 @@ import genesis as gs
 from clearml import Dataset
 from tensordict import TensorDict
 
-from envs.manipulator import BaseManipulator, CameraModality
-from config.types import RobotCfg, CameraName
+from aegis_gym.config.types import RobotCfg, CameraName
+from aegis_gym.envs.manipulator import BaseManipulator, CameraModality
 
 RigidLink = TypeVar
 

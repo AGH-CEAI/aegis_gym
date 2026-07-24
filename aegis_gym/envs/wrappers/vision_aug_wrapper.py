@@ -7,7 +7,7 @@ from tensordict import TensorDict
 from .base_wrapper import BaseEnvWrapper
 from ..base_env import BaseEnv, StepReturn, ResetReturn
 
-from config.types import ImageAugCfg, EnvCfg, IMAGE_MODALITIES, Modality
+from aegis_gym.config.types import ImageAugCfg, EnvCfg, IMAGE_MODALITIES, Modality
 
 
 class VisionAugEnvWrapper(BaseEnvWrapper):

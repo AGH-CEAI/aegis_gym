@@ -7,9 +7,15 @@ import torch as th
 import genesis as gs
 from genesis.vis.camera import Camera
 
-from envs.manipulator import BaseManipulator, GenesisManipulator
-from envs.objects import GenesisObjectsFactory, ObjectType, BaseObject, ObjectProperties
-from config.types import (
+from aegis_gym.envs.manipulator import BaseManipulator, GenesisManipulator
+from aegis_gym.envs.objects import (
+    GenesisObjectsFactory,
+    ObjectType,
+    BaseObject,
+    ObjectProperties,
+)
+from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
+from aegis_gym.config.types import (
     CameraLink,
     CameraModality,
     CameraName,
@@ -21,8 +27,6 @@ from config.types import (
     RobotCfg,
 )
 from ..base_scene import BaseScene, RandomizationType
-
-from envs.plotjuggler_udp import PlotJugglerUDP
 
 
 class GenesisScene(BaseScene):
@@ -322,7 +326,7 @@ class GenesisScene(BaseScene):
         return rgb
 
     def shutdown(self) -> None:
-        if self.manipulator:
+        if hasattr(self, "manipulator") and self.manipulator is not None:
             del self.manipulator
 
     def add_entity(self, entity: ObjectType, properties: ObjectProperties) -> Any:

@@ -6,14 +6,14 @@ import torch as th
 from tensordict import TensorDict
 from rsl_rl.env import VecEnv
 
-from .scene.base_scene import BaseScene
-from config.types import (
+from aegis_gym.config.types import (
     EnvCfg,
     DomainRandomizationCfg,
     ExpConfig,
     CamerasSetup,
     Modality,
 )
+from .scene.base_scene import BaseScene
 
 
 class ResetReturn(NamedTuple):

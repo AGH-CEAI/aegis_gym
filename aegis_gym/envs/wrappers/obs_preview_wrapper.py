@@ -8,7 +8,7 @@ import numpy as np
 import torch as th
 from tensordict import TensorDict
 
-from config.types import DebugCfg, Modality, IMAGE_MODALITIES
+from aegis_gym.config.types import DebugCfg, Modality, IMAGE_MODALITIES
 from .base_wrapper import BaseEnvWrapper
 from ..base_env import BaseEnv, StepReturn, ResetReturn
 

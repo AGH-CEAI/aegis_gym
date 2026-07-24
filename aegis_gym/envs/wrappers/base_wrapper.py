@@ -3,7 +3,7 @@ from typing import Optional, Collection, Any
 import torch as th
 from tensordict import TensorDict
 
-from config.types import CamerasSetup
+from aegis_gym.config.types import CamerasSetup
 from ..base_env import BaseEnv, ResetReturn, StepReturn, Modality
 
 

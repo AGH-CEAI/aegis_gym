@@ -2,17 +2,17 @@ import genesis as gs
 import torch as th
 from clearml import Task
 
-from envs import BaseEnv
-from envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
+from aegis_gym.envs import BaseEnv
+from aegis_gym.envs.wrappers import VisionAugEnvWrapper, ObsPreviewEnvWrapper
 
-from envs import ReacherEnv
-from runners import OnPolicyRunner, BehaviorCloningRunner
-from config import ConfigManager, LaunchArgs, parse_arguments
-from config.types import ExpConfig, Algorithm, Control
-from aux import load_policy
+from aegis_gym.envs import ReacherEnv
+from aegis_gym.runners import OnPolicyRunner, BehaviorCloningRunner
+from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
+from aegis_gym.config.types import ExpConfig, Algorithm, Control
+from aegis_gym.aux import load_policy
 
 
-from envs.scene import GenesisScene, RosGrcpScene
+from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 
 
 def init_clearml_task(

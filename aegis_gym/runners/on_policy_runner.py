@@ -5,9 +5,9 @@ import torch as th
 
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
 
+from aegis_gym.config.types import ExpConfig
+from aegis_gym.envs import BaseEnv
 from .base_runner import BasePolicyRunner
-from config.types import ExpConfig
-from envs import BaseEnv
 
 
 class OnPolicyRunner(BasePolicyRunner):
