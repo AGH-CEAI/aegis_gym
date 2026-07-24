@@ -100,8 +100,8 @@ def enqueue_tasks(
     base_task: Task,
     tasks_num: int,
     queue_name: str,
-    tags: Iterable[str] = None,
-    parameters: dict[str, Any] = None,
+    tags: Iterable[str] | None = None,
+    parameters: dict[str, Any] | None = None,
 ) -> None:
     """
     Enqueue a batch of tasks to a given ClearML queue.

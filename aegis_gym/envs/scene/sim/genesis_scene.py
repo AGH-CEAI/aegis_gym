@@ -83,11 +83,9 @@ class GenesisScene(BaseScene):
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
-        self.sim_substeps = int(
-            math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
-        )
-        self.max_episode_length = int(
-            math.ceil(self._cfg_env.episode_length_s / self.policy_dt)
+        self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
+        self.max_episode_length = math.ceil(
+            self._cfg_env.episode_length_s / self.policy_dt
         )
 
         self._max_linear_speed = self._cfg_env.action_max_linear_speed

@@ -15,5 +15,5 @@ class PlotJugglerUDP:
             data["ts"] = time.time()  # REQUIRED: timestamp
         try:
             self.sock.sendto(json.dumps(data).encode(), (self.host, self.port))
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             print(f"UDP send error: {e}")

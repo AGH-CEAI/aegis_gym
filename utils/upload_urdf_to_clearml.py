@@ -24,7 +24,7 @@ def upload_robot_assets(
     robot_folder_path: str,
     dataset_name: str = "robot_simulator_assets",
     dataset_project: str = "DeepRL",
-    parent: str = None,
+    parent: str | None = None,
     output_storage: str | None = None,  # None = use default ClearML file server
     description: str | None = None,
 ):

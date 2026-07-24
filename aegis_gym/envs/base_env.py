@@ -63,7 +63,7 @@ class BaseEnv(VecEnv):
         self._obs_cache.set(modality.value, value)
 
     def _obs_cache_keys(self) -> frozenset[Modality]:
-        return frozenset(Modality(k) for k in self._obs_cache.keys())
+        return frozenset(Modality(k) for k in self._obs_cache)
 
     def _obs_cache_clear(self) -> None:
         self._obs_cache = TensorDict({}, batch_size=[self.num_envs])

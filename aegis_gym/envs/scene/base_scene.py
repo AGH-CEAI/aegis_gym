@@ -30,7 +30,7 @@ class BaseScene(ABC):
     def __init__(self, device: th.device):
         super().__init__()
         self._is_build = False
-        self.device: th.device = device
+        self.device: th.Device = device
 
     @abstractmethod
     def shutdown(self) -> None:

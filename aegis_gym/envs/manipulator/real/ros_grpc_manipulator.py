@@ -23,6 +23,8 @@ except ImportError:
     )
     raise
 
+from typing_extensions import Self
+
 from aegis_gym.config.types import CameraName, RobotCfg
 
 from ..base_manipulator import BaseManipulator, CameraModality
@@ -41,7 +43,7 @@ class PoseTransformUtils:
 class RosGrpcManipulator(BaseManipulator):
     _instance: Optional["RosGrpcManipulator"] = None
 
-    def __new__(cls, *args, **kwargs) -> "RosGrpcManipulator":
+    def __new__(cls, *args, **kwargs) -> Self:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -157,7 +159,7 @@ class RosGrpcManipulator(BaseManipulator):
             # Disconnect gRPC client
             if hasattr(self, "_robot_client") and self._robot_client.is_connected:
                 self._run_coro(self._robot_client.disconnect())
-        except Exception as e:
+        except RuntimeError as e:
             print(f"Error disconnecting robot client: {e}")
 
         try:
@@ -170,7 +172,7 @@ class RosGrpcManipulator(BaseManipulator):
                 self._loop_thread.join(timeout=5.0)
                 if self._loop_thread.is_alive():
                     print("Warning: Event loop thread did not stop within timeout")
-        except Exception as e:
+        except RuntimeError as e:
             print(f"Error stopping event loop: {e}")
         finally:
             # Close the loop

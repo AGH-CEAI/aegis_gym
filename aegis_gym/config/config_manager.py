@@ -33,7 +33,7 @@ class ConfigManager:
         cls,
         argv: list[str] | LaunchArgs,
         extra_argparser: Callable | None = None,
-        device: th.device | None = None,
+        device: th.Device | None = None,
         task: Task | None = None,
     ) -> None:
         """
@@ -53,7 +53,7 @@ class ConfigManager:
         cls,
         argv: list[str] | LaunchArgs,
         extra_argparser: Callable | None,
-        device: th.device | None,
+        device: th.Device | None,
         task: Task | None,
     ) -> ExpConfig:
         if not isinstance(argv, LaunchArgs):

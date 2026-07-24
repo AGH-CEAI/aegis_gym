@@ -34,15 +34,14 @@ def main():
         log.error(f"No completed tasks found in '{args.source_project}'. Exiting.")
         sys.exit(1)
 
-    if not len(source_tasks) < TASKS_NUM_SAFEGUARD_LIMIT:
-        if not args.allow_large_batch:
-            log.warning(
-                f"You are trying to enqueue {len(source_tasks)} tasks. "
-                f"The safeguard limit is {TASKS_NUM_SAFEGUARD_LIMIT} tasks. "
-                "If you REALLY want to enqueue that much, please add the `--allow-large-batch` flag."
-            )
-            time.sleep(1)
-            return
+    if not len(source_tasks) < TASKS_NUM_SAFEGUARD_LIMIT and not args.allow_large_batch:
+        log.warning(
+            f"You are trying to enqueue {len(source_tasks)} tasks. "
+            f"The safeguard limit is {TASKS_NUM_SAFEGUARD_LIMIT} tasks. "
+            "If you REALLY want to enqueue that much, please add the `--allow-large-batch` flag."
+        )
+        time.sleep(1)
+        return
 
     eval_template = Task.get_task(task_id=args.eval_template_id)
     eval_project = eval_template.get_project_name()
@@ -149,7 +148,7 @@ def enqueue_eval_tasks(
     queue_name: str,
     cleanup_previous_tags=False,
     tag_for_source: str = "eval",
-    tags: Iterable[str] = None,
+    tags: Iterable[str] | None = None,
 ) -> None:
     tags = tags or [tag_for_source]
 

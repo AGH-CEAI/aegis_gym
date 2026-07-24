@@ -1,3 +1,5 @@
+import sys
+
 import genesis as gs
 import torch as th
 from clearml import Task
@@ -66,7 +68,7 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
     if control_type == Control.ROS:
         if RosGrcpScene is None:
             print("[Train] >>>> ERROR: Can not import RosGrcpScene. \n>>>> Exiting")
-            exit()
+            sys.exit()
         scene = RosGrcpScene(cfg=cfg, device=cfg.get_device())
 
     if scene is None:

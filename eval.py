@@ -131,7 +131,7 @@ def run_eval(
                 tcp_pose = env.get_modality_observation(Modality.TCP_POSE)
                 actions = policy(rgb_obs, tcp_pose)
 
-        obs, rews, dones, infos = env.step(actions)
+        obs, rews, _dones, _infos = env.step(actions)
 
         total_rewards += rews
         episode_lengths += 1

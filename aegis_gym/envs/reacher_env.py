@@ -73,11 +73,9 @@ class ReacherEnv(BaseEnv):
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
-        self.sim_substeps = int(
-            math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
-        )
-        self.max_episode_length = int(
-            math.ceil(self._cfg_env.episode_length_s / self.policy_dt)
+        self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
+        self.max_episode_length = math.ceil(
+            self._cfg_env.episode_length_s / self.policy_dt
         )
 
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
@@ -100,8 +98,8 @@ class ReacherEnv(BaseEnv):
 
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
-        self.reward_functions, self.episode_sums = dict(), dict()
-        for name in self.reward_scales.keys():
+        self.reward_functions, self.episode_sums = {}, {}
+        for name in self.reward_scales:
             self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
@@ -142,8 +140,8 @@ class ReacherEnv(BaseEnv):
         )
         self.reset_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.goal_pose = th.zeros(self.num_envs, 7, device=self.device)
-        self.extras = dict()
-        self.extras["observations"] = dict()
+        self.extras = {}
+        self.extras["observations"] = {}
 
     def _reset(self) -> ResetReturn:
         self.reset_buf[:] = True
@@ -165,7 +163,7 @@ class ReacherEnv(BaseEnv):
 
         # fill extras
         self.extras["episode"] = {}
-        for key in self.episode_sums.keys():
+        for key in self.episode_sums:
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
                 / self._cfg_env.episode_length_s

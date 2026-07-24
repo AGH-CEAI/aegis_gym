@@ -25,7 +25,7 @@ class LinearFusion(BaseFusionModule):
         image_height: int,
         image_width: int,
         pool_size: int,
-        num_feature_tensors: int = None,
+        num_feature_tensors: int | None = None,
     ):
         super().__init__()
         self.pool_size = pool_size

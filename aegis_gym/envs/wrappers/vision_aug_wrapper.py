@@ -36,7 +36,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         return self._augment(obs)
 
     def _augment(self, obs: TensorDict) -> TensorDict:
-        image_keys = [m for m in obs.keys() if Modality(m) in IMAGE_MODALITIES]
+        image_keys = [m for m in obs if Modality(m) in IMAGE_MODALITIES]
         if not image_keys:
             return obs
 
@@ -127,7 +127,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         if not aug.enabled:
             return im
 
-        N, C, H, W = im.shape
+        N, C, _H, _W = im.shape
         device = self.device
         prof = self._aug_profile
 
@@ -207,7 +207,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         return F.conv2d(im, kernel, padding=pad, groups=C)
 
     def _apply_cutout(self, im: th.Tensor) -> th.Tensor:
-        N, C, H, W = im.shape
+        N, _C, H, W = im.shape
         device = im.device
         prof = self._aug_profile
 

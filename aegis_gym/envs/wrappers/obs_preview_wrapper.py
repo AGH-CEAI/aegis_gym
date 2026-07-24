@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -72,7 +72,7 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         self._frame_count += 1
 
     def _create_record_dir(self) -> Path:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         record_dir = self._cfg.record_dir / f"obs_preview_{timestamp}"
         record_dir.mkdir(parents=True, exist_ok=True)
         print(

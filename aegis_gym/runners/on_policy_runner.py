@@ -38,7 +38,8 @@ class OnPolicyRunner(BasePolicyRunner):
     def load(self, path: Path) -> None:
         self.runner.load(path=str(path))
 
-    def get_inference_policy(self, device: th.device = th.device("cpu")) -> Any:
+    def get_inference_policy(self, device: th.Device | None = None) -> Any:
+        device = device or th.device("cpu")
         return self.runner.get_inference_policy(device=str(device))
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
@@ -47,5 +48,5 @@ class OnPolicyRunner(BasePolicyRunner):
                 return self.runner.export_policy_to_jit(path=path, filename=filename)
             if filename.endswith(".onnx"):
                 return self.runner.export_policy_to_onnx(path=path, filename=filename)
-        except Exception:
-            raise NotImplementedError("Export policy not implemented.")
+        except (ValueError, OSError) as e:
+            raise NotImplementedError("Export policy not implemented.") from e
