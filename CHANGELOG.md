@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- [PR-146](https://github.com/AGH-CEAI/aegis_gym/pull/146) - Moved `utils` ClearML scripts to [clearml_utils](https://github.com/AGH-CEAI/clearml_utils).
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
 
 ### Fixed
