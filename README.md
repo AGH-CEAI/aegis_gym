@@ -68,9 +68,9 @@ python3 eval.py -a=bc --num-envs=10 --load-bc-task=<CLEARML_TASK_ID> -e EVAL_REA
 ```
 
 ---
-## Utilities
+## Interaction with ClearML
 
-Check out the [utils README](./utils/README.md).
+Check out the [clearml_utils repo](https://github.com/AGH-CEAI/clearml_utils).
 
 ---
 ## Development notes
