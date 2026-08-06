@@ -1,6 +1,6 @@
 from .base_manipulator import BaseManipulator, CameraModality
-from .sim.genesis_manipulator import GenesisManipulator
 from .real.ros_grpc_manipulator import RosGrpcManipulator
+from .sim.genesis_manipulator import GenesisManipulator
 
 __all__ = [
     "BaseManipulator",

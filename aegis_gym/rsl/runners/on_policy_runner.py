@@ -2,12 +2,11 @@ from pathlib import Path
 from typing import Any
 
 import torch as th
-
+from config.types import ExpConfig
+from envs import BaseEnv
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
 
 from .base_runner import BasePolicyRunner
-from config.types import ExpConfig
-from envs import BaseEnv
 
 
 class OnPolicyRunner(BasePolicyRunner):

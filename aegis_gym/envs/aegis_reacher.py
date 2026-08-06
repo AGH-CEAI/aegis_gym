@@ -1,23 +1,23 @@
 # Original implementation by Jakub Płachno (sivral) 2025
 # Major refactor by Maciej Aleksandrowicz (macmacal) 2025
 import time
-from typing import Optional, Any, Union
+from typing import Any
 
 import cv2
+import gymnasium as gym
 import numpy as np
 import torch as th
-import gymnasium as gym
 from gymnasium import spaces
 
 from ..scene import (
-    SceneDirectorType,
-    SceneDirectorInterface,
-    RobotCommanderInterface,
-    get_scene_director,
     EntityType,
+    RobotCommanderInterface,
+    SceneDirectorInterface,
+    SceneDirectorType,
     Target,
+    get_scene_director,
 )
-from .env_types import EnvControlType, EnvObservationType, EnvRewardType, EnvRenderMode
+from .env_types import EnvControlType, EnvObservationType, EnvRenderMode, EnvRewardType
 
 ENV_CFG = {
     "max_episode_length": 1000,
@@ -142,7 +142,7 @@ class AegisReacherEnv(gym.Env):
                 raise ValueError(f"Unsupported control type: {self.control_type}")
 
     def step(
-        self, action: Union[th.Tensor, np.ndarray]
+        self, action: th.Tensor | np.ndarray
     ) -> tuple[th.Tensor, float, bool, bool, dict[str, Any]]:
         if isinstance(action, np.ndarray):
             action = th.from_numpy(action)
@@ -207,7 +207,7 @@ class AegisReacherEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def reset(
-        self, seed: Optional[int] = None, options: Optional[dict] = None
+        self, seed: int | None = None, options: dict | None = None
     ) -> tuple[th.Tensor, dict[str, Any]]:
         if seed is not None:
             np.random.seed(seed)
@@ -316,4 +316,3 @@ class AegisReacherEnv(gym.Env):
 
     def render(self) -> None:
         print("AegisReacher Render not implemented yet.")
-        pass

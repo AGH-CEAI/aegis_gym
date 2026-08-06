@@ -3,9 +3,8 @@ from pathlib import Path
 from typing import Any
 
 import torch as th
-
+from config.types import ExpConfig, LoggerCfg, RLCfg
 from envs import BaseEnv
-from config.types import ExpConfig, RLCfg, LoggerCfg
 
 
 class BasePolicyRunner(ABC):

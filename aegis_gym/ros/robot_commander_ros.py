@@ -1,4 +1,5 @@
 from typing import Optional
+
 import torch as th
 
 try:
@@ -18,7 +19,7 @@ class RobotCommanderROS(RobotCommanderInterface):
 
     def __new__(cls, *args, **kwargs) -> "RobotCommanderROS":
         if cls._instance is None:
-            cls._instance = super(RobotCommanderROS, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, robot_director: RobotDirector, device: str) -> None:

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 import torch as th
 
-from .base_objects import ObjectProperties, ObjectType, BaseBox, BaseObject
+from .base_objects import BaseBox, BaseObject, ObjectProperties, ObjectType
 
 
 class BaseObjectsFactory(ABC):

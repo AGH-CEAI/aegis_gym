@@ -1,13 +1,12 @@
-from typing import Optional, Collection
+from collections.abc import Collection
 
 import torch as th
 import torch.nn.functional as F
+from config.types import IMAGE_MODALITIES, EnvCfg, ImageAugCfg, Modality
 from tensordict import TensorDict
 
+from ..base_env import BaseEnv, ResetReturn, StepReturn
 from .base_wrapper import BaseEnvWrapper
-from ..base_env import BaseEnv, StepReturn, ResetReturn
-
-from config.types import ImageAugCfg, EnvCfg, IMAGE_MODALITIES, Modality
 
 
 class VisionAugEnvWrapper(BaseEnvWrapper):
@@ -29,7 +28,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         return self._format_rslrl_observations(agent_obs)
 
     def get_modality_observations(
-        self, modalities: Optional[Collection[Modality]] = None
+        self, modalities: Collection[Modality] | None = None
     ) -> TensorDict:
         obs = self._env.get_modality_observations(modalities)
         # Warning: env wrappers doesn't use cache - every call to the _augument() probably will result in different results.

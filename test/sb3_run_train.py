@@ -3,7 +3,7 @@ import time
 import gymnasium as gym
 
 import aegis_gym  # noqa: F401
-import aegis_gym.sim.genesis as sim_genesis  # noqa: F401
+import aegis_gym.sim.genesis as sim_genesis
 from aegis_gym.sim.utils import TorchToNumpyWrapper
 
 try:

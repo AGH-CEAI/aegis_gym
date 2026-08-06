@@ -2,13 +2,12 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Union, Any, NamedTuple
-
-from ament_index_python.packages import get_package_share_directory
+from typing import Any, NamedTuple
 
 import gymnasium as gym
-import torch as th
 import numpy as np
+import torch as th
+from ament_index_python.packages import get_package_share_directory
 
 
 class Dimensions(NamedTuple):
@@ -21,13 +20,13 @@ class TorchToNumpyWrapper(gym.ObservationWrapper, gym.ActionWrapper):
     def __init__(self, env):
         super().__init__(env)
 
-    def observation(self, obs: Union[th.Tensor, Any]) -> np.ndarray:
+    def observation(self, obs: th.Tensor | Any) -> np.ndarray:
         # Convert thTensor observation to numpy array
         if isinstance(obs, th.Tensor):
             return obs.cpu().numpy()
         return obs
 
-    def action(self, action: Union[np.ndarray, Any]) -> th.Tensor:
+    def action(self, action: np.ndarray | Any) -> th.Tensor:
         # Convert numpy array action to thTensor
         if isinstance(action, np.ndarray):
             return th.from_numpy(action)

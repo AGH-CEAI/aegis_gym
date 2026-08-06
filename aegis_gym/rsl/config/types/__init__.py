@@ -1,4 +1,5 @@
 from .base_cfg import BaseCfg, ToggleCfg
+from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
 from .debug import DebugCfg
 from .domain_randomization import (
     CameraFovValueCfg,
@@ -11,32 +12,31 @@ from .domain_randomization import (
     MaxSpeedCfg,
     PDGainCfg,
 )
-from .logger import LoggerCfg
-from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
-from .env import EnvCfg
-from .rl import AlgorithmCfg, PolicyCfg, RLCfg
-from .robot import RobotCfg
 from .enum_types import (
-    Algorithm,
     CAMERAS_LINKS,
+    IMAGE_MODALITIES,
+    Algorithm,
     CameraLink,
     CameraModality,
     CameraName,
     CamerasSetup,
     Checkpoint,
     Control,
-    IMAGE_MODALITIES,
     Modality,
 )
-
+from .env import EnvCfg
 from .exp_config import ExpConfig
+from .logger import LoggerCfg
+from .rl import AlgorithmCfg, PolicyCfg, RLCfg
+from .robot import RobotCfg
 
 __all__ = [
+    "CAMERAS_LINKS",
+    "IMAGE_MODALITIES",
     "Algorithm",
     "AlgorithmCfg",
     "BCCfg",
     "BaseCfg",
-    "CAMERAS_LINKS",
     "CNNLayerCfg",
     "CameraFovValueCfg",
     "CameraLink",
@@ -54,7 +54,6 @@ __all__ = [
     "EnvCfg",
     "ExpConfig",
     "FusionCfg",
-    "IMAGE_MODALITIES",
     "ImageAugCfg",
     "LoggerCfg",
     "MaxSpeedCfg",

@@ -1,8 +1,8 @@
 import genesis as gs
-from genesis.engine.entities import RigidEntity
 import torch as th
+from genesis.engine.entities import RigidEntity
 
-from ...scene import EntityType, Target, Box
+from ...scene import Box, EntityType, Target
 
 
 class TargetSimGenesis(Target):

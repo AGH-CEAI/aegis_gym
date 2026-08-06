@@ -1,10 +1,9 @@
 from dataclasses import fields
 
 import pytest
-
-from config import LaunchArgs, parse_arguments
 from config import ConfigManager as cm
-from config.types import Algorithm, Control, CNNLayerCfg, VisionEncoderCfg, CamerasSetup
+from config import LaunchArgs, parse_arguments
+from config.types import Algorithm, CamerasSetup, CNNLayerCfg, Control, VisionEncoderCfg
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):

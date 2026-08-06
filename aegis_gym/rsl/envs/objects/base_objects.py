@@ -1,16 +1,15 @@
 from abc import ABC, abstractmethod
-from enum import auto
 from dataclasses import dataclass
-from strenum import StrEnum
-from typing import Optional
+from enum import auto
 
 import torch as th
+from strenum import StrEnum
 
 
 @dataclass(frozen=True, slots=True)
 class ObjectProperties:
     dims: tuple
-    pose: Optional[tuple[float, ...]]
+    pose: tuple[float, ...] | None
     fixed: bool = False
     collision: bool = True
     color: tuple[float, float, float] = (1.0, 0.0, 0.0)
@@ -41,13 +40,13 @@ class BaseObject(ABC):
         ...
 
     @abstractmethod
-    def get_pose(self, envs_idx: Optional[th.Tensor | int] = None) -> th.Tensor:
+    def get_pose(self, envs_idx: th.Tensor | int | None = None) -> th.Tensor:
         """Get the object pose (from all envs). Returns 7xN_ENVs tensor."""
         ...
 
     @abstractmethod
     def set_pose(
-        self, pose: th.Tensor, envs_idx: Optional[th.Tensor | int] = None
+        self, pose: th.Tensor, envs_idx: th.Tensor | int | None = None
     ) -> None:
         """Set the object pose (for all envs)."""
         ...

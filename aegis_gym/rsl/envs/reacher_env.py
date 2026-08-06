@@ -1,15 +1,14 @@
 import math
 
 import torch as th
+from aux import transform_by_quat, transform_quat_by_quat
+from config.types import CameraName, ExpConfig
+from envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
+from envs.manipulator import BaseManipulator
+from envs.objects import BaseBox, ObjectProperties, ObjectType
 from tensordict import TensorDict
 
-from config.types import ExpConfig, CameraName
-from envs.base_env import BaseEnv, Modality, StepReturn, ResetReturn
-from envs.objects import ObjectType, BaseBox, ObjectProperties
-from envs.manipulator import BaseManipulator
-
 from .scene import BaseScene
-from aux import transform_by_quat, transform_quat_by_quat
 
 
 class ReacherEnv(BaseEnv):

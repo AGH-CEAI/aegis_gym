@@ -1,10 +1,11 @@
-from typing import Optional, Collection, Any
+from collections.abc import Collection
+from typing import Any
 
 import torch as th
+from config.types import CamerasSetup
 from tensordict import TensorDict
 
-from config.types import CamerasSetup
-from ..base_env import BaseEnv, ResetReturn, StepReturn, Modality
+from ..base_env import BaseEnv, Modality, ResetReturn, StepReturn
 
 
 class BaseEnvWrapper(BaseEnv):
@@ -34,7 +35,7 @@ class BaseEnvWrapper(BaseEnv):
         return self._env.get_cameras_setup()
 
     def get_modality_observations(
-        self, modalities: Optional[Collection[Modality]] = None
+        self, modalities: Collection[Modality] | None = None
     ) -> TensorDict:
         return self._env.get_modality_observations(modalities=modalities)
 

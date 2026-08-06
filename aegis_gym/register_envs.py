@@ -1,13 +1,14 @@
 from importlib import import_module
 
 from gymnasium.envs.registration import register
-from .scene.scene_director_factory import SceneDirectorType
+
 from .envs.env_types import (
     EnvControlType,
     EnvObservationType,
-    EnvRewardType,
     EnvRenderMode,
+    EnvRewardType,
 )
+from .scene.scene_director_factory import SceneDirectorType
 
 tasks = ["Reacher", "Pusher"]
 obs_types = [EnvObservationType.STATE]
@@ -36,7 +37,7 @@ def register_envs(scene_type: SceneDirectorType) -> list[str]:
 
                     env_file_path = f"aegis_gym.envs.aegis_{task.lower()}"
                     env_module = import_module(env_file_path)
-                    env_cfg = getattr(env_module, "ENV_CFG")
+                    env_cfg = env_module.ENV_CFG
 
                     register(
                         id=env_id,

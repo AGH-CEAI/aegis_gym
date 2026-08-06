@@ -1,11 +1,10 @@
 import torch as th
-
-from rclpy.node import Node
 from rclpy.clock import Clock
+from rclpy.node import Node
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 
-from ..scene import EntityType, Target, Box
+from ..scene import Box, EntityType, Target
 
 
 class TargetROS(Target):

@@ -10,16 +10,15 @@
 # ]
 # ///
 import logging
-from typing import Optional
 
 from helpers.cli import build_parser
 from helpers.data_getter import DataGetter, NoMetricsError, NoTasksError, SummaryType
+from helpers.logging import setup_logging, timed
 from helpers.summarizer import Summarizer
-from helpers.logging import timed, setup_logging
 
 
 @timed
-def main(argv: Optional[list[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     print(
         "#######################################################\n"
         "#       ▄▖▜       ▖  ▖▖   ▄▖            ▘             #\n"

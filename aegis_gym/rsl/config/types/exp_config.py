@@ -1,14 +1,14 @@
 from dataclasses import dataclass
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
 import torch as th
 
-from .domain_randomization import DomainRandomizationCfg
-from .debug import DebugCfg
-from .rl import RLCfg
-from .env import EnvCfg
 from .bc import BCCfg
+from .debug import DebugCfg
+from .domain_randomization import DomainRandomizationCfg
+from .env import EnvCfg
 from .logger import LoggerCfg
+from .rl import RLCfg
 from .robot import RobotCfg
 
 

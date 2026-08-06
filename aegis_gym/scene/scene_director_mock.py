@@ -1,9 +1,10 @@
 from typing import Any
+
 import torch as th
 
 from .robot_commander_mock import RobotCommanderMock
 from .scene_director_interface import SceneDirectorInterface
-from .scene_entities import EntityType, SceneEntity, Target, Box
+from .scene_entities import Box, EntityType, SceneEntity, Target
 
 
 class TargetMock(Target):

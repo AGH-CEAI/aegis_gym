@@ -1,6 +1,5 @@
-import torch as th
 import genesis as gs
-
+import torch as th
 
 from ..base_objects import ObjectProperties
 from ..base_objects_factory import BaseObjectsFactory

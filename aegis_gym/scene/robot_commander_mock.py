@@ -1,5 +1,6 @@
-from .robot_commander_interface import RobotCommanderInterface
 import torch as th
+
+from .robot_commander_interface import RobotCommanderInterface
 
 
 class RobotCommanderMock(RobotCommanderInterface):

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Literal
+
 from .base_cfg import BaseCfg
 from .rl import AlgorithmCfg
 
@@ -20,9 +21,9 @@ class VisionEncoderCfg(BaseCfg):
 
 @dataclass(slots=True)
 class FusionCfg(BaseCfg):
-    fusion_output_dim: Optional[int] = None
-    pool_size: Optional[int] = None
-    num_heads: Optional[int] = None
+    fusion_output_dim: int | None = None
+    pool_size: int | None = None
+    num_heads: int | None = None
 
 
 @dataclass(slots=True)

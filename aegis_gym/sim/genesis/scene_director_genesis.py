@@ -4,9 +4,9 @@ import genesis as gs
 import torch as th
 
 from ...scene import (
-    SceneDirectorInterface,
-    RobotCommanderInterface,
     EntityType,
+    RobotCommanderInterface,
+    SceneDirectorInterface,
     SceneEntity,
 )
 from ...sim import generate_aegis_urdf

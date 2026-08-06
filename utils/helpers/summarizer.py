@@ -2,15 +2,14 @@ import colorsys
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import plotly.graph_objects as go
-from clearml import Task, TaskTypes, Logger
+from clearml import Logger, Task, TaskTypes
+from helpers.data_getter import N_JOBS, DataGetter, SummaryType
 from joblib import Parallel, delayed
-
-from helpers.data_getter import DataGetter, SummaryType, N_JOBS
 
 
 def _add_task_tags(t_id: str, tags: list[str]) -> None:
@@ -99,7 +98,7 @@ class Summarizer:
         self.log.info(f"Summary type(s): {[str(x) for x in self.summary_types]}")
         self.log.info(f"Using `{self.plots_backend}` for plots backend.")
 
-    def _get_x_axis(self) -> Optional[list[float]]:
+    def _get_x_axis(self) -> list[float] | None:
         self.log.info("Obtaining X axis")
 
         x_axis = next(

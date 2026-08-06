@@ -2,7 +2,6 @@ from typing import Optional
 
 import rclpy
 
-
 try:
     from aegis_director.robot_director import RobotDirector
 except ImportError:
@@ -13,7 +12,7 @@ except ImportError:
 if RobotDirector is None:
     raise ImportError
 
-from ..scene import SceneDirectorInterface, EntityType, SceneEntity
+from ..scene import EntityType, SceneDirectorInterface, SceneEntity
 from .robot_commander_ros import RobotCommanderROS
 from .scene_entities_ros import EntityTypeROS
 
@@ -23,7 +22,7 @@ class SceneDirectorROS(SceneDirectorInterface):
 
     def __new__(cls, *args, **kwargs) -> "SceneDirectorROS":
         if cls._instance is None:
-            cls._instance = super(SceneDirectorROS, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __del__(self) -> None:

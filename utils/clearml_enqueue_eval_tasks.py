@@ -11,13 +11,12 @@ import argparse
 import logging
 import sys
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 from clearml import Task
 from clearml.automation import ClearmlJob
+from helpers.logging import setup_logging, timed
 from tqdm import tqdm
-
-from helpers.logging import timed, setup_logging
 
 TASKS_NUM_SAFEGUARD_LIMIT = 100
 TEMPLATE_PREFIX = "TEMPLATE_"
