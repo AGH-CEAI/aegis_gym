@@ -2,12 +2,17 @@ import time
 from collections.abc import Callable
 
 import torch as th
-from aux import load_policy
 from clearml import Task
 from tqdm import tqdm
 
 from aegis_gym.aux import load_policy
-from aegis_gym.config import ConfigManager, LaunchArgs, get_logger, parse_arguments, setup_logger
+from aegis_gym.config import (
+    ConfigManager,
+    LaunchArgs,
+    get_logger,
+    parse_arguments,
+    setup_logger,
+)
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
     Algorithm,

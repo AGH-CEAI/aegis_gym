@@ -13,10 +13,6 @@ from aegis_gym.config.types import (
     ExpConfig,
     Modality,
 )
-from rsl_rl.env import VecEnv
-from tensordict import TensorDict
-
-from .scene.base_scene import BaseScene
 
 from .scene.base_scene import BaseScene
 
