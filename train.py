@@ -5,7 +5,13 @@ import torch as th
 from clearml import Task
 
 from aegis_gym.aux import load_policy
-from aegis_gym.config import ConfigManager, LaunchArgs, get_logger, parse_arguments, setup_logger
+from aegis_gym.config import (
+    ConfigManager,
+    LaunchArgs,
+    get_logger,
+    parse_arguments,
+    setup_logger,
+)
 from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, ReacherEnv
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
@@ -48,7 +54,7 @@ def main():
     cfg: ExpConfig = ConfigManager.get_config()
 
     env = create_env(cfg)
-    logger.info("[> Setup done")
+    logger.info("> Setup done")
 
     if args.calibration_move or args.calibration_move_cartesian:
         logger.info("> Proceeding to calibration movement")

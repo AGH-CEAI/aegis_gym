@@ -2,7 +2,6 @@ from collections.abc import Collection
 from typing import Any
 
 import torch as th
-from config.types import CamerasSetup
 from tensordict import TensorDict
 
 from aegis_gym.config.types import CamerasSetup

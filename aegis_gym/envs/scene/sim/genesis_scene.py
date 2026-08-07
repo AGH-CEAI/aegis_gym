@@ -36,7 +36,7 @@ class GenesisScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
-        logger = get_logger(__name__)
+        logger = get_logger("GenesisScene")
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
@@ -54,7 +54,7 @@ class GenesisScene(BaseScene):
         self._setup_pj_server()
 
         logger.info(
-            f"[GenesisScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
+            f"f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
         )
 
         self._cameras: dict[CameraName, Camera] = {}

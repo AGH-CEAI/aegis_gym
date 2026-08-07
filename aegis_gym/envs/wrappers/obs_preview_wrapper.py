@@ -4,10 +4,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch as th
-from config import get_logger
-from config.types import IMAGE_MODALITIES, DebugCfg, Modality
 from tensordict import TensorDict
 
+from aegis_gym.config import get_logger
 from aegis_gym.config.types import IMAGE_MODALITIES, DebugCfg, Modality
 
 from ..base_env import BaseEnv, ResetReturn, StepReturn

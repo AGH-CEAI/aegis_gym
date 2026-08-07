@@ -2,7 +2,7 @@ import json
 import socket
 import time
 
-from config import get_logger
+from aegis_gym.config import get_logger
 
 
 class PlotJugglerUDP:
@@ -18,5 +18,5 @@ class PlotJugglerUDP:
             data["ts"] = time.time()  # REQUIRED: timestamp
         try:
             self.sock.sendto(json.dumps(data).encode(), (self.host, self.port))
-        except Exception as e:
+        except OSError as e:
             logger.error(f"UDP send error: {e}")

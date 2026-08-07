@@ -2,7 +2,6 @@ from collections.abc import Collection
 
 import torch as th
 import torch.nn.functional as F
-from config.types import IMAGE_MODALITIES, EnvCfg, ImageAugCfg, Modality
 from tensordict import TensorDict
 
 from aegis_gym.config.types import IMAGE_MODALITIES, EnvCfg, ImageAugCfg, Modality

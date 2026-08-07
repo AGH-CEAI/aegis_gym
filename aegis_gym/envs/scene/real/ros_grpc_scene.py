@@ -3,11 +3,8 @@ import time
 from typing import Any
 
 import torch as th
-from config import get_logger
-from config.types import Control, ExpConfig, RobotCfg
-from envs.manipulator import BaseManipulator, RosGrpcManipulator
-from envs.objects import BaseObject, ObjectProperties, ObjectType, RosGrpcObjectsFactory
 
+from aegis_gym.config import get_logger
 from aegis_gym.config.types import Control, ExpConfig, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, RosGrpcManipulator
 from aegis_gym.envs.objects import (

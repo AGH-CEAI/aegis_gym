@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
 import torch as th
-from config.types import CameraModality, CameraName
 from tensordict import TensorDict
 
 from aegis_gym.config.types import CameraModality, CameraName

@@ -4,7 +4,6 @@ from enum import auto
 from typing import Any
 
 import torch as th
-from config.types import Control, RobotCfg
 from strenum import StrEnum
 
 from aegis_gym.config.types import Control, RobotCfg

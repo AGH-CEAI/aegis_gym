@@ -5,8 +5,9 @@ from concurrent.futures import Future
 from typing import Any, Optional
 
 import torch as th
-from config import get_logger
 from tensordict import TensorDict
+
+from aegis_gym.config import get_logger
 
 logger = get_logger(__name__)
 
