@@ -13,7 +13,9 @@ from aegis_gym.envs.objects import BaseMesh, ObjectProperties, ObjectType
 
 from .scene import BaseScene
 
-_ASSET_PATH = Path(__file__).resolve().parent.parent / "assets" / "push_t" / "T_shape.stl"
+_ASSET_PATH = (
+    Path(__file__).resolve().parent.parent / "assets" / "push_t" / "T_shape.stl"
+)
 _SPAWN_CLEARANCE = 1e-3
 _GOAL_MARKER_Z_SCALE = 0.05
 _GOAL_MARKER_LIFT = 1e-3
@@ -158,7 +160,9 @@ class PushTEnv(BaseEnv):
         res = self._cfg_env.tee_mask_resolution
         half_width = max(self._cfg_env.tee_mask_half_width, radius * 1.15)
 
-        lin = (np.arange(res, dtype=np.float64) + 0.5) / res * (2 * half_width) - half_width
+        lin = (np.arange(res, dtype=np.float64) + 0.5) / res * (
+            2 * half_width
+        ) - half_width
         xx, yy = np.meshgrid(lin, lin, indexing="ij")
         grid_pts = np.stack([xx.ravel(), yy.ravel()], axis=-1)
         mask_np = self._points_in_polygon(grid_pts, polygon).reshape(res, res)
