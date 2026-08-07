@@ -6,8 +6,8 @@ from clearml import Task
 
 from aegis_gym.aux import load_policy
 from aegis_gym.config import ConfigManager, LaunchArgs, parse_arguments
-from aegis_gym.config.types import Algorithm, Control, ExpConfig
-from aegis_gym.envs import BaseEnv, ReacherEnv
+from aegis_gym.config.types import Algorithm, Control, EnvType, ExpConfig
+from aegis_gym.envs import BaseEnv, PushTEnv, ReacherEnv
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
@@ -74,7 +74,11 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
     if scene is None:
         raise ValueError("Scene is None")
 
-    return ReacherEnv(scene=scene, cfg=cfg)
+    match cfg.env_cfg.env_type:
+        case EnvType.PUSH_T:
+            return PushTEnv(scene=scene, cfg=cfg)
+        case EnvType.REACHER:
+            return ReacherEnv(scene=scene, cfg=cfg)
 
 
 def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
