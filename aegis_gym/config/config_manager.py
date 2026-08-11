@@ -5,8 +5,8 @@ import torch as th
 import yaml
 from clearml import Task
 
+from ..aux.logging_config import get_logger
 from .args_parser import LaunchArgs, parse_arguments
-from .logging_config import get_logger
 from .types import (
     BCCfg,
     Control,

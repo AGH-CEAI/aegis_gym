@@ -6,7 +6,7 @@ import numpy as np
 import torch as th
 from genesis.vis.camera import Camera
 
-from aegis_gym.config import get_logger
+from aegis_gym.aux import get_logger
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
     CameraLink,

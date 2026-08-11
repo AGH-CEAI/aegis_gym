@@ -9,7 +9,7 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
-from aegis_gym.config import get_logger
+from aegis_gym.aux import get_logger
 from aegis_gym.config.types import CameraName, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, CameraModality
 
