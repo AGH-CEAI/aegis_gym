@@ -9,8 +9,6 @@ from tensordict import TensorDict
 
 from aegis_gym.aux import get_logger
 
-logger = get_logger(__name__)
-
 try:
     from aegis_grpc_client import (
         AegisJointIndex,
@@ -21,7 +19,7 @@ try:
     )
     from aegis_grpc_client import CameraName as RosGrpcCameraName
 except ImportError:
-    logger.info(
+    print(
         "Failed to import aegis_grpc_client. "
         "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
     )
