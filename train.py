@@ -4,12 +4,11 @@ import genesis as gs
 import torch as th
 from clearml import Task
 
-from aegis_gym.aux import get_logger, load_policy
+from aegis_gym.aux import get_logger, load_policy, setup_logger
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
     parse_arguments,
-    setup_logger,
 )
 from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, ReacherEnv

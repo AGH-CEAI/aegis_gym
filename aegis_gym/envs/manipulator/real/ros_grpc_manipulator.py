@@ -61,6 +61,7 @@ class RosGrpcManipulator(BaseManipulator):
         device: th.device | None = None,
         server_address: str = "127.0.0.1:50051",
     ):
+        self.logger = get_logger("GraspEnvROS/ManipulatorROS")
         if hasattr(self, "_initialized") and self._initialized:
             return
 
@@ -113,7 +114,7 @@ class RosGrpcManipulator(BaseManipulator):
         # shutdown() will be called at interpreter exit
         atexit.register(self.shutdown)
         self._initialized = True
-        print("[GraspEnvROS][ManipulatorROS] Finalized initialization")
+        self.logger.info("Finalized initialization")
 
     def _run_loop(self) -> None:
         """Run the event loop forever in a background thread."""
@@ -133,14 +134,14 @@ class RosGrpcManipulator(BaseManipulator):
             return
         self._run_coro(self._robot_client.servo_enable())
         self._servo_enabled = True
-        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
+        self.logger.info("Servo enabled")
 
     def _servo_disable(self) -> None:
         if not self._servo_enabled:
             return
         self._run_coro(self._robot_client.servo_disable())
         self._servo_enabled = False
-        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
+        self.logger.info("Servo disabled")
 
     def shutdown(self) -> None:
         """
@@ -161,7 +162,7 @@ class RosGrpcManipulator(BaseManipulator):
             if hasattr(self, "_robot_client") and self._robot_client.is_connected:
                 self._run_coro(self._robot_client.disconnect())
         except RuntimeError as e:
-            print(f"Error disconnecting robot client: {e}")
+            self.logger.error(f"Error disconnecting robot client: {e}")
 
         try:
             # Stop the event loop
@@ -172,9 +173,11 @@ class RosGrpcManipulator(BaseManipulator):
             if hasattr(self, "_loop_thread") and self._loop_thread.is_alive():
                 self._loop_thread.join(timeout=5.0)
                 if self._loop_thread.is_alive():
-                    print("Warning: Event loop thread did not stop within timeout")
+                    self.logger.warning(
+                        "Warning: Event loop thread did not stop within timeout"
+                    )
         except RuntimeError as e:
-            print(f"Error stopping event loop: {e}")
+            self.logger.error(f"Error stopping event loop: {e}")
         finally:
             # Close the loop
             if hasattr(self, "_loop") and not self._loop.is_closed():
