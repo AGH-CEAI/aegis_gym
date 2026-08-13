@@ -3,7 +3,7 @@ from .sim.genesis_manipulator import GenesisManipulator
 
 try:
     from .real.ros_grpc_manipulator import RosGrpcManipulator
-except Exception as e:
+except (ImportError, TypeError) as e:
     RosGrpcManipulator = None
     print(f"[ImportError] Couldn't import RosGrpcManipulator: {e}")
 
