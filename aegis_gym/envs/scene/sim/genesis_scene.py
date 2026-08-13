@@ -176,7 +176,7 @@ class GenesisScene(BaseScene):
                 fixed=True,
             ),
             surface=gs.surfaces.Default(color=(1.0, 0.96, 0.92)),
-            material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
+            material=gs.materials.Rigid(friction=0.4, coup_friction=0.4),
         )
 
     def _setup_create_cameras(
