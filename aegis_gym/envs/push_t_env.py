@@ -16,8 +16,8 @@ from .scene import BaseScene
 _ASSET_PATH = (
     Path(__file__).resolve().parent.parent / "assets" / "push_t" / "T_shape.stl"
 )
-_SPAWN_CLEARANCE = 1e-3
-_GOAL_MARKER_Z_SCALE = 0.05
+_SPAWN_CLEARANCE = 0.02
+_GOAL_MARKER_Z_SCALE = 0.0025
 _GOAL_MARKER_LIFT = 1e-3
 
 
