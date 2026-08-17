@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot name="tee">
+  <link name="tee_link">
+    <visual>
+      <geometry>
+        <mesh filename="T_shape.stl"/>
+      </geometry>
+      <material name="tee_color">
+        <color rgba="0.02 0.02 0.02 1"/>
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.2 0.05 0.04"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 -0.1 0.02" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.15 0.04"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <origin xyz="0 -0.0375 0.02" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0008"/>
+    </inertial>
+  </link>
+</robot>

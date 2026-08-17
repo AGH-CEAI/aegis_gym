@@ -9,13 +9,13 @@ from tensordict import TensorDict
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
-from aegis_gym.envs.objects import BaseMesh, ObjectProperties, ObjectType
+from aegis_gym.envs.objects import BaseURDF, ObjectProperties, ObjectType
 
 from .scene import BaseScene
 
-_ASSET_PATH = (
-    Path(__file__).resolve().parent.parent / "assets" / "push_t" / "T_shape.stl"
-)
+_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
+_TEE_STL_PATH = _ASSETS_DIR / "T_shape.stl"
+_TEE_URDF_PATH = _ASSETS_DIR / "T_shape.urdf"
 _SPAWN_CLEARANCE = 0.02
 _GOAL_MARKER_Z_SCALE = 0.0025
 _GOAL_MARKER_LIFT = 1e-3
@@ -39,7 +39,7 @@ class PushTEnv(BaseEnv):
         self._scene.build()
         self.manipulator: BaseManipulator = self._scene.get_manipulator()
 
-        self._build_tee_canonical_mask(mesh_path=str(_ASSET_PATH))
+        self._build_tee_canonical_mask(mesh_path=str(_TEE_STL_PATH))
         self._build_goal_transform()
 
         self._init_reward_functions()
@@ -126,11 +126,11 @@ class PushTEnv(BaseEnv):
             collision=True,
             fixed=False,
             color=(0.02, 0.02, 0.02),
-            mesh_path=str(_ASSET_PATH),
+            urdf_path=str(_TEE_URDF_PATH),
             friction=self.tee_friction,
         )
-        self.object: BaseMesh = self._scene.add_entity(
-            entity=ObjectType.MESH, properties=p_tee
+        self.object: BaseURDF = self._scene.add_entity(
+            entity=ObjectType.URDF, properties=p_tee
         )
 
         goal_marker_pose = (
@@ -145,7 +145,7 @@ class PushTEnv(BaseEnv):
             collision=False,
             fixed=True,
             color=(0.8, 0.0, 0.0),
-            mesh_path=str(_ASSET_PATH),
+            mesh_path=str(_TEE_STL_PATH),
             scale=(1.0, 1.0, _GOAL_MARKER_Z_SCALE),
         )
         self._scene.add_entity(entity=ObjectType.MESH, properties=p_goal_marker)
