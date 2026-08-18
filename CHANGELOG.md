@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added an `EnvType` enum and a `--task` flag to select between the `reacher` and `push_t` environments.
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added `MESH` and `URDF` object types to the scene abstraction.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: Introdcued `BaseObjectsFactory` with custom implementations for `RosGrpcObjectsFactory` and `GenesisFactory`.
 - [PR-138](https://github.com/AGH-CEAI/aegis_gym/pull/138) - Added the scripts to autobuild the development toolbox.
 - [PR-136](https://github.com/AGH-CEAI/aegis_gym/pull/136) - AegisGrasp cleanup p.5: introduced `BasePolicyRunner` abstraction for wrapping rsl_rl's `OnPolicyRunner` and the `BehaviorCloningRunner`.
@@ -21,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Grouped environment config fields into shared and task-specific sections for clarity.
 - [PR-145](https://github.com/AGH-CEAI/aegis_gym/pull/145) - AegisGrasp cleanup p.7: Moved files out from the `rsl` folder. Reforatted codebase according to the ruff v0.16.0. Updated main README.md.
 - [PR-144](https://github.com/AGH-CEAI/aegis_gym/pull/144) - Using new strenum literals from `aegis_grpc` client.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: `GraspEnv` was reworked into `ReacherEnv` using all previous abstractions.
@@ -44,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
 
 ### Fixed
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Fixed simulation-only runs crashing on startup because of an unconditional import of the real-hardware gRPC manipulator client, which fails in containers with an incompatible `protobuf` version. The import is now optional.
 - [PR-142](https://github.com/AGH-CEAI/aegis_gym/pull/142) - Fixed `ConfigManager` silently dropping the default `max_iterations` and the `--debug-record-vis-obs` flag, which forced `--max-iterations` on every run and disabled visual observation recording.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Fixed a typo in `genesis_manipulator.py` in `ctrl_gripper_X()` methods which was blocking more than 2 envs from running.
 
