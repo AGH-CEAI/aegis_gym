@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
 
 ### Fixed
+- [PR-150](https://github.com/AGH-CEAI/aegis_gym/pull/150) - Fixed RL training crashing on GPU resource limits at high environment counts by conditionally skipping camera and renderer setup.
 - [PR-149](https://github.com/AGH-CEAI/aegis_gym/pull/149) - Fixed spawning the box with a hardcoded size instead of reading it from the config in Reacher task.
 - [PR-142](https://github.com/AGH-CEAI/aegis_gym/pull/142) - Fixed `ConfigManager` silently dropping the default `max_iterations` and the `--debug-record-vis-obs` flag, which forced `--max-iterations` on every run and disabled visual observation recording.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Fixed a typo in `genesis_manipulator.py` in `ctrl_gripper_X()` methods which was blocking more than 2 envs from running.
