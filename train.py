@@ -4,7 +4,8 @@ import genesis as gs
 import torch as th
 from clearml import Task
 
-from aegis_gym.aux import get_logger, load_policy, setup_logger
+from aegis_gym.aux import load_policy
+from aegis_gym.aux.logging import get_logger, setup_logger
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,

@@ -2,7 +2,7 @@ import json
 import socket
 import time
 
-from aegis_gym.aux import get_logger
+from aegis_gym.aux.logging import get_logger
 
 
 class PlotJugglerUDP:

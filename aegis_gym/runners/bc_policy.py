@@ -4,7 +4,7 @@ import torch as th
 from strenum import StrEnum
 from torch import nn
 
-from aegis_gym.aux import get_logger
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
 
 from .bc_encoders import (

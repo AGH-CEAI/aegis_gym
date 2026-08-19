@@ -5,7 +5,8 @@ import torch as th
 from clearml import Task
 from tqdm import tqdm
 
-from aegis_gym.aux import get_logger, load_policy, setup_logger
+from aegis_gym.aux import load_policy
+from aegis_gym.aux.logging import get_logger, setup_logger
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,

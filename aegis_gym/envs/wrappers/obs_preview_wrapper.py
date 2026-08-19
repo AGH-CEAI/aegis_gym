@@ -6,7 +6,7 @@ import numpy as np
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.aux import get_logger
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import IMAGE_MODALITIES, DebugCfg, Modality
 
 from ..base_env import BaseEnv, ResetReturn, StepReturn
