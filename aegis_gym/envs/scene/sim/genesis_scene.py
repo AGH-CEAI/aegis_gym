@@ -510,4 +510,22 @@ class GenesisScene(BaseScene):
         # data["ee/orientation/pitch"] = float(pitch)
         # data["ee/orientation/yaw"] = float(yaw)
 
+        wrench = self.manipulator.get_ft_wrench()
+
+        # Plot only env 0 for now
+        w = wrench[0]
+
+        data["ft/force/x"] = float(w[0])
+        data["ft/force/y"] = float(w[1])
+        data["ft/force/z"] = float(w[2])
+
+        data["ft/torque/x"] = float(w[3])
+        data["ft/torque/y"] = float(w[4])
+        data["ft/torque/z"] = float(w[5])
+
+        # Joint Torque last sensor
+        joint_torque = self.manipulator.get_joint_torque_sensor()
+        jt = joint_torque[0]
+        data["joint_torque/last_joint"] = float(jt[0])
+
         self._pj.send(data)

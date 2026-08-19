@@ -8,6 +8,7 @@ FROM ${TORCH_BASE_IMAGE} as simulation
 ARG AEGIS_GYM_TAG
 ARG CEAI_RSL_RL_TAG
 ARG AEGIS_ROS_TAG
+ARG PLOTJUGGLER_VERSION=3.17.2
 
 LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
 LABEL aegis.image.type="development"
@@ -25,6 +26,7 @@ COPY scripts/install_simulation.sh /tmp/install_simulation.sh
 
 RUN CEAI_RSL_RL_TAG="${CEAI_RSL_RL_TAG}" \
     AEGIS_GYM_TAG="${AEGIS_GYM_TAG}" \
+    PLOTJUGGLER_VERSION="${PLOTJUGGLER_VERSION}" \
     bash /tmp/install_simulation.sh \
     && rm -f /tmp/install_simulation.sh
 

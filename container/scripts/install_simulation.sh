@@ -24,7 +24,41 @@ apt-get update \
         mesa-utils \
         mesa-vulkan-drivers \
         vulkan-tools \
-        xvfb
+        xvfb \
+        qtbase5-dev \
+        libqt5svg5-dev \
+        libqt5websockets5-dev \
+        libqt5serialport5-dev \
+        libqt5opengl5-dev \
+        libqt5x11extras5-dev \
+        libprotoc-dev libzmq3-dev \
+        liblz4-dev \
+        libzstd-dev python3-dev
+
+PLOTJUGGLER_APPIMAGE="PlotJuggler-${PLOTJUGGLER_VERSION}-x86_64.AppImage"
+
+wget \
+    -O "/tmp/${PLOTJUGGLER_APPIMAGE}" \
+    "https://github.com/PlotJuggler/PlotJuggler/releases/download/${PLOTJUGGLER_VERSION}/${PLOTJUGGLER_APPIMAGE}"
+
+chmod +x "/tmp/${PLOTJUGGLER_APPIMAGE}"
+
+mkdir -p /opt/plotjuggler
+
+cd /opt/plotjuggler
+
+"/tmp/${PLOTJUGGLER_APPIMAGE}" --appimage-extract
+
+cat > /usr/local/bin/plotjuggler <<'EOF'
+#!/usr/bin/env bash
+exec /opt/plotjuggler/squashfs-root/AppRun "$@"
+EOF
+
+chmod +x /usr/local/bin/plotjuggler
+
+rm -f "/tmp/${PLOTJUGGLER_APPIMAGE}"
+
+cd /ws
 
 git clone \
     --depth 1 \

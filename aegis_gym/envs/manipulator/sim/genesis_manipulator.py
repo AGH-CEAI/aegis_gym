@@ -72,6 +72,19 @@ class GenesisManipulator(BaseManipulator):
         self._ik_method = cfg_robot.ik_method
 
         self._setup_config()
+
+        finger_link = self._robot_entity.get_link("robotiq_hande_right_finger")
+
+        self._ft_sensor = self._gs_scene.add_sensor(
+            gs.sensors.ContactForce(
+                entity_idx=self._robot_entity.idx,
+                link_idx_local=finger_link.idx_local,
+                draw_debug=True,
+            )
+        )
+
+        self._ft_dof_idx = self._robot_entity.n_dofs - 1
+
         self._init_pd_tensors()
 
     def _resolve_aegis_urdf(self) -> Path:
@@ -361,7 +374,15 @@ class GenesisManipulator(BaseManipulator):
 
     def get_ft_wrench(self) -> th.Tensor:
         # TODO(issue#126) get the F\T sensing from genesis
-        raise NotImplementedError()
+        # raise NotImplementedError()
+        force = self._ft_sensor.read()
+
+        torque = th.zeros_like(force)
+
+        return th.cat([force, torque], dim=-1)
+
+    def get_joint_torque_sensor(self) -> th.Tensor:
+        return self._robot_entity.get_dofs_force(dofs_idx_local=[self._ft_dof_idx])
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
