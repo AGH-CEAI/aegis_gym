@@ -85,6 +85,13 @@ class GenesisManipulator(BaseManipulator):
 
         self._ft_dof_idx = self._robot_entity.n_dofs - 1
 
+        self._joint_torque_sensor = self._gs_scene.add_sensor(
+            gs.sensors.JointTorque(
+                entity_idx=self._robot_entity.idx,
+                dofs_idx_local=[self._ft_dof_idx],
+            )
+        )
+
         self._init_pd_tensors()
 
     def _resolve_aegis_urdf(self) -> Path:
@@ -382,7 +389,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([force, torque], dim=-1)
 
     def get_joint_torque_sensor(self) -> th.Tensor:
-        return self._robot_entity.get_dofs_force(dofs_idx_local=[self._ft_dof_idx])
+        return self._joint_torque_sensor.read()
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()

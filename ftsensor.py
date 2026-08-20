@@ -170,20 +170,14 @@ def ft_sensor_playground(env: BaseEnv, cfg: ExpConfig) -> None:
         x = env.manipulator.get_tcp_pose()[0, 0].item()
 
         if x < start_x + 0.40:
-            action[:, 0] = 1.0  # forward
+            action[:, 0] = 1.0
         else:
-            action[:, 2] = -0.1  # slowly down
+            action[:, 2] = -0.1
 
         env.manipulator.ctrl_apply_vel_action(action, open_gripper=True)
         env._scene.step()
 
-        # contact_wrench = env.manipulator.get_ft_wrench()
-        # joint_torque = env.manipulator.get_joint_torque_sensor()
-
-        # print(
-        #     f"ContactForce: {contact_wrench[0].cpu().numpy()} | "
-        #     f"JointTorque: {joint_torque[0].cpu().numpy()}"
-        # )
+        env.manipulator.get_joint_torque_sensor()
 
 
 if __name__ == "__main__":
