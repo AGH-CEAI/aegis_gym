@@ -1,4 +1,4 @@
-from aegis_gym.logging.logging_config import (
+from aegis_gym.aux.logging.logging_config import (
     get_logger,
     setup_logger,
 )

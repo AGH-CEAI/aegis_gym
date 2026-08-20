@@ -5,7 +5,7 @@ import torch as th
 import yaml
 from clearml import Task
 
-from ..logging import get_logger
+from ..aux.logging import get_logger
 from .args_parser import LaunchArgs, parse_arguments
 from .types import (
     BCCfg,

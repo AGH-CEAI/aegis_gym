@@ -4,6 +4,7 @@ from typing import Any
 
 import torch as th
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import Control, ExpConfig, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, RosGrpcManipulator
 from aegis_gym.envs.objects import (
@@ -12,7 +13,6 @@ from aegis_gym.envs.objects import (
     ObjectType,
     RosGrpcObjectsFactory,
 )
-from aegis_gym.logging import get_logger
 
 from ..base_scene import BaseScene
 

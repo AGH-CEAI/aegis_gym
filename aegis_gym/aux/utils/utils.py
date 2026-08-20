@@ -7,10 +7,10 @@ from clearml import InputModel, Model, Task
 from natsort import natsorted
 from torch import nn
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config import LaunchArgs
 from aegis_gym.config.types import Algorithm, Checkpoint, ExpConfig
 from aegis_gym.envs import BaseEnv
-from aegis_gym.logging import get_logger
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
 

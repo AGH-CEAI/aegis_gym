@@ -1,4 +1,4 @@
-from aegis_gym.logging import get_logger
+from aegis_gym.aux.logging import get_logger
 
 from .base_scene import BaseScene
 from .sim.genesis_scene import GenesisScene

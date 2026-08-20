@@ -5,7 +5,8 @@ import torch as th
 from clearml import Task
 from tqdm import tqdm
 
-from aegis_gym.aux import load_policy
+from aegis_gym.aux.logging import get_logger, setup_logger
+from aegis_gym.aux.utils import load_policy
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -20,7 +21,6 @@ from aegis_gym.config.types import (
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
-from aegis_gym.logging import get_logger, setup_logger
 from train import create_env, init_clearml_task
 
 
