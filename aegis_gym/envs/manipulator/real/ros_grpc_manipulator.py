@@ -7,7 +7,7 @@ from typing import Any, Optional
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.aux.logging import get_logger
+from aegis_gym.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -5,7 +5,6 @@ import torch as th
 from clearml import Task
 
 from aegis_gym.aux import load_policy
-from aegis_gym.aux.logging import get_logger, setup_logger
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -15,6 +14,7 @@ from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, ReacherEnv
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
+from aegis_gym.logging import get_logger, setup_logger
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
 

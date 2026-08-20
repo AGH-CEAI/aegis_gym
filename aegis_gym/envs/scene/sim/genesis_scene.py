@@ -6,7 +6,6 @@ import numpy as np
 import torch as th
 from genesis.vis.camera import Camera
 
-from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
     CameraLink,
@@ -26,6 +25,7 @@ from aegis_gym.envs.objects import (
     ObjectType,
 )
 from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
+from aegis_gym.logging import get_logger
 
 from ..base_scene import BaseScene, RandomizationType
 
