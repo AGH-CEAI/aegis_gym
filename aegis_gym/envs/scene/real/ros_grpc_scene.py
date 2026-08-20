@@ -36,7 +36,7 @@ class RosGrcpScene(BaseScene):
 
         self._cfg_env = cfg_env
         self._cfg_dr = cfg_dr
-        self.disable_vision = cfg.args.disable_vision
+        self.disable_cameras = cfg.args.disable_cameras
         self._extract_config()
 
         print(
@@ -93,7 +93,7 @@ class RosGrcpScene(BaseScene):
             num_envs=1,
             robot_cfg=cfg,
             policy_dt=self.policy_dt,
-            disable_vision=self.disable_vision,
+            disable_cameras=self.disable_cameras,
             device=self.device,
         )
 
