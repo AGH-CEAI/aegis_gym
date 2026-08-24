@@ -77,7 +77,11 @@ def setup_logger(
 
 def get_logger(name: str | None = None) -> logging.Logger:
 
-    if name is None or name == APP_LOGGER_NAME or name.startswith(f"{APP_LOGGER_NAME}."):
+    if (
+        name is None
+        or name == APP_LOGGER_NAME
+        or name.startswith(f"{APP_LOGGER_NAME}.")
+    ):
         logger_name = name
     else:
         logger_name = f"{APP_LOGGER_NAME}.{name}"

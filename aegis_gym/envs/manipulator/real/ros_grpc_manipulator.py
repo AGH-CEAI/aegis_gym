@@ -173,9 +173,7 @@ class RosGrpcManipulator(BaseManipulator):
             if hasattr(self, "_loop_thread") and self._loop_thread.is_alive():
                 self._loop_thread.join(timeout=5.0)
                 if self._loop_thread.is_alive():
-                    self.logger.warning(
-                        "Event loop thread did not stop within timeout"
-                    )
+                    self.logger.warning("Event loop thread did not stop within timeout")
         except RuntimeError as e:
             self.logger.error(f"Error stopping event loop: {e}")
         finally:
