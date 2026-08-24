@@ -1,4 +1,12 @@
 <?xml version="1.0"?>
+<!--
+Collision uses two box primitives instead of STL, because loading the mesh
+with CoACD convex decomposition made the block randomly jump.
+
+Visual still uses STL because the visual geometry should faithfully represent
+the real object. With simple primitives you get visible seams where the shapes meet,
+so the part looks like two separate blocks stuck together instead of one solid piece.
+-->
 <robot name="tee">
   <link name="tee_link">
     <visual>

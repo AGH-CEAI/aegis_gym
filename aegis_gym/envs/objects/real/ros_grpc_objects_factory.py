@@ -12,6 +12,7 @@ class RosGrpcObjectsFactory(BaseObjectsFactory):
     def create_box(self, properties: ObjectProperties) -> RosGrpcBox:
         return RosGrpcBox(properties=properties, device=self.device)
 
+    # TODO(issue#151): Implement mesh/URDF object support on the real ROS/gRPC hardware bridge
     def create_mesh(self, properties: ObjectProperties) -> BaseMesh:
         raise NotImplementedError(
             "Mesh objects are not supported on the real ROS/gRPC hardware bridge."
