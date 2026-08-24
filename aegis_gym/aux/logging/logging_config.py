@@ -75,8 +75,9 @@ def setup_logger(
     _INITIALIZED = True
 
 
-def get_logger(name: str) -> logging.Logger:
-    if name == APP_LOGGER_NAME or name.startswith(f"{APP_LOGGER_NAME}."):
+def get_logger(name: str | None = None) -> logging.Logger:
+
+    if name is None or name == APP_LOGGER_NAME or name.startswith(f"{APP_LOGGER_NAME}."):
         logger_name = name
     else:
         logger_name = f"{APP_LOGGER_NAME}.{name}"

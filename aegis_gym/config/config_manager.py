@@ -57,7 +57,7 @@ class ConfigManager:
         device: th.device | None,
         task: Task | None,
     ) -> ExpConfig:
-        logger = get_logger("Initialize config")
+        logger = get_logger("InitializeConfig")
         if not isinstance(argv, LaunchArgs):
             args: LaunchArgs = parse_arguments(
                 argv=argv, extra_argparser=extra_argparser

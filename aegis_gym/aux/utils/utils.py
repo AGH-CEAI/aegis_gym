@@ -80,7 +80,7 @@ def load_rl_policy(
             # if ANY kind of extra modificiation is performed, the ConfigManager should be involved
             # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
             logger.warning(
-                f"WARNING: There is no current option to overwrite the RL config by the configuration from task: {clearml_task_id}."
+                f"There is no current option to overwrite the RL config by the configuration from task: {clearml_task_id}."
             )
         else:
             logger.info(
@@ -131,7 +131,7 @@ def load_bc_policy(
         if cfg_from_clearml:
             # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
             logger.warning(
-                f"WARNING: There is no current option to overwrite the BC config by the configuration from task: {clearml_task_id}."
+                f"There is no current option to overwrite the BC config by the configuration from task: {clearml_task_id}."
             )
         else:
             logger.info(
