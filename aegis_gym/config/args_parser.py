@@ -39,7 +39,7 @@ class LaunchArgs:
     calibration_steps: int | None
 
     visualize_camera: bool | None
-    disable_vision: bool | None
+    disable_cameras: bool | None
 
     debug_enable: bool | None
     debug_preview_vis_obs: bool | None
@@ -114,7 +114,7 @@ def parse_arguments(
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)
     p.add_argument("--visualize-camera", action="store_true", default=False)
-    p.add_argument("--disable-vision", action="store_true", default=False)
+    p.add_argument("--disable-cameras", action="store_true", default=False)
 
     p.add_argument(
         "--debug-enable",
@@ -197,7 +197,7 @@ def parse_arguments(
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,
         visualize_camera=args.visualize_camera,
-        disable_vision=args.disable_vision,
+        disable_cameras=args.disable_cameras,
         debug_enable=args.debug_enable,
         debug_preview_vis_obs=args.debug_vis_preview,
         debug_record_vis_obs=args.debug_record_vis_obs,

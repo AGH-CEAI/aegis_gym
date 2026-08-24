@@ -8,6 +8,7 @@ from genesis.vis.camera import Camera
 
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
+    Algorithm,
     CameraLink,
     CameraModality,
     CameraName,
@@ -50,6 +51,11 @@ class GenesisScene(BaseScene):
 
         self._enable_pj_logging = cfg.args.enable_plotjuggler
         self._setup_pj_server()
+        match cfg.args.algorithm:
+            case Algorithm.RL:
+                self.use_cameras = cfg.rl_cfg.use_cameras
+            case Algorithm.BC:
+                self.use_cameras = cfg.bc_cfg.use_cameras
 
         print(
             f"[GenesisScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
@@ -114,14 +120,20 @@ class GenesisScene(BaseScene):
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
         self._setup_create_plane(self.gs_scene)
         self._setup_create_table(self.gs_scene, True)
-        self._setup_create_cameras(
-            self.gs_scene,
-            self.cameras_setup,
-            cfg.args.debug_preview_vis_obs,
-        )
-        self._setup_create_lighting(self.gs_scene)
+        if self.use_cameras:
+            self._setup_create_cameras(
+                self.gs_scene,
+                self.cameras_setup,
+                cfg.args.debug_preview_vis_obs,
+            )
+            self._setup_create_lighting(self.gs_scene)
 
     def _setup_create_scene(self, env_cfg: EnvCfg, show_viewer: bool) -> gs.Scene:
+        renderer = (
+            gs.options.renderers.BatchRenderer(use_rasterizer=env_cfg.use_rasterizer)
+            if self.use_cameras
+            else gs.options.renderers.Rasterizer()
+        )
         return gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=self.policy_dt,
@@ -148,9 +160,7 @@ class GenesisScene(BaseScene):
                 camera_fov=40,
             ),
             profiling_options=gs.options.ProfilingOptions(show_FPS=False),
-            renderer=gs.options.renderers.BatchRenderer(
-                use_rasterizer=env_cfg.use_rasterizer,
-            ),
+            renderer=renderer,
             show_viewer=show_viewer,
         )
 
@@ -356,7 +366,8 @@ class GenesisScene(BaseScene):
             n_envs=self.num_envs
             # env_spacing=(1.0, 1.0),
         )
-        self._setup_attach_cameras()
+        if self.use_cameras:
+            self._setup_attach_cameras()
         self.manipulator.set_joints_pd_gains()
 
     def _get_manipulator(self) -> BaseManipulator:

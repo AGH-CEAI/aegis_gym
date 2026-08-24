@@ -44,6 +44,7 @@ class RLCfg(BaseCfg):
     num_steps_per_env: int
     max_iterations: int
     seed: int
+    use_cameras: bool
     obs_groups: dict
     save_interval: int
     best_model_skip_iters: int
