@@ -11,6 +11,7 @@ from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.envs.objects import BaseURDF, ObjectProperties, ObjectType
 
+from .registry import register_env
 from .scene import BaseScene
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
@@ -21,6 +22,7 @@ _GOAL_MARKER_Z_SCALE = 0.0025
 _GOAL_MARKER_LIFT = 1e-3
 
 
+@register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
 

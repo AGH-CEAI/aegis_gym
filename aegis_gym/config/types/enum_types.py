@@ -15,11 +15,6 @@ class Control(StrEnum):
     ROS = "ros"
 
 
-class EnvType(StrEnum):
-    REACHER = "reacher"
-    PUSH_T = "push_t"
-
-
 class CamerasSetup(StrEnum):
     DEFAULT = "default"
     SCENE_DUAL = "scene_dual"

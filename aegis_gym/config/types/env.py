@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 
 from .base_cfg import BaseCfg
-from .enum_types import CamerasSetup, EnvType
+from .enum_types import CamerasSetup
 
 
 @dataclass(slots=True)
 class EnvCfg(BaseCfg):
-    env_type: EnvType
+    env_type: str
     num_envs: int
     num_obs: int
     num_actions: int

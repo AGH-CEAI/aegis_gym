@@ -22,7 +22,6 @@ from .enum_types import (
     CamerasSetup,
     Checkpoint,
     Control,
-    EnvType,
     Modality,
 )
 from .env import EnvCfg
@@ -53,7 +52,6 @@ __all__ = [
     "DebugCfg",
     "DomainRandomizationCfg",
     "EnvCfg",
-    "EnvType",
     "ExpConfig",
     "FusionCfg",
     "ImageAugCfg",

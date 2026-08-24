@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .types import Algorithm, Control, EnvType
+from .types import Algorithm, Control
 
 
 @dataclass(slots=True, frozen=True)
@@ -33,7 +33,7 @@ class LaunchArgs:
 
     enforce_current_config: bool | None
     control_type: Control | None
-    task: EnvType | None
+    task: str | None
 
     calibration_move: list | None
     calibration_move_cartesian: list | None
@@ -111,7 +111,7 @@ def parse_arguments(
     p.add_argument(
         "--control", type=Control, choices=list(Control), default=Control.SIM
     )
-    p.add_argument("--task", type=EnvType, choices=list(EnvType), default=None)
+    p.add_argument("--task", type=str, default=None)
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)

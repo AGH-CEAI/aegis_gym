@@ -9,9 +9,11 @@ from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.envs.objects import BaseBox, ObjectProperties, ObjectType
 
+from .registry import register_env
 from .scene import BaseScene
 
 
+@register_env("reacher")
 class ReacherEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
 
