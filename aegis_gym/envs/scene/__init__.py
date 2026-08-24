@@ -9,7 +9,7 @@ try:
     from .real.ros_grpc_scene import RosGrcpScene
 except ImportError as e:
     RosGrpcScene = None
-    logger.error(f"[ImportError] Couldn't import GraspEnvRos: {e}")
+    logger.error(f"Import error: Couldn't import GraspEnvRos: {e}")
 
 __all__ = [
     "BaseScene",
