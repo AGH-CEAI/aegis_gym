@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-147](https://github.com/AGH-CEAI/aegis_gym/pull/147) - Replace print statements with logging.
+- [PR-147](https://github.com/AGH-CEAI/aegis_gym/pull/147) - Replace print statements with logging. Divide aux section ingo sub-packages (e.g. logging)
 - [PR-145](https://github.com/AGH-CEAI/aegis_gym/pull/145) - AegisGrasp cleanup p.7: Moved files out from the `rsl` folder. Reforatted codebase according to the ruff v0.16.0. Updated main README.md.
 - [PR-144](https://github.com/AGH-CEAI/aegis_gym/pull/144) - Using new strenum literals from `aegis_grpc` client.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: `GraspEnv` was reworked into `ReacherEnv` using all previous abstractions.
