@@ -75,7 +75,7 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
         scene = GenesisScene(cfg=cfg, device=cfg.get_device())
     if control_type == Control.ROS:
         if RosGrcpScene is None:
-            logger.error(">>>> ERROR: Can not import RosGrcpScene. \n>>>> Exiting")
+            logger.error("Can not import RosGrcpScene. Exiting")
             sys.exit()
         scene = RosGrcpScene(cfg=cfg, device=cfg.get_device())
 
