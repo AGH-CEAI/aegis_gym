@@ -29,7 +29,7 @@ class EnvCfg(BaseCfg):
     visualize_cell: bool
     # TODO(issue#111) consider changing camera setup to cameras_num
     cameras_setup: CamerasSetup
-    reward_scales: dict
+    reacher_reward_scales: dict
     # Push-T task
     tee_spawnbox_xlength: float
     tee_spawnbox_ylength: float

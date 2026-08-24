@@ -81,7 +81,7 @@ class ReacherEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.reward_scales
+        self.reward_scales = self._cfg_env.reacher_reward_scales
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
