@@ -53,14 +53,14 @@ def main():
     cfg: ExpConfig = ConfigManager.get_config()
 
     env = create_env(cfg)
-    logger.info("> Setup done")
+    logger.info("Setup done")
 
     if args.calibration_move or args.calibration_move_cartesian:
-        logger.info("> Proceeding to calibration movement")
+        logger.info("Proceeding to calibration movement")
         calibration_movment(env, cfg)
         return
 
-    logger.info("> Proceeding training")
+    logger.info("Proceeding training")
     train_runner(env=env, cfg=cfg)
 
 
@@ -166,7 +166,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 init_at_random_ep_len=True,
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
-    logger.info("> Training finished.")
+    logger.info("Training finished.")
 
 
 if __name__ == "__main__":
@@ -176,4 +176,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("\n\n\n> Exiting (invoked by user)")
+        logger.info("\n\n\nExiting (invoked by user)")

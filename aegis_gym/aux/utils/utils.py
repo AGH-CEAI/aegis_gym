@@ -13,6 +13,8 @@ from aegis_gym.config.types import Algorithm, Checkpoint, ExpConfig
 from aegis_gym.envs import BaseEnv
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
+_LOGGER_NAME = "PolicyLoader"
+
 
 def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> Callable:
     args: LaunchArgs = cfg.args
@@ -50,7 +52,7 @@ def load_rl_policy(
     clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
-    logger = get_logger("Policy Loader")
+    logger = get_logger(_LOGGER_NAME)
     logger.info("Resolving RL checkpoint")
     log_dir = cfg.logger_cfg.local_log_dir
     last_ckpt = resolve_checkpoint(
@@ -106,7 +108,7 @@ def load_bc_policy(
     clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
 ) -> nn.Module:
-    logger = get_logger("Policy Loader")
+    logger = get_logger(_LOGGER_NAME)
     logger.info("Resolving BC checkpoint")
     last_ckpt = resolve_checkpoint(
         exp_name=exp_name,
@@ -156,7 +158,7 @@ def resolve_checkpoint(
     clearml_artifact_name: str = "model",
     local_checkpoint_pattern: str = r"model_\d+\.pt",
 ) -> Path:
-    logger = get_logger("Policy Loader")
+    logger = get_logger(_LOGGER_NAME)
     logger.info("Resolving method and path to load the policy model")
 
     if clearml_model_id is not None:
@@ -193,7 +195,7 @@ def get_latest_clearml_checkpoint(
     List all artifacts matching a prefix pattern (e.g. 'model_100',
     'model_checkpoint_200') and return the local path of the most recent one.
     """
-    logger = get_logger("Policy Loader")
+    logger = get_logger(_LOGGER_NAME)
     logger.info(
         f"Loading the latest checkpoint from ClearML task ID: {clearml_task_id}"
     )
@@ -253,7 +255,7 @@ def get_bc_checkpoints(
     """
     Returns sorted list of all BC checkpoints.
     """
-    logger = get_logger("Policy Loader")
+    logger = get_logger(_LOGGER_NAME)
     if clearml_model_id is not None:
         logger.info(f"Loading from ClearML model {clearml_model_id}")
         clearml_model = Model(model_id=clearml_model_id)

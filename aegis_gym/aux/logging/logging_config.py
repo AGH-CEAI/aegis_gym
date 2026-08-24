@@ -6,7 +6,7 @@ from typing import ClassVar
 _INITIALIZED = False
 
 DEFAULT_CONSOLE_LEVEL = logging.INFO
-APP_LOGGER_NAME = "app_logger"
+APP_LOGGER_NAME = "aegis_gym"
 
 
 class ColoredFormatter(logging.Formatter):
