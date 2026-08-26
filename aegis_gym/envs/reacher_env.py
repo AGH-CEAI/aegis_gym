@@ -86,7 +86,7 @@ class ReacherEnv(BaseEnv):
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
         p = ObjectProperties(
-            dims=(0.4, 0.4, 0.4),
+            dims=tuple(self.box_size),
             pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
             collision=True,
             fixed=False,

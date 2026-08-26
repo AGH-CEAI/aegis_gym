@@ -57,7 +57,7 @@ class RosGrpcManipulator(BaseManipulator):
         num_envs: int,
         robot_cfg: RobotCfg,
         policy_dt: float,
-        disable_vision: bool = False,
+        disable_cameras: bool = False,
         device: th.device | None = None,
         server_address: str = "127.0.0.1:50051",
     ):
@@ -70,7 +70,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._num_envs = num_envs
         self._cfg_robot = robot_cfg
         self._policy_dt = policy_dt
-        self._disable_vision = disable_vision
+        self._disable_cameras = disable_cameras
 
         self.pt = PoseTransformUtils()
 
@@ -195,7 +195,7 @@ class RosGrpcManipulator(BaseManipulator):
             device=self.device,
         )
         # Convert BGR into RGB and np.ndarray into th.Tensor
-        if not self._disable_vision:
+        if not self._disable_cameras:
             self._vision = TensorDict(
                 {
                     k: th.from_numpy(v[[2, 1, 0], :, :])

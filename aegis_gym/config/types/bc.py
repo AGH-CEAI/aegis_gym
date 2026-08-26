@@ -58,4 +58,5 @@ class BCCfg(BaseCfg):
     save_recon_freq: int
     save_recons: bool
     use_teacher_mixing: bool
+    use_cameras: bool
     policy: PolicyBCCfg
