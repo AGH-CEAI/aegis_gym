@@ -14,17 +14,17 @@ from aegis_gym.envs.objects import BaseURDF, ObjectProperties, ObjectType
 from .registry import register_env
 from .scene import BaseScene
 
-_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
-_TEE_STL_PATH = _ASSETS_DIR / "T_shape.stl"
-_TEE_URDF_PATH = _ASSETS_DIR / "T_shape.urdf"
-_SPAWN_CLEARANCE = 0.02
-_GOAL_MARKER_Z_SCALE = 0.0025
-_GOAL_MARKER_LIFT = 1e-3
-
 
 @register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+
+    _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
+    _TEE_STL_PATH = _ASSETS_DIR / "T_shape.stl"
+    _TEE_URDF_PATH = _ASSETS_DIR / "T_shape.urdf"
+    _SPAWN_CLEARANCE = 0.02
+    _GOAL_MARKER_Z_SCALE = 0.0025
+    _GOAL_MARKER_LIFT = 1e-3
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
@@ -41,33 +41,12 @@ class PushTEnv(BaseEnv):
         self._scene.build()
         self.manipulator: BaseManipulator = self._scene.get_manipulator()
 
-        self._build_tee_canonical_mask(mesh_path=str(_TEE_STL_PATH))
+        self._build_tee_canonical_mask(mesh_path=str(self._TEE_STL_PATH))
         self._build_goal_transform()
 
         self._init_reward_functions()
         self._init_buffers()
         self.reset()
-
-    def get_cfg_as_dict(self) -> dict:
-        return self._cfg_env.as_dict()
-
-    def get_num_envs(self) -> int:
-        return self.num_envs
-
-    def _observe_tcp_pose(self) -> th.Tensor:
-        return self.manipulator.get_tcp_pose()
-
-    def _observe_object_pose(self) -> th.Tensor:
-        return self.object.get_pose()
-
-    def _observe_camera_scene(self) -> th.Tensor:
-        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_SCENE)
-
-    def _observe_camera_tool_left(self) -> th.Tensor:
-        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_LEFT)
-
-    def _observe_camera_tool_right(self) -> th.Tensor:
-        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_RIGHT)
 
     def _extract_config(self) -> None:
         # TODO(issue##117) redesign the whole camera preview system
@@ -106,6 +85,21 @@ class PushTEnv(BaseEnv):
         self.spawnbox_xoffset = self._cfg_env.tee_spawnbox_xoffset
         self.spawnbox_yoffset = self._cfg_env.tee_spawnbox_yoffset
 
+    def _observe_tcp_pose(self) -> th.Tensor:
+        return self.manipulator.get_tcp_pose()
+
+    def _observe_object_pose(self) -> th.Tensor:
+        return self.object.get_pose()
+
+    def _observe_camera_scene(self) -> th.Tensor:
+        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_SCENE)
+
+    def _observe_camera_tool_left(self) -> th.Tensor:
+        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_LEFT)
+
+    def _observe_camera_tool_right(self) -> th.Tensor:
+        return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_RIGHT)
+
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
 
@@ -128,7 +122,7 @@ class PushTEnv(BaseEnv):
             collision=True,
             fixed=False,
             color=(0.02, 0.02, 0.02),
-            urdf_path=str(_TEE_URDF_PATH),
+            urdf_path=str(self._TEE_URDF_PATH),
             friction=self.tee_friction,
         )
         self.object: BaseURDF = self._scene.add_entity(
@@ -138,7 +132,7 @@ class PushTEnv(BaseEnv):
         goal_marker_pose = (
             self.goal_pose_tuple[0],
             self.goal_pose_tuple[1],
-            self.goal_pose_tuple[2] + _GOAL_MARKER_LIFT,
+            self.goal_pose_tuple[2] + self._GOAL_MARKER_LIFT,
             *self.goal_pose_tuple[3:],
         )
         p_goal_marker = ObjectProperties(
@@ -147,8 +141,8 @@ class PushTEnv(BaseEnv):
             collision=False,
             fixed=True,
             color=(0.8, 0.0, 0.0),
-            mesh_path=str(_TEE_STL_PATH),
-            scale=(1.0, 1.0, _GOAL_MARKER_Z_SCALE),
+            mesh_path=str(self._TEE_STL_PATH),
+            scale=(1.0, 1.0, self._GOAL_MARKER_Z_SCALE),
         )
         self._scene.add_entity(entity=ObjectType.MESH, properties=p_goal_marker)
 
@@ -233,40 +227,6 @@ class PushTEnv(BaseEnv):
         rot[:, 1, 0] = sin_a
         return rot
 
-    def _pseudo_render_intersection(self) -> th.Tensor:
-        obj_pose = self.object.get_pose()
-        tee_to_world = self._quat_to_zrot(obj_pose[:, 3:])
-        tee_to_world[:, 0:2, 2] = obj_pose[:, 0:2]
-
-        tee_to_goal = th.matmul(self._world_to_goal_trans.unsqueeze(0), tee_to_world)
-        tees_in_goal = th.matmul(tee_to_goal, self._homo_uv.unsqueeze(0))
-        tees_in_goal_xy = tees_in_goal[:, :2, :] / tees_in_goal[:, 2:3, :]
-
-        tee_xy = tees_in_goal_xy[:, :, self._tee_mask_flat]  # [N, 2, K]
-
-        res = self._mask_res
-        idx = th.floor((tee_xy + self._mask_half_width) * self._px_per_meter).long()
-        valid = (
-            (idx[:, 0, :] >= 0)
-            & (idx[:, 0, :] < res)
-            & (idx[:, 1, :] >= 0)
-            & (idx[:, 1, :] < res)
-        )
-
-        n, _, k = idx.shape
-        batch_idx = th.arange(n, device=self.device).view(-1, 1).expand(-1, k)
-
-        final_render = th.zeros(n, res, res, dtype=th.bool, device=self.device)
-        valid_flat = valid.reshape(-1)
-        final_render[
-            batch_idx.reshape(-1)[valid_flat],
-            idx[:, 0, :].reshape(-1)[valid_flat],
-            idx[:, 1, :].reshape(-1)[valid_flat],
-        ] = True
-
-        intersection = (final_render & self._tee_mask.unsqueeze(0)).sum(dim=(-1, -2))
-        return intersection.float() / self._goal_area
-
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
         self.reward_functions, self.episode_sums = {}, {}
@@ -336,7 +296,7 @@ class PushTEnv(BaseEnv):
             + self.spawnbox_yoffset
         )
         random_z = th.ones(num_reset, device=self.device) * (
-            self.table_top_z + _SPAWN_CLEARANCE
+            self.table_top_z + self._SPAWN_CLEARANCE
         )
         random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
@@ -380,6 +340,40 @@ class PushTEnv(BaseEnv):
         obs = self.get_observations()
         dones = self.reset_buf
         return StepReturn(obs, reward, dones, self.extras)
+
+    def _pseudo_render_intersection(self) -> th.Tensor:
+        obj_pose = self.object.get_pose()
+        tee_to_world = self._quat_to_zrot(obj_pose[:, 3:])
+        tee_to_world[:, 0:2, 2] = obj_pose[:, 0:2]
+
+        tee_to_goal = th.matmul(self._world_to_goal_trans.unsqueeze(0), tee_to_world)
+        tees_in_goal = th.matmul(tee_to_goal, self._homo_uv.unsqueeze(0))
+        tees_in_goal_xy = tees_in_goal[:, :2, :] / tees_in_goal[:, 2:3, :]
+
+        tee_xy = tees_in_goal_xy[:, :, self._tee_mask_flat]  # [N, 2, K]
+
+        res = self._mask_res
+        idx = th.floor((tee_xy + self._mask_half_width) * self._px_per_meter).long()
+        valid = (
+            (idx[:, 0, :] >= 0)
+            & (idx[:, 0, :] < res)
+            & (idx[:, 1, :] >= 0)
+            & (idx[:, 1, :] < res)
+        )
+
+        n, _, k = idx.shape
+        batch_idx = th.arange(n, device=self.device).view(-1, 1).expand(-1, k)
+
+        final_render = th.zeros(n, res, res, dtype=th.bool, device=self.device)
+        valid_flat = valid.reshape(-1)
+        final_render[
+            batch_idx.reshape(-1)[valid_flat],
+            idx[:, 0, :].reshape(-1)[valid_flat],
+            idx[:, 1, :].reshape(-1)[valid_flat],
+        ] = True
+
+        intersection = (final_render & self._tee_mask.unsqueeze(0)).sum(dim=(-1, -2))
+        return intersection.float() / self._goal_area
 
     def _is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
@@ -432,3 +426,9 @@ class PushTEnv(BaseEnv):
 
     def _reward_success_bonus(self) -> th.Tensor:
         return (self.intersection_ratio >= self.success_thresh).float()
+
+    def get_cfg_as_dict(self) -> dict:
+        return self._cfg_env.as_dict()
+
+    def get_num_envs(self) -> int:
+        return self.num_envs
