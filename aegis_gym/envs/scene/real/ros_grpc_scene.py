@@ -73,8 +73,6 @@ class RosGrcpScene(BaseScene):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.reward_scales
-
     def get_policy_dt(self) -> float:
         return self.policy_dt
 

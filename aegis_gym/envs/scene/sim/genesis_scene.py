@@ -91,8 +91,6 @@ class GenesisScene(BaseScene):
         self._max_linear_speed = self._cfg_env.action_max_linear_speed
         self._max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.reward_scales
-
     def _setup_pj_server(self) -> None:
         self._pj: PlotJugglerUDP | None = None
         if not self._enable_pj_logging:
