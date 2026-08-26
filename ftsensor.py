@@ -54,7 +54,8 @@ def main():
         return
 
     print("[Train] > Starting F/T sensor")
-    ft_sensor_playground(env=env, cfg=cfg)
+    # ft_sensor_playground(env=env, cfg=cfg)
+    ft_sensor_playground_weld(env=env, cfg=cfg)
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -178,6 +179,34 @@ def ft_sensor_playground(env: BaseEnv, cfg: ExpConfig) -> None:
         env._scene.step()
 
         env.manipulator.get_joint_torque_sensor()
+
+
+def ft_sensor_playground_weld(env: BaseEnv, cfg: ExpConfig) -> None:
+    env.reset()
+
+    robot = env.manipulator._robot_entity
+
+    fts_link = robot.get_link("fts_link")
+    tool_mount_link = robot.get_link("tool_mount_link")
+
+    rigid = env._scene.scene.sim.rigid_solver
+
+    print("fts_link:", fts_link.idx)
+    print("tool_mount_link:", tool_mount_link.idx)
+
+    rigid.add_weld_constraint(
+        fts_link.idx,
+        tool_mount_link.idx,
+    )
+
+    print("WELD ADDED")
+
+    while True:
+        env._scene.step()
+
+        welds = rigid.get_weld_constraints()
+
+        print(welds)
 
 
 if __name__ == "__main__":

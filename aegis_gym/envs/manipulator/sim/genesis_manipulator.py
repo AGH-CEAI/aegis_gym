@@ -56,10 +56,12 @@ class GenesisManipulator(BaseManipulator):
             quat=(1.0, 0.0, 0.0, 0.0),
             links_to_keep=[
                 "ur_base",
+                "fts_link",
                 "robotiq_hande_end",
                 "cam_tool_right",
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
+                "tool_mount_link",
             ],
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
