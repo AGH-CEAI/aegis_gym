@@ -6,7 +6,7 @@ from .enum_types import CamerasSetup
 
 @dataclass(slots=True)
 class EnvCfg(BaseCfg):
-    env_type: str
+    env_name: str
     num_envs: int
     num_obs: int
     num_actions: int

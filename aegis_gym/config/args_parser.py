@@ -33,7 +33,7 @@ class LaunchArgs:
 
     enforce_current_config: bool | None
     control_type: Control | None
-    task: str | None
+    env_name: str | None
 
     calibration_move: list | None
     calibration_move_cartesian: list | None
@@ -111,7 +111,7 @@ def parse_arguments(
     p.add_argument(
         "--control", type=Control, choices=list(Control), default=Control.SIM
     )
-    p.add_argument("--task", type=str, default=None)
+    p.add_argument("--env", type=str, default=None)
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)
@@ -195,7 +195,7 @@ def parse_arguments(
         load_bc_model_id=args.load_bc_model_id,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
-        task=args.task,
+        env_name=args.env,
         calibration_move=args.calibration_move,
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,

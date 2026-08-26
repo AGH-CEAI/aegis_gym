@@ -74,7 +74,7 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
     if scene is None:
         raise ValueError("Scene is None")
 
-    env_cls = get_env_class(cfg.env_cfg.env_type)
+    env_cls = get_env_class(cfg.env_cfg.env_name)
     return env_cls(scene=scene, cfg=cfg)
 
 
