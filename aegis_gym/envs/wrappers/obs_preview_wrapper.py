@@ -6,6 +6,7 @@ import numpy as np
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import IMAGE_MODALITIES, DebugCfg, Modality
 
 from ..base_env import BaseEnv, ResetReturn, StepReturn
@@ -73,11 +74,10 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
 
     def _create_record_dir(self) -> Path:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        logger = get_logger("ObsPreviewEnvWrapper")
         record_dir = self._cfg.record_dir / f"obs_preview_{timestamp}"
         record_dir.mkdir(parents=True, exist_ok=True)
-        print(
-            f"[ObsPreviewEnvWrapper] Recording observation preview frames to {record_dir}"
-        )
+        logger.info(f"Recording observation preview frames to {record_dir}")
         return record_dir
 
     def _format_visual_obs(

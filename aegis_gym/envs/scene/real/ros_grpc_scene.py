@@ -4,6 +4,7 @@ from typing import Any
 
 import torch as th
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import Control, ExpConfig, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, RosGrpcManipulator
 from aegis_gym.envs.objects import (
@@ -22,6 +23,7 @@ class RosGrcpScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
+        logger = get_logger("RosGrpcScene")
         if cfg.args.num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
@@ -39,8 +41,8 @@ class RosGrcpScene(BaseScene):
         self.disable_cameras = cfg.args.disable_cameras
         self._extract_config()
 
-        print(
-            f"[RosGrpcScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
+        logger.info(
+            f"f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self.max_linear_speed} m/s ; {self.max_angular_speed} rad/s"
         )
 
         self._global_entity_cnt = 0
