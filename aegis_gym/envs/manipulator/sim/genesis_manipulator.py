@@ -9,6 +9,7 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, CameraModality
 
@@ -28,6 +29,7 @@ class GenesisManipulator(BaseManipulator):
     ):
         super().__init__(device=device)
 
+        logger = get_logger("Genesis::Manipulator")
         self._num_envs = num_envs
         self._gs_scene = gs_scene
         self._observe_camera_fn = cameras_obs_getter
@@ -41,11 +43,9 @@ class GenesisManipulator(BaseManipulator):
             self._urdf_model_id = cfg_robot.urdf_id_no_cell
 
         if self._urdf_model_id:
-            print(
-                f"[GraspEnv::Manipulator] URDF ClearML dataset ID: {self._urdf_model_id}"
-            )
+            logger.info(f"URDF ClearML dataset ID: {self._urdf_model_id}")
         self._urdf_path = self._resolve_aegis_urdf()
-        print(f"[GraspEnv::Manipulator] URDF path: {self._urdf_path}")
+        logger.info(f"URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
         material = gs.materials.Rigid(gravity_compensation=1.0)

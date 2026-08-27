@@ -6,6 +6,7 @@ import numpy as np
 import torch as th
 from genesis.vis.camera import Camera
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
     Algorithm,
@@ -36,6 +37,7 @@ class GenesisScene(BaseScene):
         cfg: ExpConfig,
         device: th.device,
     ):
+        logger = get_logger("GenesisScene")
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
         super().__init__(device=device)
@@ -57,8 +59,8 @@ class GenesisScene(BaseScene):
             case Algorithm.BC:
                 self.use_cameras = cfg.bc_cfg.use_cameras
 
-        print(
-            f"[GenesisScene] f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
+        logger.info(
+            f"f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
         )
 
         self._cameras: dict[CameraName, Camera] = {}
@@ -100,6 +102,7 @@ class GenesisScene(BaseScene):
         self.reward_scales = self._cfg_env.reward_scales
 
     def _setup_pj_server(self) -> None:
+        logger = get_logger("GraspEnv")
         self._pj: PlotJugglerUDP | None = None
         if not self._enable_pj_logging:
             return
@@ -114,7 +117,7 @@ class GenesisScene(BaseScene):
             "wrist_3_joint",
         ]
         self._pj = PlotJugglerUDP(host=ip, port=port)
-        print(f"[GraspEnv] Enabled UDP server for PlotJuggler at {ip}:{port}")
+        logger.info(f"Enabled UDP server for PlotJuggler at {ip}:{port}")
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
