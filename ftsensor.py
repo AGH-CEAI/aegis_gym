@@ -54,8 +54,10 @@ def main():
         return
 
     print("[Train] > Starting F/T sensor")
-    # ft_sensor_playground(env=env, cfg=cfg)
-    ft_sensor_playground_weld(env=env, cfg=cfg)
+    ft_sensor_playground(env=env, cfg=cfg)
+    # ft_sensor_playground_weld(env=env, cfg=cfg)
+    # ft_sensor_playground_weld_hit_table(env=env, cfg=cfg)
+    # ft_sensor_playground_weld_axes_joint(env=env, cfg=cfg)
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -185,28 +187,253 @@ def ft_sensor_playground_weld(env: BaseEnv, cfg: ExpConfig) -> None:
     env.reset()
 
     robot = env.manipulator._robot_entity
+    box = env._scene._weld_test_box
 
-    fts_link = robot.get_link("fts_link")
     tool_mount_link = robot.get_link("tool_mount_link")
+    box_link = box.get_link("box_baselink")
 
-    rigid = env._scene.scene.sim.rigid_solver
+    tcp_pos = env.manipulator.get_tcp_pose()[0, :3]
 
-    print("fts_link:", fts_link.idx)
-    print("tool_mount_link:", tool_mount_link.idx)
-
-    rigid.add_weld_constraint(
-        fts_link.idx,
-        tool_mount_link.idx,
+    box.set_pos(
+        tcp_pos
+        + th.tensor(
+            [0.0, 0.0, -0.10],
+            device=cfg.get_device(),
+        )
     )
 
-    print("WELD ADDED")
+    rigid = env._scene.gs_scene.sim.rigid_solver
+
+    rigid.add_weld_constraint(
+        tool_mount_link.idx,
+        box_link.idx,
+    )
+
+    step = 0
 
     while True:
+        action = th.zeros(
+            (env.num_envs, 6),
+            device=cfg.get_device(),
+        )
+
+        phase = (step // 50) % 9
+
+        if phase == 0:
+            pass
+
+        elif phase == 1:
+            # +X
+            action[:, 0] = 1.0
+
+        elif phase == 2:
+            # stop
+            pass
+
+        elif phase == 3:
+            # -X
+            action[:, 0] = -1.0
+
+        elif phase == 4:
+            # +Y
+            action[:, 1] = 1.0
+
+        elif phase == 5:
+            # -Y
+            action[:, 1] = -1.0
+
+        elif phase == 6:
+            # +Z
+            action[:, 2] = 0.5
+
+        elif phase == 7:
+            # -Z
+            action[:, 2] = -0.5
+
+        elif phase == 8:
+            # stop
+            pass
+
+        env.manipulator.ctrl_apply_vel_action(
+            action,
+            open_gripper=True,
+        )
+
         env._scene.step()
 
         welds = rigid.get_weld_constraints()
+        force = welds["force"][0, 0]
 
-        print(welds)
+        if step % 10 == 0:
+            tcp = env.manipulator.get_tcp_pose()[0, :3]
+
+            print(
+                f"phase={phase}",
+                "TCP=",
+                tcp,
+                "weld=",
+                force,
+            )
+
+        step += 1
+
+
+def ft_sensor_playground_weld_hit_table(env: BaseEnv, cfg: ExpConfig) -> None:
+    env.reset()
+
+    robot = env.manipulator._robot_entity
+    box = env._scene._weld_test_box
+
+    tool_mount_link = robot.get_link("tool_mount_link")
+    box_link = box.get_link("box_baselink")
+
+    device = cfg.get_device()
+
+    tcp_pos = env.manipulator.get_tcp_pose()[0, :3]
+
+    box.set_pos(
+        tcp_pos
+        + th.tensor(
+            [0.0, 0.0, -0.05],
+            device=device,
+        )
+    )
+
+    rigid = env._scene.gs_scene.sim.rigid_solver
+
+    rigid.add_weld_constraint(
+        tool_mount_link.idx,
+        box_link.idx,
+    )
+
+    start_tcp = env.manipulator.get_tcp_pose()[0, :3].clone()
+
+    target_x = start_tcp[0] + 0.20
+    target_z = 0.0
+
+    step = 0
+    phase_step = 0
+
+    while True:
+        tcp = env.manipulator.get_tcp_pose()[0, :3]
+
+        action = th.zeros(
+            (env.num_envs, 6),
+            device=device,
+        )
+
+        if step < 200:
+            phase = "GRAVITY"
+
+        elif tcp[0] < target_x:
+            phase = "FAST +X"
+            action[:, 0] = 1.0
+
+        elif phase_step < 100:
+            phase = "PAUSE"
+            phase_step += 1
+
+        elif tcp[2] > target_z:
+            phase = "SLOW -Z"
+            action[:, 2] = -0.05
+
+        else:
+            phase = "TABLE"
+
+        env.manipulator.ctrl_apply_vel_action(
+            action,
+            open_gripper=True,
+        )
+
+        env._scene.step()
+
+        welds = rigid.get_weld_constraints()
+        wrench = welds["force"][0, 0]
+
+        if step % 10 == 0:
+            print(
+                f"{phase:10} | "
+                f"TCP=({tcp[0]:+.3f}, {tcp[1]:+.3f}, {tcp[2]:+.3f}) | "
+                f"W=["
+                f"{wrench[0]:+.4f}, "
+                f"{wrench[1]:+.4f}, "
+                f"{wrench[2]:+.4f}, "
+                f"{wrench[3]:+.4f}, "
+                f"{wrench[4]:+.4f}, "
+                f"{wrench[5]:+.4f}"
+                f"]"
+            )
+
+        step += 1
+
+
+def ft_sensor_playground_weld_axes_joint(env: BaseEnv, cfg: ExpConfig) -> None:
+    env.reset()
+
+    robot = env.manipulator._robot_entity
+    box = env._scene._weld_test_box
+
+    tool_mount_link = robot.get_link("tool_mount_link")
+    box_link = box.get_link("box_baselink")
+
+    device = cfg.get_device()
+
+    tcp_pos = env.manipulator.get_tcp_pose()[0, :3]
+
+    box.set_pos(
+        tcp_pos
+        + th.tensor(
+            [0.0, 0.0, -0.10],
+            device=device,
+        )
+    )
+
+    rigid = env._scene.gs_scene.sim.rigid_solver
+
+    rigid.add_weld_constraint(
+        tool_mount_link.idx,
+        box_link.idx,
+    )
+
+    step = 0
+
+    while True:
+        joint_diff = th.zeros(
+            (env.num_envs, 8),
+            device=device,
+        )
+
+        if step < 200:
+            phase = "GRAVITY"
+
+        elif step < 700:
+            phase = "ROTATE 90"
+            joint_diff[:, -5] = -1.0 * th.pi / 90.0
+
+        else:
+            phase = "STOP"
+
+        env.manipulator.ctrl_apply_joints_diff_action(joint_diff)
+
+        env._scene.step()
+
+        welds = rigid.get_weld_constraints()
+        wrench = welds["force"][0, 0]
+
+        if step % 10 == 0:
+            print(
+                f"{phase:10} | "
+                f"W=["
+                f"{wrench[0]:+.4f}, "
+                f"{wrench[1]:+.4f}, "
+                f"{wrench[2]:+.4f}, "
+                f"{wrench[3]:+.4f}, "
+                f"{wrench[4]:+.4f}, "
+                f"{wrench[5]:+.4f}"
+                f"]"
+            )
+
+        step += 1
 
 
 if __name__ == "__main__":

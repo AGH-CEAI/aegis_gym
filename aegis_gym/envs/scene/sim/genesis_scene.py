@@ -347,6 +347,16 @@ class GenesisScene(BaseScene):
             show_cell=self.show_cell,
             device=self.device,
         )
+        self._weld_test_box = self.gs_scene.add_entity(
+            morph=gs.morphs.Box(
+                pos=(0.7, 0.0, 0.5),
+                size=(0.2, 0.10, 0.10),
+                fixed=False,
+            ),
+            material=gs.materials.Rigid(
+                rho=10.0,
+            ),
+        )
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
@@ -510,22 +520,36 @@ class GenesisScene(BaseScene):
         # data["ee/orientation/pitch"] = float(pitch)
         # data["ee/orientation/yaw"] = float(yaw)
 
-        wrench = self.manipulator.get_ft_wrench()
+        # wrench = self.manipulator.get_ft_wrench()
 
-        # Plot only env 0 for now
-        w = wrench[0]
+        # # Plot only env 0 for now
+        # w = wrench[0]
 
-        data["ft/force/x"] = float(w[0])
-        data["ft/force/y"] = float(w[1])
-        data["ft/force/z"] = float(w[2])
+        # data["ft/force/x"] = float(w[0])
+        # data["ft/force/y"] = float(w[1])
+        # data["ft/force/z"] = float(w[2])
 
-        data["ft/torque/x"] = float(w[3])
-        data["ft/torque/y"] = float(w[4])
-        data["ft/torque/z"] = float(w[5])
+        # data["ft/torque/x"] = float(w[3])
+        # data["ft/torque/y"] = float(w[4])
+        # data["ft/torque/z"] = float(w[5])
 
-        # Joint Torque last sensor
-        joint_torque = self.manipulator.get_joint_torque_sensor()
-        jt = joint_torque[0]
-        data["joint_torque/last_joint"] = float(jt[0])
+        # # Joint Torque last sensor
+        # joint_torque = self.manipulator.get_joint_torque_sensor()
+        # jt = joint_torque[0]
+        # data["joint_torque/last_joint"] = float(jt[0])
+
+        # Weld constraint
+        rigid = self.gs_scene.sim.rigid_solver
+        welds = rigid.get_weld_constraints()
+
+        if welds["force"].shape[1] > 0:
+            weld_force = welds["force"][0, 0]
+
+            data["weld/0"] = float(weld_force[0])
+            data["weld/1"] = float(weld_force[1])
+            data["weld/2"] = float(weld_force[2])
+            data["weld/3"] = float(weld_force[3])
+            data["weld/4"] = float(weld_force[4])
+            data["weld/5"] = float(weld_force[5])
 
         self._pj.send(data)

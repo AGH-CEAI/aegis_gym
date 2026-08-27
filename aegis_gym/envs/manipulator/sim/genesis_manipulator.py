@@ -383,12 +383,12 @@ class GenesisManipulator(BaseManipulator):
 
     def get_ft_wrench(self) -> th.Tensor:
         # TODO(issue#126) get the F\T sensing from genesis
-        # raise NotImplementedError()
-        force = self._ft_sensor.read()
+        raise NotImplementedError()
+        # force = self._ft_sensor.read()
 
-        torque = th.zeros_like(force)
+        # torque = th.zeros_like(force)
 
-        return th.cat([force, torque], dim=-1)
+        # return th.cat([force, torque], dim=-1)
 
     def get_joint_torque_sensor(self) -> th.Tensor:
         return self._joint_torque_sensor.read()
