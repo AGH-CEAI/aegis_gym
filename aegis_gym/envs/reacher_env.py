@@ -83,6 +83,11 @@ class ReacherEnv(BaseEnv):
 
         self.reward_scales = self._cfg_env.reward_scales
 
+        self.spawnbox_xlength = self._cfg_env.box_spawnbox_xlength
+        self.spawnbox_ylength = self._cfg_env.box_spawnbox_ylength
+        self.spawnbox_xoffset = self._cfg_env.box_spawnbox_xoffset
+        self.spawnbox_yoffset = self._cfg_env.box_spawnbox_yoffset
+
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
         p = ObjectProperties(
@@ -178,8 +183,14 @@ class ReacherEnv(BaseEnv):
     def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
         num_reset = len(envs_idx)
 
-        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
-        random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
+        random_x = (
+            th.rand(num_reset, device=self.device) * self.spawnbox_xlength
+            + self.spawnbox_xoffset
+        )
+        random_y = (
+            th.rand(num_reset, device=self.device) * self.spawnbox_ylength
+            + self.spawnbox_yoffset
+        )
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
         )

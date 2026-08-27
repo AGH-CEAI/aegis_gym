@@ -22,6 +22,10 @@ class EnvCfg(BaseCfg):
     workbench_size: list[float]
     box_collision: bool
     box_fixed: bool
+    box_spawnbox_xlength: float
+    box_spawnbox_ylength: float
+    box_spawnbox_xoffset: float
+    box_spawnbox_yoffset: float
     image_resolution: tuple[int, int]
     use_rasterizer: bool
     visualize_camera: bool
