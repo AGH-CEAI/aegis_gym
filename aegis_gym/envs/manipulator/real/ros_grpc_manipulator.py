@@ -7,6 +7,10 @@ from typing import Any, Optional
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.logging import get_logger
+
+logger = get_logger(__name__)
+
 try:
     from aegis_grpc_client import (
         AegisJointIndex,
@@ -17,7 +21,7 @@ try:
     )
     from aegis_grpc_client import CameraName as RosGrpcCameraName
 except ImportError:
-    print(
+    logger.error(
         "Failed to import aegis_grpc_client. "
         "Double check if you have installed the `aegis_grpc_client` and `proto_aegis_grpc` packages."
     )
@@ -53,10 +57,11 @@ class RosGrpcManipulator(BaseManipulator):
         num_envs: int,
         robot_cfg: RobotCfg,
         policy_dt: float,
-        disable_vision: bool = False,
+        disable_cameras: bool = False,
         device: th.device | None = None,
         server_address: str = "127.0.0.1:50051",
     ):
+        self.logger = get_logger("GraspEnvROS/ManipulatorROS")
         if hasattr(self, "_initialized") and self._initialized:
             return
 
@@ -65,7 +70,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._num_envs = num_envs
         self._cfg_robot = robot_cfg
         self._policy_dt = policy_dt
-        self._disable_vision = disable_vision
+        self._disable_cameras = disable_cameras
 
         self.pt = PoseTransformUtils()
 
@@ -109,7 +114,7 @@ class RosGrpcManipulator(BaseManipulator):
         # shutdown() will be called at interpreter exit
         atexit.register(self.shutdown)
         self._initialized = True
-        print("[GraspEnvROS][ManipulatorROS] Finalized initialization")
+        self.logger.info("Finalized initialization")
 
     def _run_loop(self) -> None:
         """Run the event loop forever in a background thread."""
@@ -129,14 +134,14 @@ class RosGrpcManipulator(BaseManipulator):
             return
         self._run_coro(self._robot_client.servo_enable())
         self._servo_enabled = True
-        print("[GraspEnvROS][ManipulatorROS] Servo enabled")
+        self.logger.info("Servo enabled")
 
     def _servo_disable(self) -> None:
         if not self._servo_enabled:
             return
         self._run_coro(self._robot_client.servo_disable())
         self._servo_enabled = False
-        print("[GraspEnvROS][ManipulatorROS] Servo disabled")
+        self.logger.info("Servo disabled")
 
     def shutdown(self) -> None:
         """
@@ -157,7 +162,7 @@ class RosGrpcManipulator(BaseManipulator):
             if hasattr(self, "_robot_client") and self._robot_client.is_connected:
                 self._run_coro(self._robot_client.disconnect())
         except RuntimeError as e:
-            print(f"Error disconnecting robot client: {e}")
+            self.logger.error(f"Error disconnecting robot client: {e}")
 
         try:
             # Stop the event loop
@@ -168,9 +173,9 @@ class RosGrpcManipulator(BaseManipulator):
             if hasattr(self, "_loop_thread") and self._loop_thread.is_alive():
                 self._loop_thread.join(timeout=5.0)
                 if self._loop_thread.is_alive():
-                    print("Warning: Event loop thread did not stop within timeout")
+                    self.logger.warning("Event loop thread did not stop within timeout")
         except RuntimeError as e:
-            print(f"Error stopping event loop: {e}")
+            self.logger.error(f"Error stopping event loop: {e}")
         finally:
             # Close the loop
             if hasattr(self, "_loop") and not self._loop.is_closed():
@@ -190,7 +195,7 @@ class RosGrpcManipulator(BaseManipulator):
             device=self.device,
         )
         # Convert BGR into RGB and np.ndarray into th.Tensor
-        if not self._disable_vision:
+        if not self._disable_cameras:
             self._vision = TensorDict(
                 {
                     k: th.from_numpy(v[[2, 1, 0], :, :])

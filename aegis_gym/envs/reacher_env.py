@@ -3,7 +3,7 @@ import math
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.aux import transform_by_quat, transform_quat_by_quat
+from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -79,10 +79,15 @@ class ReacherEnv(BaseEnv):
 
         self.reward_scales = self._cfg_env.reacher_reward_scales
 
+        self.spawnbox_xlength = self._cfg_env.box_spawnbox_xlength
+        self.spawnbox_ylength = self._cfg_env.box_spawnbox_ylength
+        self.spawnbox_xoffset = self._cfg_env.box_spawnbox_xoffset
+        self.spawnbox_yoffset = self._cfg_env.box_spawnbox_yoffset
+
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
         p = ObjectProperties(
-            dims=(0.4, 0.4, 0.4),
+            dims=tuple(self.box_size),
             pose=(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
             collision=True,
             fixed=False,
@@ -174,8 +179,14 @@ class ReacherEnv(BaseEnv):
     def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
         num_reset = len(envs_idx)
 
-        random_x = th.rand(num_reset, device=self.device) * 0.22 + 0.36  # 0.36 – 0.58
-        random_y = (th.rand(num_reset, device=self.device) - 0.5) * 0.4  # -0.2 – 0.2
+        random_x = (
+            th.rand(num_reset, device=self.device) * self.spawnbox_xlength
+            + self.spawnbox_xoffset
+        )
+        random_y = (
+            th.rand(num_reset, device=self.device) * self.spawnbox_ylength
+            + self.spawnbox_yoffset
+        )
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
         )

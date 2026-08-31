@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Grouped environment config fields into shared and task-specific sections for clarity.
+- [PR-153](https://github.com/AGH-CEAI/aegis_gym/pull/153) - Moved Reacher's hardcoded spawn box ranges into config fields.
+- [PR-147](https://github.com/AGH-CEAI/aegis_gym/pull/147) - Replace print statements with logging. Divide aux section ingo sub-packages (e.g. logging)
 - [PR-145](https://github.com/AGH-CEAI/aegis_gym/pull/145) - AegisGrasp cleanup p.7: Moved files out from the `rsl` folder. Reforatted codebase according to the ruff v0.16.0. Updated main README.md.
 - [PR-144](https://github.com/AGH-CEAI/aegis_gym/pull/144) - Using new strenum literals from `aegis_grpc` client.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: `GraspEnv` was reworked into `ReacherEnv` using all previous abstractions.
@@ -49,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Fixed simulation-only runs crashing on startup because of an unconditional import of the real-hardware gRPC manipulator client, which fails in containers with an incompatible `protobuf` version. The import is now optional.
+- [PR-150](https://github.com/AGH-CEAI/aegis_gym/pull/150) - Fixed RL training crashing on GPU resource limits at high environment counts by conditionally skipping camera and renderer setup.
+- [PR-149](https://github.com/AGH-CEAI/aegis_gym/pull/149) - Fixed spawning the box with a hardcoded size instead of reading it from the config in Reacher task.
 - [PR-142](https://github.com/AGH-CEAI/aegis_gym/pull/142) - Fixed `ConfigManager` silently dropping the default `max_iterations` and the `--debug-record-vis-obs` flag, which forced `--max-iterations` on every run and disabled visual observation recording.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Fixed a typo in `genesis_manipulator.py` in `ctrl_gripper_X()` methods which was blocking more than 2 envs from running.
 

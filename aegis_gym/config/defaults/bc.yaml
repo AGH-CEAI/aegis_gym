@@ -7,6 +7,7 @@ max_grad_norm: 1.0
 save_recons: False
 save_recon_freq: 100
 use_teacher_mixing: False
+use_cameras: True
 # algorithm parameters
 # TODO(issue#111) simplify config
 # originally only rnd_cfg was needed for the rsl_rl logger

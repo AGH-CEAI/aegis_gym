@@ -5,6 +5,7 @@ import torch as th
 import yaml
 from clearml import Task
 
+from ..aux.logging import get_logger
 from .args_parser import LaunchArgs, parse_arguments
 from .types import (
     BCCfg,
@@ -56,6 +57,7 @@ class ConfigManager:
         device: th.device | None,
         task: Task | None,
     ) -> ExpConfig:
+        logger = get_logger("InitializeConfig")
         if not isinstance(argv, LaunchArgs):
             args: LaunchArgs = parse_arguments(
                 argv=argv, extra_argparser=extra_argparser
@@ -65,12 +67,12 @@ class ConfigManager:
 
         cfg_dict = cls._get_default_config_dict()
         if args.config_path is not None:
-            print(f"Patching default config with file: {args.config_path}")
+            logger.info(f"Patching default config with file: {args.config_path}")
             cfg_file_dict = cls._load_yaml(args.config_path)
             cfg_dict.update(cfg_file_dict)
 
         if not args.enforce_current_config and task is not None:
-            print(f"Connecting config to the ClearML task id {task.task_id}")
+            logger.info(f"Connecting config to the ClearML task id {task.task_id}")
             for cfg_sec_name, cfg_sec_dict in cfg_dict.items():
                 connected = task.connect_configuration(
                     cfg_sec_dict,

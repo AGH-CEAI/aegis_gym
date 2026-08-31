@@ -6,7 +6,7 @@ import torch as th
 import trimesh
 from tensordict import TensorDict
 
-from aegis_gym.aux import check_points_in_polygon, quat_to_z_euler, quat_to_zrot
+from aegis_gym.aux.geom import check_points_in_polygon, quat_to_z_euler, quat_to_zrot
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
