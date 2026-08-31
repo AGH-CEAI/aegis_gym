@@ -404,9 +404,3 @@ class PushTEnv(BaseEnv):
 
     def _reward_success_bonus(self) -> th.Tensor:
         return (self.intersection_ratio >= self.success_thresh).float()
-
-    def get_cfg_as_dict(self) -> dict:
-        return self._cfg_env.as_dict()
-
-    def get_num_envs(self) -> int:
-        return self.num_envs

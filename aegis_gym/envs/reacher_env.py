@@ -36,12 +36,6 @@ class ReacherEnv(BaseEnv):
         self._init_buffers()
         self.reset()
 
-    def get_cfg_as_dict(self) -> dict:
-        return self._cfg_env.as_dict()
-
-    def get_num_envs(self) -> int:
-        return self.num_envs
-
     def _observe_tcp_pose(self) -> th.Tensor:
         return self.manipulator.get_tcp_pose()
 
