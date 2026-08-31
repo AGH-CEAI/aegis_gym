@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
-- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added an `EnvType` enum and a `--task` flag to select between the `reacher` and `push_t` environments.
+- [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added a `--env` flag and an environment registry to select between the environments by name.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added `MESH` and `URDF` object types to the scene abstraction.
 - [PR-137](https://github.com/AGH-CEAI/aegis_gym/pull/137) - AegisGrasp cleanup p.6: Introdcued `BaseObjectsFactory` with custom implementations for `RosGrpcObjectsFactory` and `GenesisFactory`.
 - [PR-138](https://github.com/AGH-CEAI/aegis_gym/pull/138) - Added the scripts to autobuild the development toolbox.
