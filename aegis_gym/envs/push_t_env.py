@@ -6,6 +6,7 @@ import torch as th
 import trimesh
 from tensordict import TensorDict
 
+from aegis_gym.aux import check_points_in_polygon, quat_to_z_euler, quat_to_zrot
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -161,7 +162,7 @@ class PushTEnv(BaseEnv):
         ) - half_width
         xx, yy = np.meshgrid(lin, lin, indexing="ij")
         grid_pts = np.stack([xx.ravel(), yy.ravel()], axis=-1)
-        mask_np = self._points_in_polygon(grid_pts, polygon).reshape(res, res)
+        mask_np = check_points_in_polygon(grid_pts, polygon).reshape(res, res)
 
         self._mask_res = res
         self._mask_half_width = half_width
@@ -172,22 +173,6 @@ class PushTEnv(BaseEnv):
 
         homo = np.stack([xx.ravel(), yy.ravel(), np.ones_like(xx.ravel())], axis=0)
         self._homo_uv = th.tensor(homo, dtype=th.float32, device=self.device)
-
-    @staticmethod
-    def _points_in_polygon(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
-        x, y = points[:, 0], points[:, 1]
-        px, py = polygon[:, 0], polygon[:, 1]
-        n = len(polygon)
-        inside = np.zeros(len(points), dtype=bool)
-        j = n - 1
-        for i in range(n):
-            xi, yi, xj, yj = px[i], py[i], px[j], py[j]
-            cond = ((yi > y) != (yj > y)) & (
-                x < (xj - xi) * (y - yi) / (yj - yi + 1e-30) + xi
-            )
-            inside ^= cond
-            j = i
-        return inside
 
     def _build_goal_transform(self) -> None:
         goal_quat = th.tensor(
@@ -201,31 +186,13 @@ class PushTEnv(BaseEnv):
             ],
             device=self.device,
         )
-        goal_zrot = self._quat_to_zrot(goal_quat)[0]
+        goal_zrot = quat_to_zrot(goal_quat, device=self.device)[0]
         goal_trans = th.eye(3, device=self.device)
         goal_trans[:2, :2] = goal_zrot[:2, :2]
         goal_trans[0:2, 2] = th.tensor(
             self.goal_offset_xy, device=self.device, dtype=th.float32
         )
         self._world_to_goal_trans = th.linalg.inv(goal_trans)
-
-    def _quat_to_z_euler(self, quats: th.Tensor) -> th.Tensor:
-        signs = th.ones_like(quats[:, -1])
-        signs[quats[:, -1] < 0] = -1.0
-        qw = th.clamp(quats[:, 0] * signs, min=-1.0, max=1.0)
-        return 2 * th.acos(qw)
-
-    def _quat_to_zrot(self, quats: th.Tensor) -> th.Tensor:
-        alphas = self._quat_to_z_euler(quats)
-        n = quats.shape[0]
-        rot = th.zeros(n, 3, 3, device=self.device, dtype=th.float32)
-        rot[:, 2, 2] = 1.0
-        cos_a, sin_a = th.cos(alphas), th.sin(alphas)
-        rot[:, 0, 0] = cos_a
-        rot[:, 1, 1] = cos_a
-        rot[:, 0, 1] = -sin_a
-        rot[:, 1, 0] = sin_a
-        return rot
 
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
@@ -327,7 +294,7 @@ class PushTEnv(BaseEnv):
         if len(env_reset_idx) > 0:
             self.reset_idx(env_reset_idx)
 
-        self.intersection_ratio = self._pseudo_render_intersection()
+        self.intersection_ratio = self._tee_projection_to_goal_intersection()
         self.extras["success"] = self.intersection_ratio >= self.success_thresh
 
         # compute reward based on task
@@ -341,17 +308,26 @@ class PushTEnv(BaseEnv):
         dones = self.reset_buf
         return StepReturn(obs, reward, dones, self.extras)
 
-    def _pseudo_render_intersection(self) -> th.Tensor:
+    def _tee_projection_to_goal_intersection(self) -> th.Tensor:
+        """
+        Fraction of the goal's footprint covered by the tee: warps the tee's mask
+        pixels through its current pose into the goal's frame, rasterizes them,
+        and intersects with the goal's mask.
+        """
         obj_pose = self.object.get_pose()
-        tee_to_world = self._quat_to_zrot(obj_pose[:, 3:])
+        # tee's local frame -> world frame (current pose)
+        tee_to_world = quat_to_zrot(obj_pose[:, 3:], device=self.device)
         tee_to_world[:, 0:2, 2] = obj_pose[:, 0:2]
 
+        # tee-local -> world -> goal-local, in one transform
         tee_to_goal = th.matmul(self._world_to_goal_trans.unsqueeze(0), tee_to_world)
+        # warp every canonical mask grid point through it
         tees_in_goal = th.matmul(tee_to_goal, self._homo_uv.unsqueeze(0))
         tees_in_goal_xy = tees_in_goal[:, :2, :] / tees_in_goal[:, 2:3, :]
 
         tee_xy = tees_in_goal_xy[:, :, self._tee_mask_flat]  # [N, 2, K]
 
+        # warped XY (goal frame) -> goal-mask pixel indices
         res = self._mask_res
         idx = th.floor((tee_xy + self._mask_half_width) * self._px_per_meter).long()
         valid = (
@@ -364,6 +340,7 @@ class PushTEnv(BaseEnv):
         n, _, k = idx.shape
         batch_idx = th.arange(n, device=self.device).view(-1, 1).expand(-1, k)
 
+        # rasterize: mark which goal-grid pixels the warped tee footprint lands on
         final_render = th.zeros(n, res, res, dtype=th.bool, device=self.device)
         valid_flat = valid.reshape(-1)
         final_render[
@@ -372,6 +349,7 @@ class PushTEnv(BaseEnv):
             idx[:, 1, :].reshape(-1)[valid_flat],
         ] = True
 
+        # overlap between warped tee footprint and the fixed goal footprint
         intersection = (final_render & self._tee_mask.unsqueeze(0)).sum(dim=(-1, -2))
         return intersection.float() / self._goal_area
 
@@ -408,7 +386,7 @@ class PushTEnv(BaseEnv):
 
     def _reward_rotation_alignment(self) -> th.Tensor:
         obj_quat = self.object.get_pose()[:, 3:]
-        z_euler = self._quat_to_z_euler(obj_quat)
+        z_euler = quat_to_z_euler(obj_quat)
         rot_err_cos = th.cos(z_euler - self.goal_z_rot)
         return (((rot_err_cos + 1) / 2) ** 2) / 2
 
