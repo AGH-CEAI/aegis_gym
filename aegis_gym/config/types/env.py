@@ -6,6 +6,7 @@ from .enum_types import CamerasSetup
 
 @dataclass(slots=True)
 class EnvCfg(BaseCfg):
+    env_name: str
     num_envs: int
     num_obs: int
     num_actions: int
@@ -32,4 +33,16 @@ class EnvCfg(BaseCfg):
     visualize_cell: bool
     # TODO(issue#111) consider changing camera setup to cameras_num
     cameras_setup: CamerasSetup
-    reward_scales: dict
+    reacher_reward_scales: dict
+    # Push-T task
+    tee_spawnbox_xlength: float
+    tee_spawnbox_ylength: float
+    tee_spawnbox_xoffset: float
+    tee_spawnbox_yoffset: float
+    tee_goal_offset: list[float]
+    tee_goal_z_rot_deg: float
+    tee_success_intersection_thresh: float
+    tee_mask_resolution: int
+    tee_mask_half_width: float
+    tee_friction: float
+    push_t_reward_scales: dict

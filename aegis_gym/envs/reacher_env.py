@@ -9,9 +9,11 @@ from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.envs.objects import BaseBox, ObjectProperties, ObjectType
 
+from .registry import register_env
 from .scene import BaseScene
 
 
+@register_env("reacher")
 class ReacherEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
 
@@ -33,12 +35,6 @@ class ReacherEnv(BaseEnv):
         self._init_reward_functions()
         self._init_buffers()
         self.reset()
-
-    def get_cfg_as_dict(self) -> dict:
-        return self._cfg_env.as_dict()
-
-    def get_num_envs(self) -> int:
-        return self.num_envs
 
     def _observe_tcp_pose(self) -> th.Tensor:
         return self.manipulator.get_tcp_pose()
@@ -81,7 +77,7 @@ class ReacherEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.reward_scales
+        self.reward_scales = self._cfg_env.reacher_reward_scales
 
         self.spawnbox_xlength = self._cfg_env.box_spawnbox_xlength
         self.spawnbox_ylength = self._cfg_env.box_spawnbox_ylength

@@ -141,6 +141,8 @@ class ConfigManager:
             cfg_dict["rl"]["max_iterations"] = args.max_iterations
         if args.num_envs:
             cfg_dict["env"]["num_envs"] = args.num_envs
+        if args.env_name:
+            cfg_dict["env"]["env_name"] = args.env_name
         if args.visualize_camera:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
