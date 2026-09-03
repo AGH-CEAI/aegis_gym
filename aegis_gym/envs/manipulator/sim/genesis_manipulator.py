@@ -9,6 +9,7 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
+from aegis_gym.aux.geom import transform_by_quat
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, CameraModality
@@ -60,6 +61,7 @@ class GenesisManipulator(BaseManipulator):
                 "cam_tool_right",
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
+                "tool_mount_link",
             ],
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
@@ -72,6 +74,7 @@ class GenesisManipulator(BaseManipulator):
         self._ik_method = cfg_robot.ik_method
 
         self._setup_config()
+        self._add_joint_torque_sensor()
         self._init_pd_tensors()
 
     def _resolve_aegis_urdf(self) -> Path:
@@ -124,11 +127,20 @@ class GenesisManipulator(BaseManipulator):
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
+        self._fts_link = self._robot_entity.get_link("tool_mount_link")
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
         self._default_joint_angles = self._cfg_robot.default_arm_dof
         if self._cfg_robot.default_gripper_dof is not None:
             self._default_joint_angles += self._cfg_robot.default_gripper_dof
+
+    def _add_joint_torque_sensor(self) -> None:
+        self._joint_torque_sensor = self._gs_scene.add_sensor(
+            gs.sensors.JointTorque(
+                entity_idx=self._robot_entity.idx,
+                dofs_idx_local=tuple(range(self._arm_dof_dim)),
+            )
+        )
 
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
@@ -357,11 +369,29 @@ class GenesisManipulator(BaseManipulator):
 
     def get_joints_efforts(self) -> th.Tensor:
         # TODO(issue#126) get the joints eff from genesis
-        raise NotImplementedError()
+        return self._joint_torque_sensor.read()
 
     def get_ft_wrench(self) -> th.Tensor:
         # TODO(issue#126) get the F\T sensing from genesis
-        raise NotImplementedError()
+        tau = self.get_joints_efforts()  # [num_envs, 6]
+
+        jacobian = self._robot_entity.get_jacobian(link=self._fts_link)
+        jacobian_arm = jacobian[:, :, self._arm_dof_idx]  # [num_envs, 6, 6]
+        jacobian_arm_T = jacobian_arm.transpose(1, 2)  # [num_envs, 6, 6]
+
+        # `tau = J^T @ F` solves for the wrench the arm delivers to hold/push the tip.
+        # A real F/T sensor reports the opposite: the load's reaction acting on the sensor
+        # (e.g. a hanging weight reads as pulling down, not as the arm holding it up).
+        wrench_world = -(th.linalg.pinv(jacobian_arm_T) @ tau.unsqueeze(-1)).squeeze(-1)
+
+        quat = self._fts_link.get_quat()  # [num_envs, 4], WXYZ
+        quat_conj = quat * th.tensor(
+            [1.0, -1.0, -1.0, -1.0], device=quat.device, dtype=quat.dtype
+        )
+        force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
+        torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
+
+        return th.cat([force_local, torque_local], dim=-1)
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()

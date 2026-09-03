@@ -524,4 +524,12 @@ class GenesisScene(BaseScene):
         # data["ee/orientation/pitch"] = float(pitch)
         # data["ee/orientation/yaw"] = float(yaw)
 
+        wrench = self.manipulator.get_ft_wrench()[0]
+        data["ft_sensor/force/x"] = float(wrench[0])
+        data["ft_sensor/force/y"] = float(wrench[1])
+        data["ft_sensor/force/z"] = float(wrench[2])
+        data["ft_sensor/torque/x"] = float(wrench[3])
+        data["ft_sensor/torque/y"] = float(wrench[4])
+        data["ft_sensor/torque/z"] = float(wrench[5])
+
         self._pj.send(data)
