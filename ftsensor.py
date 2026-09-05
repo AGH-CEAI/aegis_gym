@@ -60,10 +60,8 @@ def main():
         calibration_movment(env, cfg)
         return
 
-    ft_sensor_playgraund_move(env=env, cfg=cfg)
-
-    # logger.info("Proceeding training")
-    # train_runner(env=env, cfg=cfg)
+    ft_sensor_gravity_test(env=env, cfg=cfg)
+    # ft_sensor_playgraund_move(env=env, cfg=cfg)
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -144,22 +142,113 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
 def ft_sensor_playgraund(env: BaseEnv, cfg: ExpConfig) -> None:
     """Simplest possible F/T sanity check: robot stands still at home, no payload.
     Draws the fts_link frame live (red=x, green=y, blue=z) plus the measured force
-    as an orange arrow, so you can see the coordinate system `get_ft_wrench()` uses."""
+    as an orange arrow"""
     logger = get_logger("ft_sensor")
-    logger.info("Starting the F/T sensor test")
 
     manipulator = env.manipulator
     scene = env._scene
 
     manipulator.ctrl_go_to_home()
 
-    logger.info(
-        "Holding home configuration. Live frame at fts_link (red=x, green=y, blue=z); "
-        "orange arrow is the measured force. Press Ctrl+C to stop."
-    )
+    logger.info("Holding home configuration. Press Ctrl+C to stop.")
     while True:
         scene.step()
         _draw_ft_debug(scene, manipulator)
+
+
+def _log_gravity_links(manipulator: BaseManipulator) -> None:
+    """Logs every link counted as "past the F/T sensor" for gravity compensation,
+    together with its attachment point: the link's center of mass, both in the
+    link's own frame (local COM) and in world coordinates."""
+    logger = get_logger("ft_sensor")
+
+    manipulator._gravity_wrench_world()
+
+    logger.info(
+        f"Links counted past '{manipulator._fts_link.name}' for gravity compensation "
+        f"({len(manipulator._gravity_links)} total):"
+    )
+    for link, mass, local_com in zip(
+        manipulator._gravity_links,
+        manipulator._gravity_link_masses,
+        manipulator._gravity_link_local_coms,
+    ):
+        world_com = (
+            link.get_pos()[0]
+            + transform_by_quat(local_com.unsqueeze(0), link.get_quat()[:1])[0]
+        )
+        logger.info(
+            f"  - {link.name:<22} mass={float(mass):7.4f} kg  "
+            f"cord_in_link_frame={local_com.cpu().numpy()}  "
+            f"cord_in_world={world_com.cpu().numpy()}"
+        )
+
+
+def _log_wrench(manipulator: BaseManipulator, step: int) -> None:
+    logger = get_logger("ft_sensor")
+    gravity_wrench_world = manipulator._gravity_wrench_world()
+    sensor_wrench_local = manipulator.get_ft_wrench()
+    logger.info(
+        f"[step {step}] gravity_wrench(world)={gravity_wrench_world[0].cpu().numpy()}  "
+        f"sensor_wrench(local)={sensor_wrench_local[0].cpu().numpy()}"
+    )
+
+
+def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
+    """Sanity check for the gripper's gravity compensation added in `get_ft_wrench()`."""
+    logger = get_logger("ft_sensor")
+    logger.info("Starting the F/T sensor gravity-compensation test")
+
+    manipulator = env.manipulator
+    scene = env._scene
+    device = cfg.get_device()
+    dt = env.get_policy_dt()
+
+    manipulator.ctrl_go_to_home()
+    for _ in range(5):
+        scene.step()
+
+    _log_gravity_links(manipulator)
+
+    HOLD_SECONDS = 10.0
+    ROTATION_DEG = 90.0
+    ROTATION_SPEED_DPS = 30.0
+
+    hold_steps = max(1, round(HOLD_SECONDS / dt))
+    log_every = max(1, round(1.0 / dt))  # once per simulated second
+
+    logger.info(
+        f"Holding home configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
+    )
+    for i in range(hold_steps):
+        scene.step()
+        if i % log_every == 0:
+            _log_wrench(manipulator, i)
+
+    rotation_steps = max(1, round((ROTATION_DEG / ROTATION_SPEED_DPS) / dt))
+    logger.info(
+        f"Rotating wrist {ROTATION_DEG:.0f} deg about X to swing the gripper off-axis:"
+    )
+    vel_dir = th.tensor([1.0, 0.0, 0.0], dtype=th.float32, device=device)
+    for _ in range(rotation_steps):
+        action = th.zeros(env.num_envs, 6, device=device)
+        action[:, 3:] = vel_dir * (
+            (ROTATION_SPEED_DPS * th.pi / 180.0) / manipulator.max_angular_speed
+        )
+        manipulator.ctrl_apply_vel_action(action, open_gripper=None)
+        scene.step()
+
+    manipulator.ctrl_apply_vel_action(
+        th.zeros(env.num_envs, 6, device=device), open_gripper=None
+    )
+
+    logger.info(
+        f"Holding rotated configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
+    )
+    for i in range(hold_steps):
+        scene.step()
+        if i % log_every == 0:
+            _log_wrench(manipulator, i)
 
 
 def ft_sensor_playgraund_move(env: BaseEnv, cfg: ExpConfig) -> None:

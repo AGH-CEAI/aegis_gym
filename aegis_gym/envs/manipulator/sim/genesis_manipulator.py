@@ -62,6 +62,13 @@ class GenesisManipulator(BaseManipulator):
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
                 "tool_mount_link",
+                # Kept explicitly so their mass isn't folded into `tool_mount_link` by
+                # the fixed-joint reduction: they carry the bulk of the gripper's
+                # weight and must stay separate, downstream links for
+                # `_gravity_wrench_world()` to account for it.
+                "adapter_from_sensor",
+                "robotiq_hande_coupler",
+                "robotiq_hande_link",
             ],
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
@@ -128,11 +135,30 @@ class GenesisManipulator(BaseManipulator):
         self._right_finger_dof = self._fingers_dof[1]
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
         self._fts_link = self._robot_entity.get_link("tool_mount_link")
+        self._gravity_links = self._get_downstream_links(self._fts_link)
+        # Mass/COM are only available once the Genesis scene is built, so these are
+        # filled in lazily on first use (see `_gravity_wrench_world`).
+        self._gravity_link_masses: th.Tensor | None = None
+        self._gravity_link_local_coms: th.Tensor | None = None
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
         self._default_joint_angles = self._cfg_robot.default_arm_dof
         if self._cfg_robot.default_gripper_dof is not None:
             self._default_joint_angles += self._cfg_robot.default_gripper_dof
+
+    def _get_downstream_links(self, root_link: RigidLink) -> list[RigidLink]:
+        """Links mounted past `root_link` in the kinematic chain (its descendants)."""
+        links = self._robot_entity.links
+        link_start = self._robot_entity.link_start
+        downstream = []
+        for link in links:
+            parent_idx = link.parent_idx
+            while parent_idx != -1:
+                if parent_idx == root_link.idx:
+                    downstream.append(link)
+                    break
+                parent_idx = links[parent_idx - link_start].parent_idx
+        return downstream
 
     def _add_joint_torque_sensor(self) -> None:
         self._joint_torque_sensor = self._gs_scene.add_sensor(
@@ -371,6 +397,46 @@ class GenesisManipulator(BaseManipulator):
         # TODO(issue#126) get the joints eff from genesis
         return self._joint_torque_sensor.read()
 
+    def _gravity_wrench_world(self) -> th.Tensor:
+        """Wrench felt at the F/T sensor from the weight of the links mounted past it
+        (gripper and its attachments). The robot's material sets
+        `gravity_compensation=1.0`, which cancels true gravity in the simulated
+        dynamics, so `_joint_torque_sensor` never sees this weight and it has to be
+        added back by hand to match what a real F/T sensor would read.
+        """
+        if self._gravity_link_masses is None:
+            self._gravity_link_masses = th.tensor(
+                [link.get_mass() for link in self._gravity_links],
+                dtype=th.float32,
+                device=self.device,
+            )
+            self._gravity_link_local_coms = th.tensor(
+                [link.inertial_pos for link in self._gravity_links],
+                dtype=th.float32,
+                device=self.device,
+            )
+
+        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        gravity = self._fts_link.solver.get_gravity().expand_as(
+            sensor_pos
+        )  # [num_envs, 3]
+
+        force = th.zeros_like(sensor_pos)
+        torque = th.zeros_like(sensor_pos)
+        for link, mass, local_com in zip(
+            self._gravity_links,
+            self._gravity_link_masses,
+            self._gravity_link_local_coms,
+        ):
+            com_world = link.get_pos() + transform_by_quat(
+                local_com.expand_as(sensor_pos), link.get_quat()
+            )
+            weight = mass * gravity  # [num_envs, 3]
+            force = force + weight
+            torque = torque + th.linalg.cross(com_world - sensor_pos, weight)
+
+        return th.cat([force, torque], dim=-1)
+
     def get_ft_wrench(self) -> th.Tensor:
         # TODO(issue#126) get the F\T sensing from genesis
         tau = self.get_joints_efforts()  # [num_envs, 6]
@@ -383,6 +449,7 @@ class GenesisManipulator(BaseManipulator):
         # A real F/T sensor reports the opposite: the load's reaction acting on the sensor
         # (e.g. a hanging weight reads as pulling down, not as the arm holding it up).
         wrench_world = -(th.linalg.pinv(jacobian_arm_T) @ tau.unsqueeze(-1)).squeeze(-1)
+        wrench_world = wrench_world + self._gravity_wrench_world()
 
         quat = self._fts_link.get_quat()  # [num_envs, 4], WXYZ
         quat_conj = quat * th.tensor(
