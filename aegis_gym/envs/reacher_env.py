@@ -65,7 +65,6 @@ class ReacherEnv(BaseEnv):
         self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
-        self.box_size = self._cfg_env.box_size_default
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
@@ -77,12 +76,26 @@ class ReacherEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.reacher_reward_scales
+        env_dict = self._cfg_env.env_specific_dict or {}
+        default_reward_scales = {
+            "keypoints": 1.0,
+        }
 
-        self.spawnbox_xlength = self._cfg_env.box_spawnbox_xlength
-        self.spawnbox_ylength = self._cfg_env.box_spawnbox_ylength
-        self.spawnbox_xoffset = self._cfg_env.box_spawnbox_xoffset
-        self.spawnbox_yoffset = self._cfg_env.box_spawnbox_yoffset
+        self.reward_scales = {
+            **default_reward_scales,
+            **env_dict.get("reward_scales", {}),
+        }
+
+        self.box_size = env_dict.get("box_size_default", [0.03, 0.08, 0.06])
+        self.box_size_symmetrical = env_dict.get(
+            "box_size_symmetrical", [0.0283, 0.0283, 0.1005]
+        )
+        self.box_collision = env_dict.get("box_collision", False)
+        self.box_fixed = env_dict.get("box_fixed", True)
+        self.spawnbox_xlength = env_dict.get("box_spawnbox_xlength", 0.22)
+        self.spawnbox_ylength = env_dict.get("box_spawnbox_ylength", 0.4)
+        self.spawnbox_xoffset = env_dict.get("box_spawnbox_xoffset", 0.36)
+        self.spawnbox_yoffset = env_dict.get("box_spawnbox_yoffset", -0.2)
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)

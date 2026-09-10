@@ -75,16 +75,28 @@ class PushTEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.push_t_reward_scales
+        env_dict = self._cfg_env.env_specific_dict or {}
+        default_reward_scales = {
+            "rotation_alignment": 1.0,
+            "position_alignment": 1.0,
+            "tcp_proximity": 1.0,
+            "success_bonus": 3.0,
+        }
 
-        self.success_thresh = self._cfg_env.tee_success_intersection_thresh
-        self.tee_friction = self._cfg_env.tee_friction
-        self.goal_offset_xy = self._cfg_env.tee_goal_offset
-        self.goal_z_rot = math.radians(self._cfg_env.tee_goal_z_rot_deg)
-        self.spawnbox_xlength = self._cfg_env.tee_spawnbox_xlength
-        self.spawnbox_ylength = self._cfg_env.tee_spawnbox_ylength
-        self.spawnbox_xoffset = self._cfg_env.tee_spawnbox_xoffset
-        self.spawnbox_yoffset = self._cfg_env.tee_spawnbox_yoffset
+        self.reward_scales = {
+            **default_reward_scales,
+            **env_dict.get("reward_scales", {}),
+        }
+        self.success_thresh = env_dict.get("success_intersection_thresh", 0.90)
+        self.tee_friction = env_dict.get("friction", 0.4)
+        self.goal_offset_xy = list(env_dict.get("goal_offset", [0.47, 0.0]))
+        self.goal_z_rot = math.radians(env_dict.get("goal_z_rot_deg", 0.0))
+        self.spawnbox_xlength = env_dict.get("spawnbox_xlength", 0.08)
+        self.spawnbox_ylength = env_dict.get("spawnbox_ylength", 0.2)
+        self.spawnbox_xoffset = env_dict.get("spawnbox_xoffset", -0.04)
+        self.spawnbox_yoffset = env_dict.get("spawnbox_yoffset", -0.1)
+        self.mask_resolution = env_dict.get("mask_resolution", 64)
+        self.mask_half_width = env_dict.get("mask_half_width", 0.15)
 
     def _observe_tcp_pose(self) -> th.Tensor:
         return self.manipulator.get_tcp_pose()

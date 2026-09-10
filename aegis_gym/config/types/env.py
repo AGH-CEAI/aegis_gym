@@ -16,33 +16,11 @@ class EnvCfg(BaseCfg):
     max_steps: int | None
     ctrl_dt: float
     policy_dt: float
-    # TODO(issue#111) introduce size config
-    box_size_default: list[float]
-    box_size_symmetrical: list[float]
-    table_size: list[float]
-    workbench_size: list[float]
-    box_collision: bool
-    box_fixed: bool
-    box_spawnbox_xlength: float
-    box_spawnbox_ylength: float
-    box_spawnbox_xoffset: float
-    box_spawnbox_yoffset: float
+    cameras_setup: CamerasSetup
     image_resolution: tuple[int, int]
     use_rasterizer: bool
     visualize_camera: bool
     visualize_cell: bool
-    # TODO(issue#111) consider changing camera setup to cameras_num
-    cameras_setup: CamerasSetup
-    reacher_reward_scales: dict
-    # Push-T task
-    tee_spawnbox_xlength: float
-    tee_spawnbox_ylength: float
-    tee_spawnbox_xoffset: float
-    tee_spawnbox_yoffset: float
-    tee_goal_offset: list[float]
-    tee_goal_z_rot_deg: float
-    tee_success_intersection_thresh: float
-    tee_mask_resolution: int
-    tee_mask_half_width: float
-    tee_friction: float
-    push_t_reward_scales: dict
+    table_size: list[float]
+    workbench_size: list[float]
+    env_specific_dict: dict | None
