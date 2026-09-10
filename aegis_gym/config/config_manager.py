@@ -124,10 +124,6 @@ class ConfigManager:
 
     @classmethod
     def _patch_config(cls, args: LaunchArgs, cfg_dict: dict) -> None:
-        # You can control only 1 real instance
-        if args.control_type == Control.ROS:
-            cfg_dict["env"]["num_envs"] = 1
-
         # Add project_suffix to the logger outputs
         project_suffix = f"_{args.algorithm!s}-{args.control_type!s}"
         cfg_dict["logger"]["wandb_project"] += project_suffix
@@ -147,6 +143,10 @@ class ConfigManager:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
             cfg_dict["env"]["episode_length_s"] = args.episode_length_s
+
+        # You can control only 1 real instance
+        if args.control_type == Control.ROS:
+            cfg_dict["env"]["num_envs"] = 1
 
         # Eval: Setup max_steps
         if not cfg_dict["env"]["max_steps"]:
