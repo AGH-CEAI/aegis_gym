@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Restructured `container/` to the `aegis_docker` architecture: a two-tier base image, a production image and a development toolbx image, installed as the `aegis_gym_build_image`, `aegis_gym_run`, `aegis_gym_toolbx` and `aegis_gym_clean` commands via `container/install_links.sh`. See [container/CHANGELOG.md](container/CHANGELOG.md).
+- [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Restructured `container/` to the `aegis_docker` architecture: a two-tier base image, a production image and a development toolbx image, installed as the `aegis_gym_build_image`, `aegis_gym_run`, `aegis_gym_toolbx` and `aegis_gym_clean` commands via `container/install_links.sh`. See [container/CHANGELOG.md](container/CHANGELOG.md).
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Grouped environment config fields into shared and task-specific sections for clarity.
 - [PR-153](https://github.com/AGH-CEAI/aegis_gym/pull/153) - Moved Reacher's hardcoded spawn box ranges into config fields.
 - [PR-147](https://github.com/AGH-CEAI/aegis_gym/pull/147) - Replace print statements with logging. Divide aux section ingo sub-packages (e.g. logging)
