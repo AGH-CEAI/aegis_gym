@@ -28,6 +28,7 @@ cd /tmp/aegis_ros/aegis_grpc
 
 bash ./install_client.sh
 
+mkdir -p /ws
 cd /ws
 
 rm -rf /tmp/aegis_ros

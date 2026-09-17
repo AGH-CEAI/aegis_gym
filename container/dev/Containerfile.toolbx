@@ -1,0 +1,38 @@
+# Development image: the base image plus what toolbx needs to create a
+# container from it. aegis_gym itself is deliberately NOT installed here --
+# aegis_gym_toolbx editable-installs the host checkout after creating the
+# container, so edits on the host take effect immediately inside.
+
+ARG BASE_REF=ceai/aegis_gym:latest
+FROM ${BASE_REF}
+
+ARG AEGIS_GYM_TAG=devel
+ARG AEGIS_GYM_REV=unknown
+
+USER root
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Packages toolbx expects to find when it sets up the shared user and home.
+# libcap2-bin already comes from the torch tier.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash-completion \
+        passwd \
+        procps \
+        rsync \
+        sudo \
+        tzdata \
+        util-linux \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Declared after the RUN so a new revision does not invalidate the apt layer.
+# Without com.github.containers.toolbox, `toolbox create --image` refuses it.
+LABEL com.github.containers.toolbox="true"
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL aegis.image.type="development"
+LABEL aegis.gym.tag=${AEGIS_GYM_TAG}
+LABEL aegis.gym.rev=${AEGIS_GYM_REV}
+
+CMD ["/bin/bash"]

@@ -1,0 +1,41 @@
+#!/bin/bash
+# In-image dispatcher. Deliberately NOT an ENTRYPOINT: the ClearML agent runs
+# this image with its own `bash -c '<agent script>'` command and an ENTRYPOINT
+# would be prepended to it. aegis_gym_run passes this explicitly instead.
+
+set -e
+
+usage() {
+    cat << 'EOF'
+Usage: aegis-gym <command> [arguments]
+
+Commands:
+  train [args]   python3 /opt/aegis_gym/train.py [args]
+  eval  [args]   python3 /opt/aegis_gym/eval.py  [args]
+  hpo   [args]   python3 /opt/aegis_gym/hpo.py   [args]
+  shell [cmd]    run cmd, or an interactive bash when no cmd is given
+  <other>        run verbatim
+EOF
+}
+
+# Read the command before shifting: a bare `shift` with no positional
+# parameters fails, which under `set -e` would kill the no-argument case.
+CMD="${1:-shell}"
+(($# > 0)) && shift
+
+case "${CMD}" in
+    train) exec python3 /opt/aegis_gym/train.py "$@" ;;
+    eval) exec python3 /opt/aegis_gym/eval.py "$@" ;;
+    hpo) exec python3 /opt/aegis_gym/hpo.py "$@" ;;
+    shell)
+        if (($# == 0)); then
+            exec /bin/bash
+        fi
+        exec "$@"
+        ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *) exec "${CMD}" "$@" ;;
+esac

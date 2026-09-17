@@ -1,0 +1,63 @@
+# Production image: the base image plus aegis_gym itself, installed at a
+# known ref so the image is self-contained and reproducible.
+#
+# Build context must be run/, so that aegis-gym is reachable below.
+#
+# There is deliberately NO ENTRYPOINT. The ClearML agent runs this image as
+#   docker run --env CLEARML_AGENT_SKIP_PYTHON_ENV_INSTALL=1 <image> bash -c '...'
+# and injects the task code and arguments itself; an ENTRYPOINT would be
+# prepended to that command and break it. Manual runs go through the
+# /usr/local/bin/aegis-gym dispatcher, which aegis_gym_run passes explicitly.
+
+ARG BASE_REF=ceai/aegis_gym:latest
+FROM ${BASE_REF}
+
+ARG AEGIS_GYM_TAG=devel
+# Cache buster: changes whenever the branch points at a new commit.
+ARG AEGIS_GYM_REV=unknown
+
+USER root
+WORKDIR /ws
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_SYSTEM_PYTHON=1
+
+# The checkout is kept, not deleted: train.py/eval.py/hpo.py are top-level
+# scripts rather than console entry points, so the dispatcher needs them on
+# disk. --no-deps because the base image already carries every dependency.
+# --depth 1 --branch takes a branch or tag; a bare commit SHA needs a full
+# clone and an explicit checkout, so fall back to that.
+RUN echo ">>> aegis_gym @ ${AEGIS_GYM_REV}" \
+    && (git clone --depth 1 --branch "${AEGIS_GYM_TAG}" \
+        https://github.com/AGH-CEAI/aegis_gym.git /opt/aegis_gym \
+    || (rm -rf /opt/aegis_gym \
+        && git clone https://github.com/AGH-CEAI/aegis_gym.git /opt/aegis_gym \
+        && git -C /opt/aegis_gym checkout "${AEGIS_GYM_TAG}")) \
+    && uv pip install --system --no-deps /opt/aegis_gym \
+    && uv cache clean \
+    && rm -rf /root/.cache/pip /root/.cache/uv
+
+COPY aegis-gym /usr/local/bin/aegis-gym
+RUN chmod +x /usr/local/bin/aegis-gym
+
+# Baked-in default for the ClearML agent; a task config can still override it.
+ENV CLEARML_AGENT_SKIP_PYTHON_ENV_INSTALL=1
+
+# Declared last on purpose: BUILD_DATE changes on every build and would
+# invalidate the cache of everything after it.
+ARG BASE_REF
+ARG AEGIS_GYM_TAG
+ARG AEGIS_GYM_REV
+ARG BUILD_DATE=unknown
+
+LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
+LABEL org.opencontainers.image.source="https://github.com/AGH-CEAI/aegis_gym"
+LABEL org.opencontainers.image.created=${BUILD_DATE}
+LABEL org.opencontainers.image.revision=${AEGIS_GYM_REV}
+LABEL aegis.image.type="production"
+LABEL aegis.base.ref=${BASE_REF}
+LABEL aegis.gym.tag=${AEGIS_GYM_TAG}
+LABEL aegis.gym.rev=${AEGIS_GYM_REV}
+LABEL aegis.build.date=${BUILD_DATE}
+
+CMD ["/bin/bash"]

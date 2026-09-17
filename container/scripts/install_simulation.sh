@@ -42,7 +42,39 @@ git clone \
 
 cd /tmp/aegis_gym
 
+# Anything already installed from source above, or by the torch tier, must not
+# be re-installed from the lock, which pins the PyPI build of the same name:
+#
+#   torch/torchvision  the torch tier installs the CUDA wheel-index build; the
+#                      lock pins the PyPI one, a different CUDA build with its
+#                      own nvidia-* runtime libraries. Letting it through leaves
+#                      a mismatched set (torch+cu128 against torchvision+cu129).
+#   rsl-rl-lib         the AGH fork is installed from git above. It survives
+#                      today only because its version equals the lock's pin; a
+#                      bump on either side would swap in the PyPI build.
+#
+# So drop that family from the export and let the earlier installs own it;
+# everything else stays lock-pinned. The list is derived from the lock rather
+# than hard-coded, so it keeps up as the dependency set changes.
+mapfile -t OWNED_ELSEWHERE < <(
+    uv export \
+        --no-emit-project \
+        --extra sim-genesis \
+        --extra test \
+        --no-hashes \
+        --no-annotate \
+        --no-header \
+        | sed -n 's/^\(nvidia-[a-z0-9.-]*\|torch\|torchvision\|triton\|rsl-rl-lib\)==.*/\1/p'
+)
+
+NO_EMIT=()
+for pkg in ${OWNED_ELSEWHERE[@]+"${OWNED_ELSEWHERE[@]}"}; do
+    NO_EMIT+=(--no-emit-package "${pkg}")
+done
+
 uv export \
+    --no-emit-project \
+    ${NO_EMIT[@]+"${NO_EMIT[@]}"} \
     --extra sim-genesis \
     --extra test \
     --output-file requirements.txt
@@ -51,6 +83,7 @@ uv pip install \
     --system \
     --requirement requirements.txt
 
+mkdir -p /ws
 cd /ws
 
 rm -rf \
