@@ -1,10 +1,12 @@
 import ast
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
 
@@ -34,6 +36,7 @@ class LaunchArgs:
     enforce_current_config: bool | None
     control_type: Control | None
     env_name: str | None
+    env_specific_dict: dict | None
 
     calibration_move: list | None
     calibration_move_cartesian: list | None
@@ -70,6 +73,17 @@ def parse_arguments(
         if arg is None:
             return None
         return ast.literal_eval(arg)
+
+    def str_to_dict(arg: str | None) -> dict | None:
+        if arg is None:
+            return None
+        try:
+            value = ast.literal_eval(arg)
+        except (SyntaxError, ValueError) as err:
+            raise ArgumentTypeError(f"Not a valid dict literal: {arg}") from err
+        if not isinstance(value, dict):
+            raise ArgumentTypeError(f"Expected a dict, got: {type(value).__name__}")
+        return value
 
     if argv is None:
         argv = sys.argv
@@ -122,7 +136,23 @@ def parse_arguments(
     p.add_argument(
         "--control", type=Control, choices=list(Control), default=Control.SIM
     )
-    p.add_argument("--env", type=str, default=None)
+    p.add_argument(
+        "--env",
+        type=str,
+        choices=available_envs(),
+        default=None,
+        help="Environment selection via short name",
+    )
+    p.add_argument(
+        "--env-dict",
+        type=str_to_dict,
+        default=None,
+        help=(
+            "Override entries of the environment's `env_specific_dict` with a dict "
+            'literal, e.g. \'{"friction": 0.9, "reward_scales": {"keypoints": 2.0}}\'. '
+            "The entries that are not given keep their default value."
+        ),
+    )
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)
@@ -207,6 +237,7 @@ def parse_arguments(
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
         env_name=args.env,
+        env_specific_dict=args.env_dict,
         calibration_move=args.calibration_move,
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,

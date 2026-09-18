@@ -125,10 +125,6 @@ class ConfigManager:
 
     @classmethod
     def _patch_config(cls, args: LaunchArgs, cfg_dict: dict) -> None:
-        # You can control only 1 real instance
-        if args.control_type == Control.ROS:
-            cfg_dict["env"]["num_envs"] = 1
-
         # Add project_suffix to the logger outputs
         project_suffix = f"_{args.algorithm!s}-{args.control_type!s}"
         cfg_dict["logger"]["wandb_project"] += project_suffix
@@ -144,10 +140,19 @@ class ConfigManager:
             cfg_dict["env"]["num_envs"] = args.num_envs
         if args.env_name:
             cfg_dict["env"]["env_name"] = args.env_name
+        if args.env_specific_dict:
+            cfg_dict["env"]["env_specific_dict"] = cls._deep_update(
+                base=cfg_dict["env"]["env_specific_dict"] or {},
+                override=args.env_specific_dict,
+            )
         if args.visualize_camera:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
             cfg_dict["env"]["episode_length_s"] = args.episode_length_s
+
+        # You can control only 1 real instance
+        if args.control_type == Control.ROS:
+            cfg_dict["env"]["num_envs"] = 1
 
         # Eval: Setup max_steps
         if not cfg_dict["env"]["max_steps"]:
@@ -174,3 +179,36 @@ class ConfigManager:
 
         # Confirm types of data
         cfg_dict["env"]["image_resolution"] = tuple(cfg_dict["env"]["image_resolution"])
+
+        # Store the effective env_specific_dict, so the defaults of the selected
+        # environment are preserved for the external logging
+        cfg_dict["env"]["env_specific_dict"] = cls._resolve_env_specific_dict(
+            env_name=cfg_dict["env"]["env_name"],
+            given=cfg_dict["env"]["env_specific_dict"],
+        )
+
+    @classmethod
+    def _resolve_env_specific_dict(cls, env_name: str, given: dict | None) -> dict:
+        """
+        Overrides the `env_name` environment defaults with the `given` entries.
+        The entries that are not given keep their default value.
+        """
+        from ..envs import get_env_class
+
+        defaults = get_env_class(env_name).get_default_env_specific_dict()
+        return cls._deep_update(base=defaults, override=given or {})
+
+    @classmethod
+    def _deep_update(cls, base: dict, override: dict) -> dict:
+        """
+        Returns a copy of `base` updated with `override`, merging the nested dicts
+        (e.g. `reward_scales`) key by key instead of replacing them as a whole.
+        """
+        result = dict(base)
+        for key, value in override.items():
+            current = result.get(key)
+            if isinstance(current, dict) and isinstance(value, dict):
+                result[key] = cls._deep_update(base=current, override=value)
+            else:
+                result[key] = value
+        return result
