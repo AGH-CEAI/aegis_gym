@@ -37,5 +37,13 @@ case "${CMD}" in
         usage
         exit 0
         ;;
-    *) exec "${CMD}" "$@" ;;
+    *)
+        if ! command -v "${CMD}" > /dev/null 2>&1; then
+            echo "aegis-gym: '${CMD}' is not a command in this image." >&2
+            echo >&2
+            usage >&2
+            exit 127
+        fi
+        exec "${CMD}" "$@"
+        ;;
 esac

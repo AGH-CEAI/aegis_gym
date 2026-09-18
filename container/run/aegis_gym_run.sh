@@ -99,6 +99,17 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+if ((${#ARGS[@]} > 0)); then
+    case "${ARGS[0]}" in
+        train | eval | hpo | shell) ;;
+        *)
+            echo ">>> Warning: '${ARGS[0]}' is not one of train, eval, hpo, shell." >&2
+            echo ">>>          It will be run verbatim inside the image." >&2
+            echo ">>>          Did you repeat 'aegis_gym_run'? See --help." >&2
+            ;;
+    esac
+fi
+
 command -v podman > /dev/null 2>&1 || {
     echo ">>> Error: 'podman' not found in PATH." >&2
     exit 1
