@@ -98,6 +98,15 @@ class BaseEnv(VecEnv):
         """Return the environment config as dict."""
         return self._cfg_env.as_dict()
 
+    @classmethod
+    @abstractmethod
+    def get_default_env_specific_dict(cls) -> dict:
+        """
+        Default `env_specific_dict` values of the environment. The entries are
+        supposed to be overridden by `env_cfg.env_specific_dict` in `_extract_config()`.
+        """
+        ...
+
     def get_num_envs(self) -> int:
         """Return the number of parallel environments."""
         return self.num_envs
