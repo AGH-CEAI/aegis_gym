@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 CONTAINERFILE="${SCRIPT_DIR}/Containerfile.prod"
 
+# shellcheck source=../lib/common.sh
+source "${SCRIPT_DIR}/../lib/common.sh"
+
 BASE_IMAGE="ceai/aegis_gym"
 PROD_IMAGE="ceai/aegis_gym_prod"
 FALLBACK_BRANCH="devel"
@@ -136,28 +139,6 @@ err() { echo "${C_RED}>>> $*${C_RESET}" >&2; }
 
 # --- Helpers ---------------------------------------------------------------
 
-in_aegis_repo() {
-    # True when $PWD is inside an aegis_gym checkout (repo root or any
-    # subdirectory). Being in some other git repo does not count.
-    local toplevel url
-    toplevel="$(git rev-parse --show-toplevel 2> /dev/null || true)"
-    [[ -n "${toplevel}" ]] || return 1
-    [[ "$(basename "${toplevel}")" == "${AEGIS_REPO_NAME}" ]] && return 0
-    url="$(git -C "${toplevel}" config --get remote.origin.url 2> /dev/null || true)"
-    [[ "${url}" == *"${AEGIS_REPO_NAME}"* ]]
-}
-
-detect_branch() {
-    local branch=""
-    if in_aegis_repo; then
-        branch="$(git rev-parse --abbrev-ref HEAD 2> /dev/null || true)"
-    fi
-    if [[ -z "${branch}" || "${branch}" == "HEAD" ]]; then
-        branch="${FALLBACK_BRANCH}"
-    fi
-    echo "${branch}"
-}
-
 nvidia_available() {
     # CDI is how modern podman exposes NVIDIA devices. The spec file is
     # generated once on the host with:
@@ -168,11 +149,6 @@ nvidia_available() {
 image_label() {
     # $1 = image ref, $2 = label key. Empty string when absent.
     podman image inspect --format "{{ index .Config.Labels \"$2\" }}" "$1" 2> /dev/null || true
-}
-
-remote_rev() {
-    # $1 = ref. Empty string when it cannot be resolved.
-    git ls-remote "${AEGIS_REPO_URL}" "$1" 2> /dev/null | cut -f1 || true
 }
 
 build_image() {
@@ -188,11 +164,12 @@ build_image() {
     }
 
     # Resolve the ref to a commit so the aegis_gym layer is rebuilt only when
-    # the branch has actually moved.
+    # the branch has actually moved. aegis_resolve_rev passes a bare commit id
+    # through untouched; only a genuinely unresolvable ref reaches the
+    # timestamp, which would otherwise end up in the provenance labels.
     local rev
-    rev="$(remote_rev "${AEGIS_GYM_TAG}")"
-    if [[ -z "${rev}" ]]; then
-        echo ">>> Could not resolve '${AEGIS_GYM_TAG}' on the remote, disabling layer cache."
+    if ! rev="$(aegis_resolve_rev "${AEGIS_REPO_URL}" "${AEGIS_GYM_TAG}")"; then
+        err "Warning: could not resolve '${AEGIS_GYM_TAG}' on the remote, disabling layer cache."
         rev="$(date +%s)"
     fi
 
@@ -224,9 +201,9 @@ prompt_build_settings() {
         echo
 
         read -r -p ">>> Build with these settings? [Y]es / [e]dit / [a]bort: " reply
-        case "${reply:-y}" in
-            [yY]) break ;;
-            [eE])
+        case "$(aegis_answer "${reply}" y)" in
+            y) break ;;
+            e)
                 read -r -p ">>> Image version [${IMAGE_VERSION}]: " reply
                 IMAGE_VERSION="${reply:-${IMAGE_VERSION}}"
                 read -r -p ">>> aegis_gym branch/ref [${AEGIS_GYM_TAG}]: " reply
@@ -258,7 +235,7 @@ show_provenance() {
 
     # Best-effort staleness check against the remote.
     if [[ -n "${tag}" && -n "${rev}" ]]; then
-        current="$(remote_rev "${tag}")"
+        current="$(aegis_resolve_rev "${AEGIS_REPO_URL}" "${tag}" || true)"
         if [[ -n "${current}" && "${current}" != "${rev}" ]]; then
             warn "NOTE: '${tag}' has moved to ${current:0:8} since this image was built."
         fi
@@ -269,7 +246,7 @@ show_provenance() {
 # --- Build -----------------------------------------------------------------
 
 if [[ -z "${AEGIS_GYM_TAG}" ]]; then
-    AEGIS_GYM_TAG="$(detect_branch)"
+    AEGIS_GYM_TAG="$(aegis_detect_branch "${FALLBACK_BRANCH}")"
 fi
 
 if ((DO_BUILD == 0)) && ! podman image exists "${PROD_REF}"; then
@@ -292,10 +269,15 @@ fi
 # --- Push ------------------------------------------------------------------
 
 if ((DO_PUSH)); then
-    podman image exists "${PROD_REF}" || {
-        err "Error: ${PROD_REF} does not exist locally, nothing to push."
-        exit 1
-    }
+    # Under --dry-run the build above was only described, so the image may
+    # legitimately not exist yet; refusing here would fail a preview for a
+    # reason the real run would not hit.
+    if ((DRY_RUN == 0)); then
+        podman image exists "${PROD_REF}" || {
+            err "Error: ${PROD_REF} does not exist locally, nothing to push."
+            exit 1
+        }
+    fi
 
     if [[ -n "${PUSH_AS}" ]]; then
         REMOTE_REF="${PUSH_AS}"
@@ -304,13 +286,21 @@ if ((DO_PUSH)); then
         REMOTE_REF="${REGISTRY}/${PROD_IMAGE}:${IMAGE_VERSION}"
     fi
 
-    echo ">>> Tagging as ${REMOTE_REF}..."
-    podman tag "${PROD_REF}" "${REMOTE_REF}"
+    # --dry-run has to cover this too. A push is the one irreversible thing
+    # this script does: it publishes to a shared registry, where a tag someone
+    # only asked to preview is visible to everyone and may already have been
+    # pulled by the time it is noticed.
+    if ((DRY_RUN)); then
+        echo ">>> [dry-run] would tag ${PROD_REF} as ${REMOTE_REF} and push it"
+    else
+        echo ">>> Tagging as ${REMOTE_REF}..."
+        podman tag "${PROD_REF}" "${REMOTE_REF}"
 
-    echo ">>> Pushing ${REMOTE_REF}..."
-    podman push "${REMOTE_REF}"
+        echo ">>> Pushing ${REMOTE_REF}..."
+        podman push "${REMOTE_REF}"
 
-    echo ">>> Pushed ${REMOTE_REF}"
+        echo ">>> Pushed ${REMOTE_REF}"
+    fi
 fi
 
 ((DO_RUN)) || exit 0
@@ -321,13 +311,13 @@ if ((ASSUME_YES == 0 && DRY_RUN == 0)); then
     while true; do
         show_provenance
         read -r -p ">>> Run it? [Y]es / [r]ebuild / [c]leanup and exit / [a]bort: " ACTION
-        case "${ACTION:-y}" in
-            [yY]) break ;;
-            [rR])
+        case "$(aegis_answer "${ACTION}" y)" in
+            y) break ;;
+            r)
                 prompt_build_settings
                 build_image
                 ;;
-            [cC])
+            c)
                 echo ">>> Removing ${PROD_REF}..."
                 podman rmi --force "${PROD_REF}"
                 echo ">>> Cleanup done."

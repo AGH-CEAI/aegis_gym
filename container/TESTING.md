@@ -85,7 +85,9 @@ podman rmi ceai/aegis_gym:test-tag ceai/aegis_gym_torch:test-tag
 ```
 
 Optional (slow, ~20 min): `aegis_gym_build_image -y --torch-only --rebuild-torch`
-rebuilds only the CUDA tier.
+rebuilds only the CUDA tier, from scratch — the flag implies `--no-cache` for
+that tier, so watch for the wheels actually being downloaded again rather than
+a run that finishes in seconds.
 
 **Expect:** exit 0 every time; `-y` never prompts.
 
@@ -99,6 +101,10 @@ Nothing is built for `v0.1.0` yet, so start with the no-op inspection:
 cd ~/ceai/ros_ws/src/aegis_gym     # so the branch is detected from git
 aegis_gym_run --help
 aegis_gym_run --dry-run train --env reacher -e TEST_PLAYGROUND_dry
+
+# --dry-run must not touch the registry: no new tag, nothing pushed
+aegis_gym_run --dry-run --no-run --push-as localhost/aegis-dryrun-probe:tmp
+podman images | grep aegis-dryrun-probe    # expect: no output
 ```
 
 **Expect** in the printed podman line: `--network host`, `--ipc host`,
@@ -178,7 +184,13 @@ python3 -c "import aegis_gym, torch; print(aegis_gym.__file__); print(torch.__ve
 ```
 
 **Expect:** your checkout path, `2.8.0+cu129`, `True`. If torch says **cu128**,
-the `$HOME` shadowing is back — that means the scrub was bypassed.
+the `$HOME` shadowing is back, which means the image lost
+`ENV PYTHONNOUSERSITE=1`. Check it directly — this must print `1`, and note
+that it has to come from the image, not from the caller:
+
+```bash
+toolbox run --container aegis_gym_dev-v0.1.0 printenv PYTHONNOUSERSITE
+```
 
 Prove the edit is live, then leave:
 

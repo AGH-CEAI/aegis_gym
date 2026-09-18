@@ -67,8 +67,25 @@ mapfile -t OWNED_ELSEWHERE < <(
         | sed -n 's/^\(nvidia-[a-z0-9.-]*\|torch\|torchvision\|triton\|rsl-rl-lib\)==.*/\1/p'
 )
 
+# `mapfile < <(...)` hides the exit status of everything inside the process
+# substitution, so a failed `uv export` above -- a transient index error, a
+# renamed flag, a lock that no longer matches pyproject.toml -- would leave
+# OWNED_ELSEWHERE empty and sail straight past `set -e`. The export below would
+# then emit torch, torchvision, triton and the nvidia-* runtimes, `uv pip
+# install` would put the PyPI builds over the CUDA wheel-index ones, and the
+# image would ship the exact mismatch this block exists to prevent -- with a
+# zero exit status. torch is unconditionally in this lock, so an empty list
+# cannot be a legitimate answer.
+if [[ ${#OWNED_ELSEWHERE[@]} -eq 0 ]]; then
+    echo ">>> Error: the dependency lock listed no torch/nvidia packages to" >&2
+    echo ">>>        exclude, which means 'uv export' failed or the lock is" >&2
+    echo ">>>        not the one this image expects. Refusing to build an" >&2
+    echo ">>>        image with a mismatched CUDA stack." >&2
+    exit 1
+fi
+
 NO_EMIT=()
-for pkg in ${OWNED_ELSEWHERE[@]+"${OWNED_ELSEWHERE[@]}"}; do
+for pkg in "${OWNED_ELSEWHERE[@]}"; do
     NO_EMIT+=(--no-emit-package "${pkg}")
 done
 

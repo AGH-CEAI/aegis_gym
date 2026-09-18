@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 CONTAINERFILE="${SCRIPT_DIR}/Containerfile.toolbx"
 
+# shellcheck source=../lib/common.sh
+source "${SCRIPT_DIR}/../lib/common.sh"
+
 DEFAULT_IMAGE="ceai/aegis_gym"
 DEFAULT_VERSION="v0.1.0"
 FALLBACK_BRANCH="devel"
@@ -59,64 +62,12 @@ done
 
 # --- Helpers ---------------------------------------------------------------
 
-aegis_repo_path() {
-    # Absolute path of the aegis_gym checkout $PWD sits in, empty otherwise.
-    # Being in some other git repo does not count.
-    local toplevel url
-    toplevel="$(git rev-parse --show-toplevel 2> /dev/null || true)"
-    [[ -n "${toplevel}" ]] || return 0
-
-    if [[ "$(basename "${toplevel}")" == "${AEGIS_REPO_NAME}" ]]; then
-        echo "${toplevel}"
-        return 0
-    fi
-
-    url="$(git -C "${toplevel}" config --get remote.origin.url 2> /dev/null || true)"
-    if [[ "${url}" == *"${AEGIS_REPO_NAME}"* ]]; then
-        echo "${toplevel}"
-    fi
-}
-
-detect_branch() {
-    # Branch of the directory the script was called from, not where it lives,
-    # and only when that directory belongs to aegis_gym.
-    local branch="" repo
-    repo="$(aegis_repo_path)"
-    if [[ -n "${repo}" ]]; then
-        branch="$(git -C "${repo}" rev-parse --abbrev-ref HEAD 2> /dev/null || true)"
-    fi
-    if [[ -z "${branch}" || "${branch}" == "HEAD" ]]; then
-        branch="${FALLBACK_BRANCH}"
-    fi
-    echo "${branch}"
-}
-
-host_locale() {
-    # `toolbox enter` forwards the host's $LANG into the container but not its
-    # $LC_ALL, so the image has to carry that very locale. When it does not,
-    # zsh silently drops to single-byte C and every wide character breaks --
-    # most visibly the agnoster powerline prompt, which aborts on $'\ue0b0'
-    # and leaves a bare 'toolbx%'. C/POSIX carry no such requirement, so for
-    # those the image default is good enough.
-    local loc="${LANG:-}"
-    case "${loc}" in
-        *.UTF-8 | *.utf8)
-            case "${loc}" in
-                C.* | POSIX.*) echo "en_US.UTF-8" ;;
-                *) echo "${loc}" ;;
-            esac
-            ;;
-        *) echo "en_US.UTF-8" ;;
-    esac
-}
-
 resolve_rev() {
-    # Resolve the branch to a commit so the image layer is rebuilt only when
-    # the branch has actually moved. Falls back to a timestamp.
-    # Only the bare revision goes to stdout; it is captured by the caller.
+    # The branch as a commit, so the image layer is rebuilt only when the
+    # branch has actually moved. A miss falls back to a timestamp, which always
+    # busts the cache. Only the bare revision goes to stdout.
     local branch="$1" rev
-    rev="$(git ls-remote "${AEGIS_REPO_URL}" "${branch}" 2> /dev/null | cut -f1 || true)"
-    if [[ -z "${rev}" ]]; then
+    if ! rev="$(aegis_resolve_rev "${AEGIS_REPO_URL}" "${branch}")"; then
         echo ">>> Warning: could not resolve '${branch}' on the remote," \
             "disabling layer cache." >&2
         rev="$(date +%s)"
@@ -151,21 +102,49 @@ install_local_aegis_gym() {
     toolbox run --container "${name}" bash -lc \
         "sudo uv pip install --system --no-deps --editable '${repo}'"
 
-    # Verified with the same scrub the shell is entered with, so this reports
-    # what you will actually get inside.
+    # No env scrub here on purpose: PYTHONNOUSERSITE is baked into the image,
+    # so this sees exactly what the interactive shell will see. Wrapping the
+    # command in `env PYTHONNOUSERSITE=1` would have hidden a broken image by
+    # fixing up the one invocation that checks it.
     echo ">>> Python will import aegis_gym from:"
     toolbox run --container "${name}" \
-        env PYTHONNOUSERSITE=1 PYTHONPATH= \
         python3 -c 'import aegis_gym; print(aegis_gym.__file__)'
+
+    # The whole point of the development image, so fail loudly rather than let
+    # someone train against the host's PyPI torch for an afternoon.
+    local torch_file
+    torch_file="$(toolbox run --container "${name}" \
+        python3 -c 'import torch; print(torch.__file__)' 2> /dev/null || true)"
+    if [[ "${torch_file}" == "${HOME}/.local/"* ]]; then
+        echo ">>> Error: torch resolves to ${torch_file}," >&2
+        echo ">>>        i.e. your host's packages are shadowing the image." >&2
+        echo ">>>        The image should set PYTHONNOUSERSITE=1; rebuild it with" >&2
+        echo ">>>        aegis_gym_toolbx --no-cache and recreate the container." >&2
+        exit 1
+    fi
 }
 
 enter_toolbox() {
-    # PYTHONNOUSERSITE/PYTHONPATH are scrubbed on purpose: toolbx shares $HOME,
-    # so the host's ~/.local/lib/python3.*/site-packages and any ROS-sourced
-    # PYTHONPATH would otherwise shadow the image's system torch and genesis.
+    # No env scrub around toolbox: it forwards only its own fixed list of
+    # variables, so anything exported here is dropped on the way in. The
+    # shared-$HOME shadowing this used to guard against is handled by
+    # PYTHONNOUSERSITE=1 in Containerfile.toolbx, where it actually arrives.
     local name="$1"
     echo ">>> Entering ${name}..."
-    exec env PYTHONNOUSERSITE=1 PYTHONPATH= toolbox enter "${name}"
+    exec toolbox enter "${name}"
+}
+
+require_base_image() {
+    # Split out of build_and_enter so [r]ecreate can check it while the old
+    # container is still there. Destroying a working container and only then
+    # discovering the base image is gone leaves nothing to fall back on, and
+    # getting it back costs a multi-GB rebuild.
+    local base_ref="$1" version="$2"
+    podman image exists "${base_ref}" || {
+        echo ">>> Error: base image ${base_ref} not found." >&2
+        echo ">>>        Build it first with: aegis_gym_build_image -v ${version}" >&2
+        exit 1
+    }
 }
 
 build_and_enter() {
@@ -174,13 +153,9 @@ build_and_enter() {
     local name="${NAME_PREFIX}${version}"
     local rev locale
     rev="$(resolve_rev "${branch}")"
-    locale="$(host_locale)"
+    locale="$(aegis_host_locale)"
 
-    podman image exists "${base_ref}" || {
-        echo ">>> Error: base image ${base_ref} not found." >&2
-        echo ">>>        Build it first with: aegis_gym_build_image -v ${version}" >&2
-        exit 1
-    }
+    require_base_image "${base_ref}" "${version}"
 
     local build_cmd=(podman build "${SCRIPT_DIR}"
         --file "${CONTAINERFILE}"
@@ -206,7 +181,7 @@ create_new() {
     # One confirmation on the defaults; only ask for details on request.
     local base_image="${DEFAULT_IMAGE}" version="${DEFAULT_VERSION}"
     local branch repo
-    branch="$(detect_branch)"
+    branch="$(aegis_detect_branch "${FALLBACK_BRANCH}")"
     repo="$(aegis_repo_path)"
 
     echo
@@ -217,9 +192,9 @@ create_new() {
     echo
 
     read -r -p ">>> Create with these settings? [Y]es / [e]dit / [a]bort: " CONFIRM
-    case "${CONFIRM:-y}" in
-        [yY]) ;;
-        [eE])
+    case "$(aegis_answer "${CONFIRM}" y)" in
+        y) ;;
+        e)
             read -r -p ">>> Base image [${base_image}]: " reply
             base_image="${reply:-${base_image}}"
             read -r -p ">>> Image version [${version}]: " reply
@@ -232,6 +207,20 @@ create_new() {
             exit 0
             ;;
     esac
+
+    # The container name is derived from the version, so accepting the defaults
+    # when a container for that version already exists would fail inside
+    # `toolbox create` -- after the image had been rebuilt. Catch it here and
+    # ask for a version that is actually free.
+    while podman container exists "${NAME_PREFIX}${version}"; do
+        echo ">>> Container ${NAME_PREFIX}${version} already exists."
+        read -r -p ">>> Image version for the new container (empty aborts): " reply
+        if [[ -z "${reply}" ]]; then
+            echo ">>> Aborted."
+            exit 0
+        fi
+        version="${reply}"
+    done
 
     build_and_enter "${base_image}:${version}" "${version}" "${branch}"
 }
@@ -272,32 +261,34 @@ TARGET_STATE="$(podman inspect -f '{{.State.Status}}' "${TARGET}")"
 echo ">>> Container '${TARGET}' exists (state: ${TARGET_STATE})."
 read -r -p ">>> [J]oin / [r]ecreate / [c]leanup / [n]ew: " ACTION
 
-case "${ACTION:-j}" in
-    [jJ])
+case "$(aegis_answer "${ACTION}" j)" in
+    j)
         enter_toolbox "${TARGET}"
         ;;
-    [rR])
-        BRANCH="$(detect_branch)"
+    r)
+        BRANCH="$(aegis_detect_branch "${FALLBACK_BRANCH}")"
         read -r -p ">>> aegis_gym branch [${BRANCH}]: " REPLY_BRANCH
         BRANCH="${REPLY_BRANCH:-${BRANCH}}"
+        # Before the rm, not after: see require_base_image.
+        require_base_image "${DEFAULT_IMAGE}:${TARGET_VERSION}" "${TARGET_VERSION}"
         echo ">>> Removing ${TARGET}..."
         toolbox rm --force "${TARGET}"
         build_and_enter "${DEFAULT_IMAGE}:${TARGET_VERSION}" \
             "${TARGET_VERSION}" "${BRANCH}"
         ;;
-    [cC])
+    c)
         echo ">>> Removing ${TARGET}..."
         toolbox rm --force "${TARGET}"
         if podman image exists "${TARGET_IMAGE}"; then
             read -r -p ">>> Also remove image ${TARGET_IMAGE}? (y/N): " RM_IMAGE
-            case "${RM_IMAGE}" in
-                [yY] | [yY][eE][sS]) podman rmi "${TARGET_IMAGE}" ;;
+            case "$(aegis_answer "${RM_IMAGE}" n)" in
+                y) podman rmi "${TARGET_IMAGE}" ;;
             esac
         fi
         echo ">>> Cleanup done."
         exit 0
         ;;
-    [nN])
+    n)
         create_new
         ;;
     *)

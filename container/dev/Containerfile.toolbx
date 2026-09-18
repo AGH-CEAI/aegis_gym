@@ -6,8 +6,6 @@
 ARG BASE_REF=ceai/aegis_gym:latest
 FROM ${BASE_REF}
 
-ARG AEGIS_GYM_TAG=devel
-ARG AEGIS_GYM_REV=unknown
 ARG LOCALE=en_US.UTF-8
 
 USER root
@@ -36,11 +34,40 @@ RUN printf 'path-include=/usr/share/doc/fzf/examples/*\n' \
     && rm -rf /var/lib/apt/lists/*
 
 # `toolbox enter` forwards the host's $LANG but not its $LC_ALL, so a locale
-# that was never generated here leaves the shell in single-byte C. Anything
-# Baked in as the default so `toolbox run` and `podman run` agree with it.
+# that was never generated here leaves the shell in single-byte C and every
+# wide character breaks. Baked in as the default so `toolbox run` and
+# `podman run` agree with it.
 ENV LANG=${LOCALE}
-# Declared after the RUN so a new revision does not invalidate the apt layer.
+
+# Load-bearing. toolbx shares $HOME, which puts the host's
+# ~/.local/lib/python3.*/site-packages ahead of the image's dist-packages, so
+# `import torch` resolves to the host's +cu128 PyPI build instead of the +cu129
+# wheel this image is built around.
+#
+# It has to be set here, not around `toolbox enter` where it used to live:
+# toolbx forwards only its own fixed variable list (COLORTERM, DISPLAY, LANG,
+# TERM, XDG_*, ...), so the exported value never arrived. Image ENV does.
+#
+# PYTHONPATH is deliberately not set -- toolbx does not forward the host's, and
+# an empty one would put the working directory on sys.path instead.
+ENV PYTHONNOUSERSITE=1
+
+# The base image is built for headless production runs (PYOPENGL_PLATFORM=egl,
+# PYGLET_HEADLESS=1). Development is the interactive path and toolbx forwards
+# DISPLAY, so inherit neither: under EGL the Genesis viewer cannot open, which
+# is what `train.py -v` is for. These are the values aegis_gym_run --gui sets.
+# For a headless run in here (training over SSH with no DISPLAY), override per
+# command: PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1 python3 ...
+ENV PYOPENGL_PLATFORM=glx
+ENV PYGLET_HEADLESS=
+
+# Declared after the RUN and the ENVs: a build arg poisons the cache of every
+# instruction following its ARG, so a moved branch would otherwise redo the
+# apt install and the locale generation on every build.
 # Without com.github.containers.toolbox, `toolbox create --image` refuses it.
+ARG AEGIS_GYM_TAG=devel
+ARG AEGIS_GYM_REV=unknown
+
 LABEL com.github.containers.toolbox="true"
 LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
 LABEL aegis.image.type="development"

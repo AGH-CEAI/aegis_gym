@@ -6,6 +6,9 @@ set -euo pipefail
 # Resolve through symlinks so the build context is the repository, not $PWD.
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+
 TORCH_IMAGE="ceai/aegis_gym_torch"
 BASE_IMAGE="ceai/aegis_gym"
 TORCH_CONTAINERFILE="${SCRIPT_DIR}/Containerfile.torch"
@@ -49,7 +52,8 @@ Options:
       --rsl-ref REF      AGH-CEAI/rsl_rl tag (default: v3.3.2)
       --ros-ref REF      aegis_ros branch/tag for the gRPC client (default: humble-devel)
       --no-cache         Build the dependency tier ignoring the layer cache
-      --rebuild-torch    Rebuild the torch tier even when it already exists
+      --rebuild-torch    Rebuild the torch tier from scratch (implies --no-cache
+                         for that tier) even when it already exists
       --torch-only       Build the torch tier and stop
   -p, --push[=HOST]      Push both tiers (default registry: geonosis:5000)
   -h, --help             This message
@@ -127,6 +131,13 @@ BASE_REF="${BASE_IMAGE}:${IMAGE_VERSION}"
 # --- Torch tier ------------------------------------------------------------
 
 build_torch() {
+    # $1 = 1 to ignore the layer cache. Nothing in this tier's inputs changes
+    # between builds -- the versions are build args with fixed defaults -- so a
+    # cached rebuild is a no-op that re-tags the identical image. Asking for a
+    # rebuild of a tier that already exists therefore has to mean --no-cache,
+    # otherwise the flag cannot do the one job it exists for: redoing a CUDA
+    # wheel install that came down corrupt or half-finished.
+    local no_cache="${1:-0}"
     local build_cmd=(podman build "${SCRIPT_DIR}"
         --file "${TORCH_CONTAINERFILE}"
         --build-arg "UBUNTU_VERSION=${UBUNTU_VERSION}"
@@ -134,8 +145,11 @@ build_torch() {
         --build-arg "TORCH_VERSION=${TORCH_VERSION}"
         --build-arg "TORCHVISION_VERSION=${TORCHVISION_VERSION}"
         -t "${TORCH_REF}")
+    ((no_cache)) && build_cmd+=(--no-cache)
 
-    echo ">>> Building ${TORCH_REF} (torch ${TORCH_VERSION}, ${CUDA_SHORT_VERSION})..."
+    echo ">>> Building ${TORCH_REF} (torch ${TORCH_VERSION}, ${CUDA_SHORT_VERSION}$(
+        ((no_cache)) && echo ", no cache"
+    ))..."
     "${build_cmd[@]}"
     echo ">>> Built ${TORCH_REF}"
 }
@@ -143,17 +157,17 @@ build_torch() {
 if podman image exists "${TORCH_REF}"; then
     echo ">>> ${TORCH_REF} already exists."
     if ((REBUILD_TORCH)); then
-        build_torch
+        build_torch 1
     elif ((ASSUME_YES == 0)); then
         # Default No: this is the expensive layer.
         read -r -p ">>> Rebuild it? (y/N): " reply
-        case "${reply}" in
-            [yY] | [yY][eE][sS]) build_torch ;;
+        case "$(aegis_answer "${reply}" n)" in
+            y) build_torch 1 ;;
             *) echo ">>> Keeping the existing torch image." ;;
         esac
     fi
 else
-    build_torch
+    build_torch "${NO_CACHE}"
 fi
 
 if ((TORCH_ONLY)); then
@@ -168,8 +182,7 @@ fi
 resolve_rev() {
     # $1 = repository URL, $2 = ref. Only the bare revision goes to stdout.
     local rev
-    rev="$(git ls-remote "$1" "$2" 2> /dev/null | cut -f1 || true)"
-    if [[ -z "${rev}" ]]; then
+    if ! rev="$(aegis_resolve_rev "$1" "$2")"; then
         echo ">>> Warning: could not resolve '$2' on the remote," \
             "disabling layer cache." >&2
         rev="$(date +%s)"
@@ -200,8 +213,8 @@ echo ">>> Built ${BASE_REF}"
 
 if ((DO_PUSH == 0 && ASSUME_YES == 0)); then
     read -r -p ">>> Push the images to a registry? (y/N): " reply
-    case "${reply}" in
-        [yY] | [yY][eE][sS]) DO_PUSH=1 ;;
+    case "$(aegis_answer "${reply}" n)" in
+        y) DO_PUSH=1 ;;
     esac
 fi
 

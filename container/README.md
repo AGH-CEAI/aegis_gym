@@ -183,16 +183,29 @@ Two details that trip people up:
 cannot write to the image's root-owned `dist-packages`. The script handles it;
 `--no-editable` skips the step entirely.
 
-**Never enter with a plain `toolbox enter`.** Because toolbx shares `$HOME`,
-your host's `~/.local/lib/python3.*/site-packages` and any ROS-sourced
-`PYTHONPATH` shadow the image's torch and Genesis. Use `aegis_gym_toolbx`, or:
+**Shared `$HOME` wants to shadow the image.** Because toolbx shares `$HOME`,
+your host's `~/.local/lib/python3.*/site-packages` sits ahead of the image's
+own packages, so `import torch` would find whatever the host has rather than
+the cu129 build this image is built around. `PYTHONNOUSERSITE=1` in
+`dev/Containerfile.toolbx` is what prevents that, and because it is baked into
+the image it holds for `toolbox enter` and `toolbox run` alike — you do not
+have to pass anything.
+
+Setting it *around* toolbx does not work and is worth knowing about: toolbx
+forwards only its own fixed list of variables (`COLORTERM`, `DISPLAY`, `LANG`,
+`TERM`, `XDG_*`, …), so `env PYTHONNOUSERSITE=1 toolbox enter …` drops the
+variable on the way in. If `torch.__version__` reports **cu128** inside the
+container, the image is missing that `ENV` — rebuild it with
+`aegis_gym_toolbx --no-cache` and recreate the container.
+
+**The viewer works here, headless needs asking for.** The development image
+sets `PYOPENGL_PLATFORM=glx` and clears `PYGLET_HEADLESS`, the same pair
+`aegis_gym_run --gui` uses, so `train.py -v` opens a window. For a long run
+over SSH with no `DISPLAY`, put it back per command:
 
 ```bash
-env PYTHONNOUSERSITE=1 PYTHONPATH= toolbox enter aegis_gym_dev-v0.1.0
+PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1 python3 train.py -a rl --env reacher
 ```
-
-If `torch.__version__` reports **cu128** inside the container, that shadowing is
-exactly what happened.
 
 ---
 
@@ -332,7 +345,7 @@ podman build dev -f dev/Containerfile.toolbx \
 toolbox create --image localhost/aegis_gym_dev:v0.1.0 aegis_gym_dev-v0.1.0
 toolbox run --container aegis_gym_dev-v0.1.0 bash -lc \
     "sudo uv pip install --system --no-deps --editable /path/to/aegis_gym"
-env PYTHONNOUSERSITE=1 PYTHONPATH= toolbox enter aegis_gym_dev-v0.1.0
+toolbox enter aegis_gym_dev-v0.1.0
 ```
 
 Note that `--ipc host` and `--shm-size` are mutually exclusive in podman: host
@@ -349,9 +362,10 @@ The CDI spec is stale — the NVIDIA driver was updated under it. Regenerate:
 every driver upgrade.
 
 **`torch.__version__` reports `+cu128` inside the toolbx**
-Your host's `~/.local` packages are shadowing the image. You entered with a
-plain `toolbox enter` — use `aegis_gym_toolbx`, or the `PYTHONNOUSERSITE=1
-PYTHONPATH=` form above.
+Your host's `~/.local` packages are shadowing the image, which means the image
+is missing `ENV PYTHONNOUSERSITE=1`. Rebuild it and recreate the container:
+`aegis_gym_toolbx --no-cache`, then `[r]ecreate`. Exporting the variable around
+`toolbox enter` does not help — toolbx does not forward it.
 
 **`Error: base image ceai/aegis_gym:<ver> not found`**
 Run `aegis_gym_build_image -v <ver>` first. `aegis_gym_run` and
