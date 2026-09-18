@@ -91,6 +91,25 @@ detect_branch() {
     echo "${branch}"
 }
 
+host_locale() {
+    # `toolbox enter` forwards the host's $LANG into the container but not its
+    # $LC_ALL, so the image has to carry that very locale. When it does not,
+    # zsh silently drops to single-byte C and every wide character breaks --
+    # most visibly the agnoster powerline prompt, which aborts on $'\ue0b0'
+    # and leaves a bare 'toolbx%'. C/POSIX carry no such requirement, so for
+    # those the image default is good enough.
+    local loc="${LANG:-}"
+    case "${loc}" in
+        *.UTF-8 | *.utf8)
+            case "${loc}" in
+                C.* | POSIX.*) echo "en_US.UTF-8" ;;
+                *) echo "${loc}" ;;
+            esac
+            ;;
+        *) echo "en_US.UTF-8" ;;
+    esac
+}
+
 resolve_rev() {
     # Resolve the branch to a commit so the image layer is rebuilt only when
     # the branch has actually moved. Falls back to a timestamp.
@@ -153,8 +172,9 @@ build_and_enter() {
     local base_ref="$1" version="$2" branch="$3"
     local derived="localhost/aegis_gym_dev:${version}"
     local name="${NAME_PREFIX}${version}"
-    local rev
+    local rev locale
     rev="$(resolve_rev "${branch}")"
+    locale="$(host_locale)"
 
     podman image exists "${base_ref}" || {
         echo ">>> Error: base image ${base_ref} not found." >&2
@@ -167,10 +187,12 @@ build_and_enter() {
         --build-arg "BASE_REF=${base_ref}"
         --build-arg "AEGIS_GYM_TAG=${branch}"
         --build-arg "AEGIS_GYM_REV=${rev}"
+        --build-arg "LOCALE=${locale}"
         -t "${derived}")
     ((NO_CACHE)) && build_cmd+=(--no-cache)
 
-    echo ">>> Building ${derived} from ${base_ref} (${branch} @ ${rev:0:8})..."
+    echo ">>> Building ${derived} from ${base_ref} (${branch} @ ${rev:0:8}," \
+        "locale ${locale})..."
     "${build_cmd[@]}"
 
     echo ">>> Creating toolbx container ${name}..."

@@ -8,25 +8,37 @@ FROM ${BASE_REF}
 
 ARG AEGIS_GYM_TAG=devel
 ARG AEGIS_GYM_REV=unknown
+ARG LOCALE=en_US.UTF-8
 
 USER root
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Packages toolbx expects to find when it sets up the shared user and home.
+# Packages toolbx expects to find when it sets up the shared user and home,
+# plus the interactive tools the shared-home dotfiles reach for.
 # libcap2-bin already comes from the torch tier.
-RUN apt-get update \
+RUN printf 'path-include=/usr/share/doc/fzf/examples/*\n' \
+        > /etc/dpkg/dpkg.cfg.d/zz-fzf-examples \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         bash-completion \
+        fzf \
+        locales \
+        openssh-client \
         passwd \
         procps \
         rsync \
         sudo \
         tzdata \
         util-linux \
+    && locale-gen "${LOCALE}" \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# `toolbox enter` forwards the host's $LANG but not its $LC_ALL, so a locale
+# that was never generated here leaves the shell in single-byte C. Anything
+# Baked in as the default so `toolbox run` and `podman run` agree with it.
+ENV LANG=${LOCALE}
 # Declared after the RUN so a new revision does not invalidate the apt layer.
 # Without com.github.containers.toolbox, `toolbox create --image` refuses it.
 LABEL com.github.containers.toolbox="true"
