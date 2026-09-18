@@ -1,5 +1,10 @@
 # aegis_gym containers
 
+> [!IMPORTANT]
+> The following README and scripts were written manually at first, and then processed fully by Claude Code.
+>
+> You should approach this directory as a fully vibe coded module for launching **production** (podman) and **development** (toolbx) containers.
+
 Everything `aegis_gym` needs — CUDA-built PyTorch, the Genesis simulator and
 its graphics stack, the AGH `rsl_rl` fork, and the gRPC client that talks to
 [`aegis_ros`](https://github.com/AGH-CEAI/aegis_ros) — packaged so you do not
@@ -58,8 +63,8 @@ per-tag sizes `podman images` prints.
 | `~/clearml.conf`         | `train.py` / `eval.py` log to ClearML | `clearml-init` writes it  |
 | ~11 GB free disk         | the image set                         | `df -h /`                 |
 
-Generate the CDI spec once — and **again after every driver update**, which is
-the single most common way GPU access breaks here:
+Generate the CDI spec once — and **again after every driver update**. Forgetting
+that is the single most common way GPU access breaks here:
 
 ```bash
 sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
@@ -133,7 +138,7 @@ aegis_gym_build_image -y        # all defaults, no prompts (CI)
 
 It asks for the image version and the `aegis_gym` / `rsl_rl` / `aegis_ros`
 refs, builds `ceai/aegis_gym_torch:<ver>` (offering to skip it when it already
-exists — say yes to skip, it is the expensive one), then `ceai/aegis_gym:<ver>`,
+exists — say yes to skip; it is the expensive one), then `ceai/aegis_gym:<ver>`,
 and finally offers to push both.
 
 Useful flags: `--no-cache` rebuilds dependencies only, `--rebuild-torch` forces
@@ -152,8 +157,8 @@ aegis_gym_toolbx
 
 It builds `localhost/aegis_gym_dev:<ver>`, creates the toolbx container
 `aegis_gym_dev-<ver>`, installs your checkout editable and enters it. When a
-container already exists it offers `[J]oin / [r]ecreate / [c]leanup / [n]ew`,
-selecting between them if you have several.
+container already exists, it offers `[J]oin / [r]ecreate / [c]leanup / [n]ew`;
+if you have several, it asks which one to act on first.
 
 Inside, your host edits are live — no reinstall, no rebuild:
 
@@ -208,9 +213,9 @@ work as usual. Use `-h` on those scripts for the full list.
 
 The first run builds `ceai/aegis_gym_prod:<ver>`, showing you what it is about
 to build and offering `[Y]es / [e]dit / [a]bort`. The branch comes from the
-checkout you run the command in, falling back to `devel`. Before starting it
+checkout you run the command in, falling back to `devel`. Before starting, it
 prints the image's provenance — branch, commit, build date — and warns when that
-branch has moved since.
+branch has moved since then.
 
 Runs are **headless by default**, which is what training wants. You get
 `--network host` for the gRPC bridge, the NVIDIA GPU via CDI, and
@@ -290,8 +295,8 @@ aegis_gym_clean --all        # also offers the prod, base and torch images
 aegis_gym_clean -y           # no prompts
 ```
 
-Each group is confirmed separately, and images still in use are reported rather
-than aborting the sweep. `-y --all` together removes the base tiers as well —
+Each group is confirmed separately, and images still in use are reported
+without aborting the sweep. `-y --all` together removes the base tiers as well —
 about 11 GB and a full rebuild to get back.
 
 ---
@@ -330,9 +335,9 @@ toolbox run --container aegis_gym_dev-v0.1.0 bash -lc \
 env PYTHONNOUSERSITE=1 PYTHONPATH= toolbox enter aegis_gym_dev-v0.1.0
 ```
 
-Note `--ipc host` and `--shm-size` are mutually exclusive in podman: host IPC
-already gives the container the host's `/dev/shm`, which is what the DataLoader
-workers need.
+Note that `--ipc host` and `--shm-size` are mutually exclusive in podman: host
+IPC already gives the container the host's `/dev/shm`, which is what the
+DataLoader workers need.
 
 ---
 
