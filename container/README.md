@@ -7,10 +7,10 @@ install any of it on your host.
 
 There are two ways to use it, and picking the right one first saves an hour:
 
-| You want to… | Use | You get |
-|---|---|---|
-| Edit the code, run experiments, debug | **`aegis_gym_toolbx`** | A [toolbx](https://containertoolbx.org/) shell sharing your `$HOME`, with *your checkout* installed editable — host edits apply instantly |
-| Run a training exactly as it will run on a ClearML queue | **`aegis_gym_run`** | A throwaway `podman run` of a self-contained image with the code baked in at a fixed commit |
+| You want to…                                             | Use                    | You get                                                                                                                                   |
+| -------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Edit the code, run experiments, debug                    | **`aegis_gym_toolbx`** | A [toolbx](https://containertoolbx.org/) shell sharing your `$HOME`, with *your checkout* installed editable — host edits apply instantly |
+| Run a training exactly as it will run on a ClearML queue | **`aegis_gym_run`**    | A throwaway `podman run` of a self-contained image with the code baked in at a fixed commit                                               |
 
 If you are new here and about to write code, you want **`aegis_gym_toolbx`**.
 
@@ -23,14 +23,14 @@ happen once per machine.
 
 ```bash
 # 1. put the commands on $PATH (once)
-cd ~/path/to/aegis_gym/container
+cd ~/ceai_ws/ros_ws/src/aegis_gym/container
 ./install_links.sh
 
 # 2. build the base images (once; slow -- see below)
 aegis_gym_build_image -y
 
 # 3a. development: run from inside your clone
-cd ~/path/to/aegis_gym
+cd ~/ceai_ws/ros_ws/src/aegis_gym
 aegis_gym_toolbx
 
 # 3b. or production: run a training
@@ -47,16 +47,16 @@ per-tag sizes `podman images` prints.
 
 ## Prerequisites
 
-| Need | Why | Check |
-|---|---|---|
-| `podman` | builds and runs everything | `podman --version` |
-| `toolbox` | the development path | `toolbox --version` |
-| `git` | resolving refs, cloning into images | `git --version` |
-| NVIDIA driver | GPU | `nvidia-smi` |
-| NVIDIA Container Toolkit | exposes the GPU to containers | `nvidia-ctk --version` |
-| A CDI spec | how podman finds the GPU | `ls /etc/cdi/nvidia.yaml` |
-| `~/clearml.conf` | `train.py` / `eval.py` log to ClearML | `clearml-init` writes it |
-| ~11 GB free disk | the image set | `df -h /` |
+| Need                     | Why                                   | Check                     |
+| ------------------------ | ------------------------------------- | ------------------------- |
+| `podman`                 | builds and runs everything            | `podman --version`        |
+| `toolbox`                | the development path                  | `toolbox --version`       |
+| `git`                    | resolving refs, cloning into images   | `git --version`           |
+| NVIDIA driver            | GPU                                   | `nvidia-smi`              |
+| NVIDIA Container Toolkit | exposes the GPU to containers         | `nvidia-ctk --version`    |
+| A CDI spec               | how podman finds the GPU              | `ls /etc/cdi/nvidia.yaml` |
+| `~/clearml.conf`         | `train.py` / `eval.py` log to ClearML | `clearml-init` writes it  |
+| ~11 GB free disk         | the image set                         | `df -h /`                 |
 
 Generate the CDI spec once — and **again after every driver update**, which is
 the single most common way GPU access breaks here:
@@ -109,12 +109,12 @@ mismatched pair. See [`scripts/install_simulation.sh`](scripts/install_simulatio
 `./install_links.sh` symlinks these into `~/.local/bin`, pointing back at this
 directory. They resolve their own location, so they work from anywhere:
 
-| Command | Does |
-|---|---|
-| `aegis_gym_build_image` | Builds the two base tiers |
-| `aegis_gym_run` | Builds and runs the production container |
-| `aegis_gym_toolbx` | Builds, creates and enters the development toolbx |
-| `aegis_gym_clean` | Removes development containers and images |
+| Command                 | Does                                              |
+| ----------------------- | ------------------------------------------------- |
+| `aegis_gym_build_image` | Builds the two base tiers                         |
+| `aegis_gym_run`         | Builds and runs the production container          |
+| `aegis_gym_toolbx`      | Builds, creates and enters the development toolbx |
+| `aegis_gym_clean`       | Removes development containers and images         |
 
 `~/.local/bin` must be on your `$PATH`; the installer tells you if it is not.
 `./install_links.sh --uninstall` removes them again, and it only deletes links
@@ -216,15 +216,15 @@ Runs are **headless by default**, which is what training wants. You get
 `--network host` for the gRPC bridge, the NVIDIA GPU via CDI, and
 `~/clearml.conf` mounted read-only when present.
 
-| Flag | Effect |
-|---|---|
-| `--gui` | Forward X11 and switch Genesis to GLX so the viewer can open |
-| `--gpu nvidia\|none\|auto` | Force or disable the GPU (default `auto`) |
-| `--no-clearml` / `--clearml PATH` | Skip or relocate the config mount |
-| `--shm-size SIZE` | Private IPC namespace with that `/dev/shm` instead of the host's |
-| `-b` / `-B` | Build, or rebuild ignoring the cache, before running |
-| `--no-run` | Build and/or push only |
-| `--dry-run` | Print the podman command instead of running it |
+| Flag                              | Effect                                                           |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `--gui`                           | Forward X11 and switch Genesis to GLX so the viewer can open     |
+| `--gpu nvidia\|none\|auto`        | Force or disable the GPU (default `auto`)                        |
+| `--no-clearml` / `--clearml PATH` | Skip or relocate the config mount                                |
+| `--shm-size SIZE`                 | Private IPC namespace with that `/dev/shm` instead of the host's |
+| `-b` / `-B`                       | Build, or rebuild ignoring the cache, before running             |
+| `--no-run`                        | Build and/or push only                                           |
+| `--dry-run`                       | Print the podman command instead of running it                   |
 
 `--control ros` talks to the real robot and needs the `aegis_ros` stack running
 on this host — that is what `--network host` is for.
