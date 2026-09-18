@@ -140,8 +140,8 @@ def parse_arguments(
         "--env",
         type=str,
         choices=available_envs(),
-        default="reacher",
-        help="Environment selection via short name. Default: `reacher`",
+        default=None,
+        help="Environment selection via short name",
     )
     p.add_argument(
         "--env-dict",
