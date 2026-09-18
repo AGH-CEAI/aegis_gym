@@ -8,12 +8,12 @@ choose to rebuild a base tier from scratch.
 
 Already built and verified on this machine:
 
-| Image / container | Exists |
-|---|---|
-| `ceai/aegis_gym_torch:v0.1.0` and `:latest` | yes (same image ID) |
-| `ceai/aegis_gym:v0.1.0` and `:latest` | yes (same image ID) |
-| `ceai/aegis_gym_prod:latest` | yes |
-| `localhost/aegis_gym_dev:latest` + toolbx `aegis_gym_dev-latest` | yes |
+| Image / container                                                | Exists              |
+| ---------------------------------------------------------------- | ------------------- |
+| `ceai/aegis_gym_torch:v0.1.0` and `:latest`                      | yes (same image ID) |
+| `ceai/aegis_gym:v0.1.0` and `:latest`                            | yes (same image ID) |
+| `ceai/aegis_gym_prod:latest`                                     | yes                 |
+| `localhost/aegis_gym_dev:latest` + toolbx `aegis_gym_dev-latest` | yes                 |
 
 The default image version is now **`v0.1.0`**, so `ceai/aegis_gym_prod:v0.1.0`
 and the `aegis_gym_dev-v0.1.0` toolbx container do **not** exist yet — steps 3
@@ -237,13 +237,13 @@ layers, so the real cost is the base chain, not the sum of what
 
 ## Quick regression checklist
 
-| Check | Expected |
-|---|---|
-| `aegis-gym` with no arguments | drops to a shell, exit 0 (not 1) |
-| `aegis_gym_run train -a=rl ...` | `-a=rl` accepted, not "Unknown option" |
-| `--ipc host` and `--shm-size` | never both in one podman line |
-| prod image `Entrypoint` | `[]` |
-| base image torch / torchvision | both `+cu129` |
-| base image `rsl_rl` | `direct_url.json` -> `file:///tmp/rsl_rl` |
-| base image `import aegis_gym` | ModuleNotFoundError (deps-only by design) |
-| toolbx `torch.__version__` | `2.8.0+cu129`, not cu128 |
+| Check                           | Expected                                  |
+| ------------------------------- | ----------------------------------------- |
+| `aegis-gym` with no arguments   | drops to a shell, exit 0 (not 1)          |
+| `aegis_gym_run train -a=rl ...` | `-a=rl` accepted, not "Unknown option"    |
+| `--ipc host` and `--shm-size`   | never both in one podman line             |
+| prod image `Entrypoint`         | `[]`                                      |
+| base image torch / torchvision  | both `+cu129`                             |
+| base image `rsl_rl`             | `direct_url.json` -> `file:///tmp/rsl_rl` |
+| base image `import aegis_gym`   | ModuleNotFoundError (deps-only by design) |
+| toolbx `torch.__version__`      | `2.8.0+cu129`, not cu128                  |
