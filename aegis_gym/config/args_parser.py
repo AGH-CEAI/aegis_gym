@@ -83,13 +83,24 @@ def parse_arguments(
     p.add_argument("-c", "--config", type=Path, default=None)
 
     p.add_argument("-e", "--exp-name", type=str, default=None)
-    p.add_argument("-v", "--vis", action="store_true", default=None)
+    p.add_argument(
+        "-v",
+        "--vis",
+        action="store_true",
+        default=None,
+        help="Enable Genesis visual preview",
+    )
     p.add_argument("-B", "--num-envs", type=int, default=None)
     p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument(
         "--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp"
     )  # TODO(issue#111) take it from the file if none is given
-    p.add_argument("--plotjuggler", action="store_true", default=False)
+    p.add_argument(
+        "--plotjuggler",
+        action="store_true",
+        default=False,
+        help="Enable UDP server for PlotJuggler",
+    )
     p.add_argument("--max-iterations", type=int, default=None)
     p.add_argument(
         "-a",

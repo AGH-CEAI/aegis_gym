@@ -1,3 +1,4 @@
+import getpass
 from collections.abc import Callable
 from pathlib import Path
 
@@ -158,7 +159,8 @@ class ConfigManager:
         if not cfg_dict["logger"]["local_log_dir"]:
             train_type = str(args.algorithm)
             log_dir = (
-                Path("/tmp/aegis_gym_logs") / f"{args.experiment_name}_{train_type}"
+                Path(f"/tmp/aegis_gym_logs_{getpass.getuser()}")
+                / f"{args.experiment_name}_{train_type}"
             )
             log_dir.mkdir(parents=True, exist_ok=True)
             cfg_dict["logger"]["local_log_dir"] = str(log_dir)
