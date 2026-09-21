@@ -94,10 +94,13 @@ class BaseEnv(VecEnv):
             raise RuntimeError("Missing scene definition to call get_policy_dt().")
         return self._scene.get_policy_dt()
 
-    @abstractmethod
     def get_cfg_as_dict(self) -> dict:
         """Return the environment config as dict."""
-        ...
+        return self._cfg_env.as_dict()
+
+    def get_num_envs(self) -> int:
+        """Return the number of parallel environments."""
+        return self.num_envs
 
     def get_cameras_setup(self) -> CamerasSetup:
         """The environment cameras setup"""

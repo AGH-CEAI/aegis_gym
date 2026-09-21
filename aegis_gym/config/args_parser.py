@@ -33,6 +33,7 @@ class LaunchArgs:
 
     enforce_current_config: bool | None
     control_type: Control | None
+    env_name: str | None
 
     calibration_move: list | None
     calibration_move_cartesian: list | None
@@ -82,13 +83,24 @@ def parse_arguments(
     p.add_argument("-c", "--config", type=Path, default=None)
 
     p.add_argument("-e", "--exp-name", type=str, default=None)
-    p.add_argument("-v", "--vis", action="store_true", default=None)
+    p.add_argument(
+        "-v",
+        "--vis",
+        action="store_true",
+        default=None,
+        help="Enable Genesis visual preview",
+    )
     p.add_argument("-B", "--num-envs", type=int, default=None)
     p.add_argument("--episode-length-s", type=float, default=None)
     p.add_argument(
         "--project-name", type=str, default="TEST_PLAYGROUND/aegis_grasp"
     )  # TODO(issue#111) take it from the file if none is given
-    p.add_argument("--plotjuggler", action="store_true", default=False)
+    p.add_argument(
+        "--plotjuggler",
+        action="store_true",
+        default=False,
+        help="Enable UDP server for PlotJuggler",
+    )
     p.add_argument("--max-iterations", type=int, default=None)
     p.add_argument(
         "-a",
@@ -110,6 +122,7 @@ def parse_arguments(
     p.add_argument(
         "--control", type=Control, choices=list(Control), default=Control.SIM
     )
+    p.add_argument("--env", type=str, default=None)
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)
@@ -193,6 +206,7 @@ def parse_arguments(
         load_bc_model_id=args.load_bc_model_id,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
+        env_name=args.env,
         calibration_move=args.calibration_move,
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,

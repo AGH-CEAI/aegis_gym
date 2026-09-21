@@ -13,10 +13,16 @@ class ObjectProperties:
     fixed: bool = False
     collision: bool = True
     color: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    mesh_path: str | None = None
+    urdf_path: str | None = None
+    friction: float | None = None
+    scale: float | tuple[float, float, float] = 1.0
 
 
 class ObjectType(StrEnum):
     BOX = auto()
+    MESH = auto()
+    URDF = auto()
 
 
 class BaseObject(ABC):
@@ -55,6 +61,24 @@ class BaseObject(ABC):
 class BaseBox(BaseObject):
     """
     The interface for implementing generic box object.
+    """
+
+    def __init__(self, device: th.device, properties: ObjectProperties):
+        super().__init__(device=device, properties=properties)
+
+
+class BaseMesh(BaseObject):
+    """
+    The interface for implementing a generic mesh-file-based object.
+    """
+
+    def __init__(self, device: th.device, properties: ObjectProperties):
+        super().__init__(device=device, properties=properties)
+
+
+class BaseURDF(BaseObject):
+    """
+    The interface for implementing a generic URDF-file-based object.
     """
 
     def __init__(self, device: th.device, properties: ObjectProperties):

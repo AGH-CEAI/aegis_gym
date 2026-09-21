@@ -1,3 +1,4 @@
+import getpass
 from collections.abc import Callable
 from pathlib import Path
 
@@ -141,6 +142,8 @@ class ConfigManager:
             cfg_dict["rl"]["max_iterations"] = args.max_iterations
         if args.num_envs:
             cfg_dict["env"]["num_envs"] = args.num_envs
+        if args.env_name:
+            cfg_dict["env"]["env_name"] = args.env_name
         if args.visualize_camera:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
@@ -156,7 +159,8 @@ class ConfigManager:
         if not cfg_dict["logger"]["local_log_dir"]:
             train_type = str(args.algorithm)
             log_dir = (
-                Path("/tmp/aegis_gym_logs") / f"{args.experiment_name}_{train_type}"
+                Path(f"/tmp/aegis_gym_logs_{getpass.getuser()}")
+                / f"{args.experiment_name}_{train_type}"
             )
             log_dir.mkdir(parents=True, exist_ok=True)
             cfg_dict["logger"]["local_log_dir"] = str(log_dir)

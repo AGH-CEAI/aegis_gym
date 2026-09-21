@@ -1,3 +1,4 @@
+import numpy as np
 import torch as th
 
 # Implementation taken from https://github.com/Genesis-Embodied-AI/genesis-world/blob/main/genesis/utils/geom.py
@@ -55,3 +56,48 @@ def transform_quat_by_quat(u: th.Tensor, v: th.Tensor) -> th.Tensor:
 
     out /= th.linalg.vector_norm(out, ord=2, dim=-1, keepdim=True)
     return out
+
+
+def quat_to_z_euler(quats: th.Tensor) -> th.Tensor:
+    """
+    Recovers the yaw angle from a quaternion representing a pure Z-axis rotation,
+    correcting for the quaternion's double-cover sign ambiguity.
+    """
+    signs = th.ones_like(quats[:, -1])
+    signs[quats[:, -1] < 0] = -1.0
+    qw = th.clamp(quats[:, 0] * signs, min=-1.0, max=1.0)
+    return 2 * th.acos(qw)
+
+
+def quat_to_zrot(quats: th.Tensor, device: th.device) -> th.Tensor:
+    """Converts a pure Z-axis rotation quaternion into a 3x3 homogeneous 2D
+    rotation matrix."""
+    alphas = quat_to_z_euler(quats)
+    n = quats.shape[0]
+    rot = th.zeros(n, 3, 3, device=device, dtype=th.float32)
+    rot[:, 2, 2] = 1.0
+    cos_a, sin_a = th.cos(alphas), th.sin(alphas)
+    rot[:, 0, 0] = cos_a
+    rot[:, 1, 1] = cos_a
+    rot[:, 0, 1] = -sin_a
+    rot[:, 1, 0] = sin_a
+    return rot
+
+
+def check_points_in_polygon(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
+    """
+    Ray-casting point-in-polygon test, vectorized over points.
+    """
+    x, y = points[:, 0], points[:, 1]
+    px, py = polygon[:, 0], polygon[:, 1]
+    n = len(polygon)
+    inside = np.zeros(len(points), dtype=bool)
+    j = n - 1
+    for i in range(n):
+        pxi, pyi, pxj, pyj = px[i], py[i], px[j], py[j]
+        cond = ((pyi > y) != (pyj > y)) & (
+            x < (pxj - pxi) * (y - pyi) / (pyj - pyi + 1e-30) + pxi
+        )
+        inside ^= cond
+        j = i
+    return inside

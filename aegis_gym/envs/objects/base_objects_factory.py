@@ -2,7 +2,14 @@ from abc import ABC, abstractmethod
 
 import torch as th
 
-from .base_objects import BaseBox, BaseObject, ObjectProperties, ObjectType
+from .base_objects import (
+    BaseBox,
+    BaseMesh,
+    BaseObject,
+    BaseURDF,
+    ObjectProperties,
+    ObjectType,
+)
 
 
 class BaseObjectsFactory(ABC):
@@ -22,6 +29,14 @@ class BaseObjectsFactory(ABC):
                 return self.create_box(
                     properties=obj_properties,
                 )
+            case ObjectType.MESH:
+                return self.create_mesh(
+                    properties=obj_properties,
+                )
+            case ObjectType.URDF:
+                return self.create_urdf(
+                    properties=obj_properties,
+                )
 
     @abstractmethod
     def create_box(
@@ -29,4 +44,20 @@ class BaseObjectsFactory(ABC):
         properties: ObjectProperties,
     ) -> BaseBox:
         """Creates a box object."""
+        ...
+
+    @abstractmethod
+    def create_mesh(
+        self,
+        properties: ObjectProperties,
+    ) -> BaseMesh:
+        """Creates a mesh-file-based object."""
+        ...
+
+    @abstractmethod
+    def create_urdf(
+        self,
+        properties: ObjectProperties,
+    ) -> BaseURDF:
+        """Creates a URDF-file-based object."""
         ...
