@@ -1,9 +1,6 @@
-import sys
-
 import genesis as gs
 import genesis.utils.geom as gu
 import torch as th
-from clearml import Task
 
 from aegis_gym.aux.geom import transform_by_quat
 from aegis_gym.aux.logging import get_logger, setup_logger
@@ -12,10 +9,11 @@ from aegis_gym.config import (
     LaunchArgs,
     parse_arguments,
 )
-from aegis_gym.config.types import Algorithm, Control, ExpConfig
-from aegis_gym.envs import BaseEnv, ReacherEnv
+from aegis_gym.config.types import Control, ExpConfig
+from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.manipulator import BaseManipulator
-from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
+from aegis_gym.envs.scene import GenesisScene
+from train import calibration_movment, create_env, init_clearml_task
 
 # Robotiq Hand-E's own mass isn't modeled as a real load in the sim: `gravity_compensation=1.0`
 # on the robot's material (genesis_manipulator.py) cancels gravity for the WHOLE URDF entity,
@@ -27,23 +25,8 @@ GRIPPER_MASS_KG = 0.9
 GRIPPER_BOX_DIMS = (0.08, 0.08, 0.08)
 
 
-def init_clearml_task(
-    project_name: str | None,
-    algorithm: Algorithm | None,
-    control: Control | None,
-    exp_name: str | None,
-) -> Task:
-    assert None not in (project_name, algorithm, control, exp_name)
-    return Task.init(
-        project_name=f"{project_name}_{algorithm!s}-{control!s}",
-        task_name=f"{exp_name}_{algorithm!s}",
-        reuse_last_task_id=True,
-    )
-
-
-# TODO(issue#130) Real training with BC doesn't work, mark this down
 def main():
-    logger = get_logger("Train")
+    logger = get_logger("ft_sensor")
 
     # Set PyTorch default dtype to float32 for better performance
     th.set_default_dtype(th.float32)
@@ -72,37 +55,13 @@ def main():
     logger.info("Setup done")
     ft_sensor_playgraund(env=env, gripper_mass=gripper_mass, cfg=cfg)
 
-    # logger.info("Proceeding training")
-    # train_runner(env=env, cfg=cfg)
-
-
-def create_env(cfg: ExpConfig) -> BaseEnv:
-    logger = get_logger("Train")
-    args: LaunchArgs = cfg.args
-    control_type = args.control_type
-
-    scene = None
-    if control_type == Control.SIM:
-        gs.init(logging_level="info", precision="32")
-        scene = GenesisScene(cfg=cfg, device=cfg.get_device())
-    if control_type == Control.ROS:
-        if RosGrcpScene is None:
-            logger.error("Can not import RosGrcpScene. Exiting")
-            sys.exit()
-        scene = RosGrcpScene(cfg=cfg, device=cfg.get_device())
-
-    if scene is None:
-        raise ValueError("Scene is None")
-
-    return ReacherEnv(scene=scene, cfg=cfg)
-
 
 def create_env_with_gripper_mass(cfg: ExpConfig):
     """
     Like `create_env()`, but also spawns a free box standing in for the gripper's own mass
     (see the module docstring above), welded onto `fts_link` once the scene is built.
     Genesis entities can only be added before `Scene.build()`, so the box must exist
-    before `ReacherEnv.__init__()` builds the scene.
+    before the environment's `__init__()` builds the scene.
     """
     args: LaunchArgs = cfg.args
     if args.control_type != Control.SIM:
@@ -123,7 +82,8 @@ def create_env_with_gripper_mass(cfg: ExpConfig):
         surface=gs.surfaces.Default(color=(0.1, 0.3, 0.9), opacity=0.35),
     )
 
-    env = ReacherEnv(scene=scene, cfg=cfg)
+    env_cls = get_env_class(cfg.env_cfg.env_name)
+    env = env_cls(scene=scene, cfg=cfg)
     return env, gripper_mass
 
 
@@ -202,37 +162,6 @@ def _draw_ft_debug(scene: GenesisScene, manipulator: BaseManipulator) -> None:
     )
 
 
-def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
-    logger = get_logger("Train")
-    args = cfg.args
-    device = cfg.get_device()
-
-    cart_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    joints_diff = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    steps = args.calibration_steps
-
-    if args.calibration_movment:
-        n_j = len(args.calibration_move)
-        joints_diff[:n_j] = args.calibration_move
-        logger.info(f">>> Starting relative joints movement of {joints_diff}")
-        joints_diff = th.tensor(joints_diff, device=device)
-        joints_diff[:6] *= th.pi / 180.0
-        joints_diff.unsqueeze(dim=0)
-        # TODO(issue#128) introduce a calibration feature for the BaseEnv
-        env.calib_run(joints_diff=joints_diff, steps=steps)
-
-    if args.calibration_move_cartesian:
-        n_j = len(args.calibration_move_cartesian)
-        cart_diff[:n_j] = args.calibration_move_cart
-        logger.info(f">>> Starting relative cartesian movement of {cart_diff}")
-        cart_diff = th.tensor([cart_diff], device=device)
-        cart_diff.unsqueeze(dim=0)
-        # TODO(issue#128) introduce a calibration feature for the BaseEnv
-        env.calib_run(cart_diff=cart_diff, steps=steps)
-
-    logger.info(">>> Finished relative joints movement.")
-
-
 def ft_sensor_playgraund(env: BaseEnv, gripper_mass, cfg: ExpConfig) -> None:
     """Simplest F/T sanity check: robot stands still at home, with the gripper's own mass
     welded on (see module docstring) so the baseline reads like a real sensor would.
@@ -267,7 +196,7 @@ def ft_sensor_playgraund(env: BaseEnv, gripper_mass, cfg: ExpConfig) -> None:
 
 if __name__ == "__main__":
     setup_logger("INFO")
-    logger = get_logger("Train")
+    logger = get_logger("ft_sensor")
 
     try:
         main()
