@@ -18,6 +18,7 @@ NAME_PREFIX="aegis_gym_dev-"
 
 NO_CACHE=0
 WITH_EDITABLE=1
+WITH_VERIFY=1
 
 usage() {
     cat << 'EOF'
@@ -31,9 +32,16 @@ After creating the container the local aegis_gym checkout is installed
 editable (--no-deps), so host edits take effect inside immediately. The
 checkout is found from $PWD, so run this from inside your clone.
 
+Because that install is --no-deps, and the image's dependencies were fixed
+when it was built, every create, recreate and join then checks the installed
+packages against your checkout's uv.lock and offers to install whatever has
+drifted. torch, torchvision, triton, the nvidia-* runtimes and rsl-rl-lib are
+never touched: they come from the CUDA wheel index and from git, not the lock.
+
 Options:
       --no-cache      Build the image ignoring the layer cache
       --no-editable   Skip the editable install of the local checkout
+      --no-verify     Skip the dependency check against uv.lock
   -h, --help          This message
 EOF
 }
@@ -42,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-cache)    NO_CACHE=1 ;;
         --no-editable) WITH_EDITABLE=0 ;;
+        --no-verify)   WITH_VERIFY=0 ;;
         -h | --help)   usage; exit 0 ;;
         *) echo ">>> Unknown option '$1'. See --help." >&2; exit 1 ;;
     esac
@@ -124,6 +133,52 @@ install_local_aegis_gym() {
     fi
 }
 
+verify_dependencies() {
+    # The editable install above is --no-deps, and the image's dependency set
+    # was frozen from the uv.lock of the branch cloned at image build time
+    # (scripts/install_simulation.sh), not from this checkout. Nothing else in
+    # the create/recreate/join path ever compares the two, so an image a few
+    # weeks old runs a quietly different dependency set. Check it every time.
+    local name="$1" repo status=0
+    ((WITH_VERIFY)) || return 0
+
+    repo="$(aegis_repo_path)"
+    if [[ -z "${repo}" || ! -f "${repo}/uv.lock" ]]; then
+        echo ">>> Skipping the dependency check: no aegis_gym checkout at or" \
+            "above $(pwd)."
+        return 0
+    fi
+
+    # The checkout is visible inside at the very same path ($HOME is shared),
+    # so the container runs the repo's own copy of the script.
+    toolbox run --container "${name}" \
+        bash "${SCRIPT_DIR}/../scripts/verify_deps.sh" "${repo}" || status=$?
+
+    case "${status}" in
+        0) return 0 ;;
+        3) ;;
+        *)
+            echo ">>> Warning: the dependency check could not run" \
+                "(exit ${status}); continuing." >&2
+            return 0
+            ;;
+    esac
+
+    # Only offered, never automatic: installing pulls from the network, and
+    # someone debugging against a deliberately pinned environment should be
+    # able to say no and still get their shell.
+    read -r -p ">>> Install the lock-pinned versions now? [Y]es / [n]o: " REPLY_DEPS
+    case "$(aegis_answer "${REPLY_DEPS}" y)" in
+        y)
+            toolbox run --container "${name}" \
+                bash "${SCRIPT_DIR}/../scripts/verify_deps.sh" \
+                "${repo}" --install \
+                || echo ">>> Warning: some packages could not be installed." >&2
+            ;;
+        *) echo ">>> Leaving the packages as they are." ;;
+    esac
+}
+
 enter_toolbox() {
     # No env scrub around toolbox: it forwards only its own fixed list of
     # variables, so anything exported here is dropped on the way in. The
@@ -174,6 +229,7 @@ build_and_enter() {
     toolbox create --image "${derived}" "${name}"
 
     install_local_aegis_gym "${name}"
+    verify_dependencies "${name}"
     enter_toolbox "${name}"
 }
 
@@ -263,6 +319,10 @@ read -r -p ">>> [J]oin / [r]ecreate / [c]leanup / [n]ew: " ACTION
 
 case "$(aegis_answer "${ACTION}" j)" in
     j)
+        # Joining skips the build and the editable install entirely, so this is
+        # the one path where a stale dependency set would otherwise never be
+        # looked at -- and it is the path taken most often.
+        verify_dependencies "${TARGET}"
         enter_toolbox "${TARGET}"
         ;;
     r)
