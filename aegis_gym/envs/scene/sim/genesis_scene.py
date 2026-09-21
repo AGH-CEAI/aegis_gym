@@ -137,11 +137,29 @@ class GenesisScene(BaseScene):
         )
         return gs.Scene(
             sim_options=gs.options.SimOptions(
+                # One `scene.step()` == one policy step: `dt` is the only thing
+                # that sets the 1/policy_dt Hz the policy acts and observes at.
                 dt=self.policy_dt,
+                # Load-bearing, not a quality knob. It subdivides that step into
+                # `sim_substeps` intervals of `ctrl_dt`, and the DOF controller is
+                # re-evaluated on each one against the live state (Genesis
+                # recomputes the control force per substep; `ctrl_apply_vel_action`
+                # writes the setpoint once per step). That is the frequency
+                # clutch: one command at 1/policy_dt Hz, tracked at 1/ctrl_dt Hz
+                # as the real RTDE loop does. Drop it and the controller runs once
+                # per policy step -- the policy rate still looks right and nothing
+                # in the logs says otherwise.
                 substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.policy_dt,
+                # dt=self.policy_dt,
+                # No `dt` on purpose. Since genesis-world 1.x a solver's own `dt`
+                # is the interval it integrates over -- a substep, not a step --
+                # and the solver's substep count is derived from it. Passing
+                # `policy_dt` here therefore claims 1 substep per step, conflicts
+                # with `substeps` above and raises at build time. Left unset, the
+                # rigid solver takes the rate SimOptions decides:
+                # policy_dt / sim_substeps == ctrl_dt, which is what we want.
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -155,7 +173,7 @@ class GenesisScene(BaseScene):
             ),
             viewer_options=gs.options.ViewerOptions(
                 # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=60,
+                refresh_rate=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,

@@ -405,16 +405,20 @@ class GenesisManipulator(BaseManipulator):
         added back by hand to match what a real F/T sensor would read.
         """
         if self._gravity_link_masses is None:
-            self._gravity_link_masses = th.tensor(
-                [link.get_mass() for link in self._gravity_links],
-                dtype=th.float32,
-                device=self.device,
+            # genesis-world 1.x removed `RigidLink.inertial_pos` and made
+            # `RigidLink.get_mass()` return a per-environment tensor instead of a
+            # float. Both values now come from the solver in one batched read:
+            # `RigidOptions.batch_links_info` is on, so these are shaped
+            # [num_envs, n_links] and [num_envs, n_links, 3] and per-environment
+            # inertial properties stay distinct rather than collapsing to env 0.
+            links_idx = [link.idx for link in self._gravity_links]
+            solver = self._fts_link.solver
+            self._gravity_link_masses = solver.get_links_mass(links_idx=links_idx).to(
+                dtype=th.float32, device=self.device
             )
-            self._gravity_link_local_coms = th.tensor(
-                [link.inertial_pos for link in self._gravity_links],
-                dtype=th.float32,
-                device=self.device,
-            )
+            self._gravity_link_local_coms = solver.get_links_COM(
+                links_idx=links_idx
+            ).to(dtype=th.float32, device=self.device)
 
         sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
         gravity = self._fts_link.solver.get_gravity().expand_as(
@@ -423,14 +427,12 @@ class GenesisManipulator(BaseManipulator):
 
         force = th.zeros_like(sensor_pos)
         torque = th.zeros_like(sensor_pos)
-        for link, mass, local_com in zip(
-            self._gravity_links,
-            self._gravity_link_masses,
-            self._gravity_link_local_coms,
-        ):
-            com_world = link.get_pos() + transform_by_quat(
-                local_com.expand_as(sensor_pos), link.get_quat()
-            )
+        # Indexed per link rather than zipped: the batched reads above put the
+        # environment on dim 0, so iterating them directly would walk envs.
+        for i, link in enumerate(self._gravity_links):
+            local_com = self._gravity_link_local_coms[:, i]  # [num_envs, 3]
+            mass = self._gravity_link_masses[:, i, None]  # [num_envs, 1]
+            com_world = link.get_pos() + transform_by_quat(local_com, link.get_quat())
             weight = mass * gravity  # [num_envs, 3]
             force = force + weight
             torque = torque + th.linalg.cross(com_world - sensor_pos, weight)

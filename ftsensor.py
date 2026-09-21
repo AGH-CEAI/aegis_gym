@@ -98,11 +98,11 @@ def _log_gravity_links(manipulator: BaseManipulator) -> None:
         f"Links counted past '{manipulator._fts_link.name}' for gravity compensation "
         f"({len(manipulator._gravity_links)} total):"
     )
-    for link, mass, local_com in zip(
-        manipulator._gravity_links,
-        manipulator._gravity_link_masses,
-        manipulator._gravity_link_local_coms,
-    ):
+    # Both tensors are [num_envs, n_links(, 3)] since genesis-world 1.x, so they
+    # are indexed per link on dim 1; env 0 is the one reported.
+    for i, link in enumerate(manipulator._gravity_links):
+        mass = manipulator._gravity_link_masses[0, i]
+        local_com = manipulator._gravity_link_local_coms[0, i]
         world_com = (
             link.get_pos()[0]
             + transform_by_quat(local_com.unsqueeze(0), link.get_quat()[:1])[0]
@@ -114,13 +114,19 @@ def _log_gravity_links(manipulator: BaseManipulator) -> None:
         )
 
 
+def _fmt_wrench(wrench: th.Tensor) -> str:
+    """A [fx, fy, fz, tx, ty, tz] row, 3 decimals per component and kept in
+    fixed-width columns so successive steps line up in the log."""
+    return "[" + " ".join(f"{v:8.3f}" for v in wrench.tolist()) + "]"
+
+
 def _log_wrench(manipulator: BaseManipulator, step: int) -> None:
     logger = get_logger("ft_sensor")
     gravity_wrench_world = manipulator._gravity_wrench_world()
     sensor_wrench_local = manipulator.get_ft_wrench()
     logger.info(
-        f"[step {step}] gravity_wrench(world)={gravity_wrench_world[0].cpu().numpy()}  "
-        f"sensor_wrench(local)={sensor_wrench_local[0].cpu().numpy()}"
+        f"[step {step}] gravity_wrench(world)={_fmt_wrench(gravity_wrench_world[0])}  "
+        f"sensor_wrench(local)={_fmt_wrench(sensor_wrench_local[0])}"
     )
 
 
