@@ -86,11 +86,40 @@ def ft_sensor_playgraund(env: BaseEnv, cfg: ExpConfig) -> None:
         _draw_ft_debug(scene, manipulator)
 
 
+def _step(scene) -> None:
+    """One environment step.
+
+    `pre_step()` is what paces the loop on the real robot -- it blocks until a full
+    policy period has elapsed -- and is a no-op in simulation. Without it the hardware
+    loop free-runs at gRPC speed, so "hold for 10 s" and "rotate for 3 s" would mean
+    nothing there.
+    """
+    scene.pre_step()
+    scene.step()
+
+
+def _is_modelled(manipulator: BaseManipulator) -> bool:
+    """Whether this backend exposes the simulation-only modelling internals.
+
+    The real robot reports one measurement over the bridge and nothing else: there is
+    no gravity term to inspect, no untared reading, and no sensor-link handle. Every
+    block guarded by this is a sim-side cross-check, not part of the test itself.
+    """
+    return hasattr(manipulator, "get_ft_wrench_raw")
+
+
 def _log_gravity_links(manipulator: BaseManipulator) -> None:
     """Logs every link counted as "past the F/T sensor" for gravity compensation,
     together with its attachment point: the link's center of mass, both in the
     link's own frame (local COM) and in world coordinates."""
     logger = get_logger("ft_sensor")
+
+    if not _is_modelled(manipulator):
+        logger.info(
+            "Real sensor: no gravity-compensation model to report (the hardware "
+            "measures the load directly)."
+        )
+        return
 
     manipulator._gravity_wrench_world()
 
@@ -126,17 +155,31 @@ def _quat_to_matrix(quat: th.Tensor) -> th.Tensor:
     return transform_by_quat(eye, quat.unsqueeze(0).expand(3, 4)).T
 
 
+def _sensor_quat(manipulator: BaseManipulator) -> tuple[th.Tensor, str]:
+    """Orientation to reason about the wrench with, and the name of its frame.
+
+    In simulation this is the sensor link itself. The bridge does not publish that
+    link's pose, so on the real robot it falls back to the TCP. The two differ by a
+    fixed rotation, which matters for reading absolute axes but not for
+    `_rotation_since`: the wrist is rigid, so both frames turn by the same amount.
+    """
+    if _is_modelled(manipulator):
+        return manipulator._fts_link.get_quat()[0], manipulator._fts_link.name
+    return manipulator.get_tcp_orientation()[0], "TCP (sensor link not published)"
+
+
 def _log_frame(manipulator: BaseManipulator, label: str) -> None:
-    """Where the sensor link's own axes point, in world. Without this the wrench
-    cannot be read: 'rotate 90 deg about X' means one thing in world axes and
-    another in the tool's, and at the home pose the two differ by ~90 deg."""
+    """Where the frame's own axes point, in world. Without this the wrench cannot be
+    read: 'rotate 90 deg about X' means one thing in world axes and another in the
+    tool's, and at the home pose the two differ by ~90 deg."""
     logger = get_logger("ft_sensor")
-    rot = _quat_to_matrix(manipulator._fts_link.get_quat()[0])
+    quat, name = _sensor_quat(manipulator)
+    rot = _quat_to_matrix(quat)
     axes = "  ".join(
         f"{ax}->[{' '.join(f'{v:6.3f}' for v in rot[:, i].tolist())}]"
         for i, ax in enumerate("xyz")
     )
-    logger.info(f"  {label} frame ({manipulator._fts_link.name}): {axes}")
+    logger.info(f"  {label} frame ({name}): {axes}")
 
 
 def _rotation_since(
@@ -157,18 +200,18 @@ def _rotation_since(
 
 
 def _log_wrench(manipulator: BaseManipulator, step: int) -> None:
-    """Logs the raw reading next to the tared one. The real robot is always tared
-    before a measurement, so the tared column is what the real data compares to;
-    the raw column is what the simulated physics actually produces."""
+    """Logs the measurement, plus -- in simulation only -- the untared reading and the
+    gravity term behind it. The real robot reports a single value, so that is all there
+    is to log there, and it is the column the simulated one must match."""
     logger = get_logger("ft_sensor")
-    gravity_wrench_world = manipulator._gravity_wrench_world()
-    raw = manipulator.get_ft_wrench(biased=False)
-    line = (
-        f"[step {step}] gravity_wrench(world)={_fmt_wrench(gravity_wrench_world[0])}  "
-        f"sensor_raw(local)={_fmt_wrench(raw[0])}"
-    )
+    line = f"[step {step}] wrench={_fmt_wrench(manipulator.get_ft_wrench()[0])}"
     if manipulator.is_ft_biased():
-        line += f"  sensor_tared(local)={_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+        line += " (tared)"
+    if _is_modelled(manipulator):
+        line += (
+            f"  sim_raw={_fmt_wrench(manipulator.get_ft_wrench_raw()[0])}"
+            f"  sim_gravity(world)={_fmt_wrench(manipulator._gravity_wrench_world()[0])}"
+        )
     logger.info(line)
 
 
@@ -184,7 +227,7 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
 
     manipulator.ctrl_go_to_home()
     for _ in range(5):
-        scene.step()
+        _step(scene)
 
     _log_gravity_links(manipulator)
 
@@ -204,6 +247,18 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
     ROTATION_AXIS = (1.0, 0.0, 0.0)
     ROTATION_FRAME = "world"
 
+    # The real arm is held to `action_max_angular_speed` from the config; exceeding it
+    # here would drive the hardware faster than the task is allowed to. Clamp rather
+    # than trust the constant above, and stretch the move so it still covers the angle.
+    speed_dps = ROTATION_SPEED_DPS
+    max_dps = float(env.max_angular_speed) * 180.0 / float(th.pi)
+    if speed_dps > max_dps:
+        logger.warning(
+            f"  rotation speed {speed_dps:.1f} deg/s exceeds the configured limit "
+            f"{max_dps:.1f} deg/s; clamping."
+        )
+        speed_dps = max_dps
+
     if ROTATION_FRAME not in ("world", "tool"):
         raise ValueError(
             f"ROTATION_FRAME must be 'world' or 'tool', got {ROTATION_FRAME!r}"
@@ -212,29 +267,29 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
     hold_steps = max(1, round(HOLD_SECONDS / dt))
     log_every = max(1, round(1.0 / dt))  # once per simulated second
 
-    quat_home = manipulator._fts_link.get_quat()[0].clone()
+    quat_home = _sensor_quat(manipulator)[0].clone()
     _log_frame(manipulator, "home")
 
     # Tared in the home pose with no payload, exactly as the real sensor is zeroed
     # before a measurement, so the bias absorbs the tool's own weight.
-    bias = manipulator.set_ft_bias()
-    # None on a hardware-tared backend (the robot keeps the offset to itself).
+    manipulator.set_ft_bias()
+    bias = _sim_bias(manipulator)
     logger.info(
         f"  tared at home, bias={_fmt_wrench(bias[0])}"
         if bias is not None
-        else "  tared at home (bias held in hardware)"
+        else "  tared at home (offset held by the sensor)"
     )
 
     logger.info(
         f"Holding home configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
     )
     for i in range(hold_steps):
-        scene.step()
+        _step(scene)
         if i % log_every == 0:
             _log_wrench(manipulator, i)
     home = _read_both(manipulator)
 
-    rotation_steps = max(1, round((ROTATION_DEG / ROTATION_SPEED_DPS) / dt))
+    rotation_steps = max(1, round((ROTATION_DEG / speed_dps) / dt))
     logger.info(
         f"Rotating wrist {ROTATION_DEG:.0f} deg about the {ROTATION_FRAME} "
         f"{ROTATION_AXIS} axis to swing the gripper off-axis:"
@@ -244,31 +299,32 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
         if ROTATION_FRAME == "tool":
             # Recomputed every step: the axis is fixed in the tool, so its world
             # direction turns with the tool as the rotation proceeds.
-            quat = manipulator._fts_link.get_quat()
+            quat = _sensor_quat(manipulator)[0].unsqueeze(0)
             axis_world = transform_by_quat(axis.expand_as(quat[:, :3]), quat)
         else:
             # Fixed in the cell, so the same world direction on every step.
             axis_world = axis.expand(env.num_envs, 3)
         action = th.zeros(env.num_envs, 6, device=device)
-        action[:, 3:] = axis_world * (
-            (ROTATION_SPEED_DPS * th.pi / 180.0) / manipulator.max_angular_speed
-        )
+        # Both backends take this in rad/s: the sim manipulator's own max speeds are
+        # 1.0, and the bridge forwards the twist to `servo_tcp` unscaled.
+        action[:, 3:] = axis_world * (speed_dps * th.pi / 180.0)
         manipulator.ctrl_apply_vel_action(action, open_gripper=None)
-        scene.step()
+        _step(scene)
 
     manipulator.ctrl_apply_vel_action(
         th.zeros(env.num_envs, 6, device=device), open_gripper=None
     )
     for _ in range(round(0.5 / dt)):  # let the wrist settle before reading
-        scene.step()
+        _step(scene)
 
     # Never assume the commanded rotation happened: the wrist joint limits are
     # narrow and `enable_joint_limit=True`, so a blocked rotation would look
     # exactly like a frame bug in the wrench below.
-    angle, axis = _rotation_since(quat_home, manipulator._fts_link.get_quat()[0])
+    angle, axis = _rotation_since(quat_home, _sensor_quat(manipulator)[0])
     logger.info(
         f"  achieved {angle:.2f} deg about world axis {axis} "
-        f"(commanded {ROTATION_DEG:.0f} deg about {ROTATION_FRAME} {ROTATION_AXIS})"
+        f"(commanded {ROTATION_DEG:.0f} deg about {ROTATION_FRAME} {ROTATION_AXIS} "
+        f"at {speed_dps:.1f} deg/s)"
     )
     if abs(angle - ROTATION_DEG) > 5.0:
         logger.warning(
@@ -281,7 +337,7 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
         f"Holding rotated configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
     )
     for i in range(hold_steps):
-        scene.step()
+        _step(scene)
         if i % log_every == 0:
             _log_wrench(manipulator, i)
     rotated = _read_both(manipulator)
@@ -289,43 +345,55 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
     _log_bias_report(manipulator, home=home, rotated=rotated, angle=angle)
 
 
-def _read_both(manipulator: BaseManipulator) -> tuple[th.Tensor, th.Tensor]:
-    """The current (raw, tared) wrench for env 0."""
-    return (
-        manipulator.get_ft_wrench(biased=False)[0].clone(),
-        manipulator.get_ft_wrench()[0].clone(),
+def _sim_bias(manipulator: BaseManipulator) -> th.Tensor | None:
+    """The numeric tare offset when the backend can report one. The real sensor keeps
+    its offset inside the hardware, so there it is simply unknown."""
+    getter = getattr(manipulator, "get_ft_bias", None)
+    return getter() if getter is not None else None
+
+
+def _read_both(manipulator: BaseManipulator) -> tuple[th.Tensor | None, th.Tensor]:
+    """The current (untared, measured) wrench for env 0. The untared half is None on
+    the real robot, which reports one value and no more."""
+    raw = (
+        manipulator.get_ft_wrench_raw()[0].clone()
+        if _is_modelled(manipulator)
+        else None
     )
+    return raw, manipulator.get_ft_wrench()[0].clone()
 
 
 def _log_bias_report(
     manipulator: BaseManipulator,
-    home: tuple[th.Tensor, th.Tensor],
-    rotated: tuple[th.Tensor, th.Tensor],
+    home: tuple[th.Tensor | None, th.Tensor],
+    rotated: tuple[th.Tensor | None, th.Tensor],
     angle: float,
 ) -> None:
-    """Side-by-side raw and tared readings at both poses.
+    """Measured readings at both poses, with the untared ones alongside in simulation.
 
-    The tared rows are the ones to hold against real measurements: the real sensor
-    is zeroed at home, so its home reading is 0 by construction and only the change
-    after the rotation carries information. The raw rows show what the simulated
-    physics produced before taring, which is where a sign or frame error shows up.
+    The measured rows are the comparable ones: the sensor is zeroed at home, so its
+    home reading is 0 by construction and only the change after the rotation carries
+    information. The sim-only rows show what the model produced before taring, which
+    is where a sign or frame error shows up.
     """
     logger = get_logger("ft_sensor")
-    bias = manipulator.get_ft_bias()
+    bias = _sim_bias(manipulator)
 
     logger.info("=" * 78)
     logger.info(
         "F/T bias report            [   fx       fy       fz       tx       ty       tz ]"
     )
     if bias is not None:
-        logger.info(f"  bias (raw @ home)        {_fmt_wrench(bias[0])}")
-    logger.info(f"  home    raw              {_fmt_wrench(home[0])}")
+        logger.info(f"  bias (untared @ home)    {_fmt_wrench(bias[0])}")
+    if home[0] is not None:
+        logger.info(f"  home    untared (sim)    {_fmt_wrench(home[0])}")
     logger.info(
-        f"  home    tared            {_fmt_wrench(home[1])}   <- ~0 by construction"
+        f"  home    measured         {_fmt_wrench(home[1])}   <- ~0 by construction"
     )
-    logger.info(f"  rotated raw              {_fmt_wrench(rotated[0])}")
+    if rotated[0] is not None:
+        logger.info(f"  rotated untared (sim)    {_fmt_wrench(rotated[0])}")
     logger.info(
-        f"  rotated tared            {_fmt_wrench(rotated[1])}   <- compare with the real robot"
+        f"  rotated measured         {_fmt_wrench(rotated[1])}   <- compare sim vs real"
     )
     logger.info(f"  (rotation actually achieved: {angle:.2f} deg)")
     logger.info("=" * 78)

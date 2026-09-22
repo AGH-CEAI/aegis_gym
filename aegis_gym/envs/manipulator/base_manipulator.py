@@ -17,7 +17,6 @@ class BaseManipulator(ABC):
 
     def __init__(self, device: th.device | None = None):
         self.device: th.device = device or th.device("cpu")
-        self._ft_bias: th.Tensor | None = None
 
     @abstractmethod
     def shutdown(self) -> None:
@@ -126,47 +125,37 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
-    def _read_ft_wrench(self) -> th.Tensor:
-        """Returns the raw, untared [num_envs, 6] wrench in the F/T sensor link as
-        [fx, fy, fz, tx, ty, tz] in Newtons and Newton-metre. Backend-specific;
-        callers should use `get_ft_wrench()`, which applies the bias."""
-        ...
-
-    def get_ft_wrench(self, biased: bool = True) -> th.Tensor:
+    def get_ft_wrench(self) -> th.Tensor:
         """Returns [num_envs, 6] wrench in the F/T sensor link as [fx, fy, fz, tx, ty, tz]
         in Newtons and Newton-metre.
 
-        With `biased` (the default) the bias set by `set_ft_bias()` is subtracted, which
-        is how a real sensor is used: it is tared in a known pose and reports change from
-        it. Pass `biased=False` for the raw reading, e.g. to compare the two.
+        This is the measurement, with the bias already applied when one is set. On the
+        real robot it is exactly what the sensor reports over the bridge -- nothing is
+        modelled or corrected on this side. Simulation has to synthesise the same
+        quantity, and whatever it needs to do so stays private to that backend.
         """
-        wrench = self._read_ft_wrench()
-        if biased and self._ft_bias is not None:
-            wrench = wrench - self._ft_bias
-        return wrench
+        ...
 
-    def set_ft_bias(self, wrench: th.Tensor | None = None) -> th.Tensor | None:
-        """Tares the sensor, the counterpart of the real robot's `zero_ftsensor`. Call it
-        in a known, settled pose -- normally the home configuration with no payload -- so
-        the bias captures the tool's own weight.
+    @abstractmethod
+    def set_ft_bias(self) -> None:
+        """Tares the sensor, so `get_ft_wrench()` reports change from this moment on.
+        Call it in a known, settled pose -- normally the home configuration with no
+        payload -- so the bias absorbs the tool's own weight.
+
+        The real robot tares in hardware; simulation subtracts the offset itself. Neither
+        reports the offset back through this interface: ask the backend if it has one.
         """
-        bias = self._read_ft_wrench() if wrench is None else wrench
-        self._ft_bias = bias.detach().clone()
-        return self._ft_bias
+        ...
 
+    @abstractmethod
     def clear_ft_bias(self) -> None:
-        """Drops the bias, so `get_ft_wrench()` reports raw readings again."""
-        self._ft_bias = None
+        """Drops the bias, so `get_ft_wrench()` reports untared measurements again."""
+        ...
 
-    def get_ft_bias(self) -> th.Tensor | None:
-        """The currently applied bias as [num_envs, 6]; None when untared, and also when
-        the hardware holds the offset. Use `is_ft_biased()` to ask whether one is set."""
-        return None if self._ft_bias is None else self._ft_bias.clone()
-
+    @abstractmethod
     def is_ft_biased(self) -> bool:
-        """Whether a tare is currently applied. Unlike `get_ft_bias()` this is meaningful
-        for a hardware-tared backend, which knows a bias is active but not its value."""
-        return self._ft_bias is not None
+        """Whether a tare is currently applied."""
+        ...
 
     @abstractmethod
     def get_tcp_pose(self) -> th.Tensor:

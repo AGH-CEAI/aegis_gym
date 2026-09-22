@@ -73,6 +73,10 @@ class GenesisManipulator(BaseManipulator):
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
 
+        # Software tare offset, [num_envs, 6]; None until `set_ft_bias()`. The real
+        # robot has no counterpart -- its sensor tares itself.
+        self._ft_bias: th.Tensor | None = None
+
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
         self.max_linear_speed = 1.0
@@ -439,7 +443,38 @@ class GenesisManipulator(BaseManipulator):
 
         return th.cat([force, torque], dim=-1)
 
-    def _read_ft_wrench(self) -> th.Tensor:
+    def get_ft_wrench(self) -> th.Tensor:
+        """The simulated F/T measurement, tared when `set_ft_bias()` has been called.
+
+        Counterpart of the real sensor's reading. Unlike the real robot, which tares in
+        hardware, the offset is subtracted here.
+        """
+        wrench = self.get_ft_wrench_raw()
+        if self._ft_bias is not None:
+            wrench = wrench - self._ft_bias
+        return wrench
+
+    def set_ft_bias(self) -> None:
+        self._ft_bias = self.get_ft_wrench_raw().detach().clone()
+
+    def clear_ft_bias(self) -> None:
+        self._ft_bias = None
+
+    def is_ft_biased(self) -> bool:
+        return self._ft_bias is not None
+
+    def get_ft_bias(self) -> th.Tensor | None:
+        """Simulation only: the stored offset, [num_envs, 6], or None when untared.
+        The real robot keeps its tare inside the sensor and cannot answer this."""
+        return None if self._ft_bias is None else self._ft_bias.clone()
+
+    def get_ft_wrench_raw(self) -> th.Tensor:
+        """Simulation only: the modelled wrench before the software tare.
+
+        There is no real-robot counterpart -- the hardware reports one measurement and
+        the tare is applied inside it. This exists to check the simulated model against
+        real data, where the untared term is what a sign or frame error shows up in.
+        """
         # TODO(issue#126) get the F\T sensing from genesis
         tau = self.get_joints_efforts()  # [num_envs, 6]
 

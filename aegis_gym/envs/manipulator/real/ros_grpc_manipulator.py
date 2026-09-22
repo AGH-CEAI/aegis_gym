@@ -321,31 +321,27 @@ class RosGrpcManipulator(BaseManipulator):
             raise ValueError("Call read_state() to initialize values")
         return self._state[StateModality.JOINTS][:, 2]
 
-    def _read_ft_wrench(self) -> th.Tensor:
+    def get_ft_wrench(self) -> th.Tensor:
+        """The F/T sensor measurement as the bridge reports it.
+
+        Nothing is computed here: the robot owns the sensor, applies its own tare when
+        one is set, and this only hands the value on. `read_state()` refreshes it.
+        """
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
         return self._state[StateModality.WRENCH]
 
-    def set_ft_bias(self, wrench: th.Tensor | None = None) -> th.Tensor | None:
-        """
-        Tares the real sensor through the bridge (`wrench_bias_set`).
-        """
-        if wrench is not None:
-            raise ValueError(
-                "The real F/T sensor tares against its own reading; an explicit bias "
-                "cannot be pushed to the hardware. Call set_ft_bias() with no argument "
-                "in the pose you want zeroed."
-            )
+    def set_ft_bias(self) -> None:
+        """Tares the sensor in hardware, through the bridge (`wrench_bias_set`)."""
         success, msg = self._run_coro(self._robot_client.wrench_bias_set())
         if not success:
             raise RuntimeError(f"Failed to set the F/T sensor bias: {msg}")
         self._ft_bias_active = True
         self.read_state()  # so the next getter sees the tared measurement
         self.logger.info("F/T sensor tared in hardware")
-        return None
 
     def clear_ft_bias(self) -> None:
-        """Clears the tare through the bridge (`wrench_bias_clear`)."""
+        """Clears the tare in hardware, through the bridge (`wrench_bias_clear`)."""
         success, msg = self._run_coro(self._robot_client.wrench_bias_clear())
         if not success:
             raise RuntimeError(f"Failed to clear the F/T sensor bias: {msg}")
@@ -355,15 +351,6 @@ class RosGrpcManipulator(BaseManipulator):
 
     def is_ft_biased(self) -> bool:
         return self._ft_bias_active
-
-    def get_ft_wrench(self, biased: bool = True) -> th.Tensor:
-        """The measurement as the hardware reports it -- already tared when a bias is set."""
-        if not biased and self._ft_bias_active:
-            raise RuntimeError(
-                "The F/T sensor is tared in hardware, so the raw wrench is not available. "
-                "Call clear_ft_bias() first to read untared values."
-            )
-        return self._read_ft_wrench()
 
     def get_tcp_pose(self) -> th.Tensor:
         if self._state is None:
