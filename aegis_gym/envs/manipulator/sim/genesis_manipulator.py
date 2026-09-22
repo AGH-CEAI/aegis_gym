@@ -439,7 +439,7 @@ class GenesisManipulator(BaseManipulator):
 
         return th.cat([force, torque], dim=-1)
 
-    def get_ft_wrench(self) -> th.Tensor:
+    def _read_ft_wrench(self) -> th.Tensor:
         # TODO(issue#126) get the F\T sensing from genesis
         tau = self.get_joints_efforts()  # [num_envs, 6]
 

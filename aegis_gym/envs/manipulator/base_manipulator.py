@@ -17,6 +17,7 @@ class BaseManipulator(ABC):
 
     def __init__(self, device: th.device | None = None):
         self.device: th.device = device or th.device("cpu")
+        self._ft_bias: th.Tensor | None = None
 
     @abstractmethod
     def shutdown(self) -> None:
@@ -125,9 +126,47 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
-    def get_ft_wrench(self) -> th.Tensor:
-        """Returns [num_envs, 6] wrench in the F/T sensor link as [fx, fy, fz, tx, ty, tz] in Newtons and Newton-metre."""
+    def _read_ft_wrench(self) -> th.Tensor:
+        """Returns the raw, untared [num_envs, 6] wrench in the F/T sensor link as
+        [fx, fy, fz, tx, ty, tz] in Newtons and Newton-metre. Backend-specific;
+        callers should use `get_ft_wrench()`, which applies the bias."""
         ...
+
+    def get_ft_wrench(self, biased: bool = True) -> th.Tensor:
+        """Returns [num_envs, 6] wrench in the F/T sensor link as [fx, fy, fz, tx, ty, tz]
+        in Newtons and Newton-metre.
+
+        With `biased` (the default) the bias set by `set_ft_bias()` is subtracted, which
+        is how a real sensor is used: it is tared in a known pose and reports change from
+        it. Pass `biased=False` for the raw reading, e.g. to compare the two.
+        """
+        wrench = self._read_ft_wrench()
+        if biased and self._ft_bias is not None:
+            wrench = wrench - self._ft_bias
+        return wrench
+
+    def set_ft_bias(self, wrench: th.Tensor | None = None) -> th.Tensor | None:
+        """Tares the sensor, the counterpart of the real robot's `zero_ftsensor`. Call it
+        in a known, settled pose -- normally the home configuration with no payload -- so
+        the bias captures the tool's own weight.
+        """
+        bias = self._read_ft_wrench() if wrench is None else wrench
+        self._ft_bias = bias.detach().clone()
+        return self._ft_bias
+
+    def clear_ft_bias(self) -> None:
+        """Drops the bias, so `get_ft_wrench()` reports raw readings again."""
+        self._ft_bias = None
+
+    def get_ft_bias(self) -> th.Tensor | None:
+        """The currently applied bias as [num_envs, 6]; None when untared, and also when
+        the hardware holds the offset. Use `is_ft_biased()` to ask whether one is set."""
+        return None if self._ft_bias is None else self._ft_bias.clone()
+
+    def is_ft_biased(self) -> bool:
+        """Whether a tare is currently applied. Unlike `get_ft_bias()` this is meaningful
+        for a hardware-tared backend, which knows a bias is active but not its value."""
+        return self._ft_bias is not None
 
     @abstractmethod
     def get_tcp_pose(self) -> th.Tensor:
