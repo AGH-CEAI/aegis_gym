@@ -1,3 +1,4 @@
+import math
 import time
 import warnings
 from collections.abc import Callable
@@ -9,12 +10,21 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
-from aegis_gym.aux.geom import transform_by_quat
+from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, RobotCfg
 from aegis_gym.envs.manipulator import BaseManipulator, CameraModality
 
 RigidLink = TypeVar
+
+# The ATI Axia80 does not report in `tool_mount_link`'s axes: its output frame is that
+# link turned by this much about Z. Measured, not assumed -- comparing a simulated and a
+# real 90 deg sweep, the rotation taking the simulated wrench onto the real one came out
+# as Rz(-90 deg) with a direction cosine of +0.9998 on force and +0.9999 on torque, both
+# channels agreeing. Expressing the simulated wrench in the sensor's own frame therefore
+# means rotating that frame by +90 deg about Z.
+# Re-measure this if the sensor is remounted or the adapter changes.
+_FTS_OUTPUT_YAW_DEG = 90.0
 
 
 class GenesisManipulator(BaseManipulator):
@@ -76,6 +86,13 @@ class GenesisManipulator(BaseManipulator):
         # Software tare offset, [num_envs, 6]; None until `set_ft_bias()`. The real
         # robot has no counterpart -- its sensor tares itself.
         self._ft_bias: th.Tensor | None = None
+
+        half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
+        self._fts_output_offset = th.tensor(
+            [[math.cos(half), 0.0, 0.0, math.sin(half)]],
+            dtype=th.float32,
+            device=self.device,
+        )
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
@@ -509,7 +526,7 @@ class GenesisManipulator(BaseManipulator):
         wrench_world = -(th.linalg.pinv(jacobian_arm_T) @ tau.unsqueeze(-1)).squeeze(-1)
         wrench_world = wrench_world + self._gravity_wrench_world()
 
-        quat = self._fts_link.get_quat()  # [num_envs, 4], WXYZ
+        quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
         quat_conj = quat * th.tensor(
             [1.0, -1.0, -1.0, -1.0], device=quat.device, dtype=quat.dtype
         )
@@ -517,6 +534,16 @@ class GenesisManipulator(BaseManipulator):
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
         return th.cat([force_local, torque_local], dim=-1)
+
+    def get_ft_frame_quat(self) -> th.Tensor:
+        """World orientation, [num_envs, 4] WXYZ, of the frame `get_ft_wrench()` reports in.
+
+        That is the physical sensor's output frame, which is `tool_mount_link` turned by
+        `_FTS_OUTPUT_YAW_DEG` about its Z (see the constant). Use this, not
+        `_fts_link.get_quat()`, whenever a wrench component has to be tied to an axis.
+        """
+        quat = self._fts_link.get_quat()
+        return transform_quat_by_quat(quat, self._fts_output_offset.expand_as(quat))
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()

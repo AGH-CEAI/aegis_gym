@@ -223,9 +223,12 @@ class RosGrpcManipulator(BaseManipulator):
             )
         else:
             self._vision = None
-        # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
-        self._state[StateModality.POSE][3:] = self.pt.quat_xyzw_to_wxyz(
-            self._state[StateModality.POSE][3:]
+        # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW.
+        # Indexed on the last axis: the state is [1, 7] after the unsqueeze above, so a bare
+        # `[3:]` slices the batch dimension instead, selects nothing, and silently leaves the
+        # quaternion in XYZW -- which then reads as a 180 deg rotation about X.
+        self._state[StateModality.POSE][..., 3:] = self.pt.quat_xyzw_to_wxyz(
+            self._state[StateModality.POSE][..., 3:]
         )
 
     def set_joints_pd_gains(

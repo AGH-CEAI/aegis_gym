@@ -43,6 +43,7 @@ def main():
         return
 
     ft_sensor_gravity_test(env=env, cfg=cfg)
+    # ft_sensor_identify_payload(env=env, cfg=cfg)
     # ft_sensor_playgraund_move(env=env, cfg=cfg)
 
 
@@ -158,14 +159,16 @@ def _quat_to_matrix(quat: th.Tensor) -> th.Tensor:
 def _sensor_quat(manipulator: BaseManipulator) -> tuple[th.Tensor, str]:
     """Orientation to reason about the wrench with, and the name of its frame.
 
-    In simulation this is the sensor link itself. The bridge does not publish that
-    link's pose, so on the real robot it falls back to the TCP. The two differ by a
-    fixed rotation, which matters for reading absolute axes but not for
-    `_rotation_since`: the wrist is rigid, so both frames turn by the same amount.
+    Both backends answer in the frame the wrench is actually reported in. In
+    simulation that is `get_ft_frame_quat()`. On the real robot the bridge does not
+    publish the sensor link, but it does not need to: per the URDF the only rotation
+    between `tool_mount_link` and the TCP is the +90 deg about Z of
+    `adapter_from_sensor_end_joint`, which is exactly the sensor's measured output
+    offset -- so the TCP orientation *is* the sensor frame.
     """
     if _is_modelled(manipulator):
-        return manipulator._fts_link.get_quat()[0], manipulator._fts_link.name
-    return manipulator.get_tcp_orientation()[0], "TCP (sensor link not published)"
+        return manipulator.get_ft_frame_quat()[0], "sensor output frame"
+    return manipulator.get_tcp_orientation()[0], "sensor output frame (via TCP)"
 
 
 def _log_frame(manipulator: BaseManipulator, label: str) -> None:
@@ -362,6 +365,158 @@ def _log_bias_report(
         f"  rotated measured         {_fmt_wrench(rotated[1])}   <- compare sim vs real"
     )
     logger.info(f"  (rotation actually achieved: {angle:.2f} deg)")
+    logger.info("=" * 78)
+
+
+def _skew(vec: th.Tensor) -> th.Tensor:
+    """[3, 3] cross-product matrix, so that `_skew(a) @ b == cross(a, b)`."""
+    zero = th.zeros((), dtype=vec.dtype, device=vec.device)
+    return th.stack(
+        [
+            th.stack([zero, -vec[2], vec[1]]),
+            th.stack([vec[2], zero, -vec[0]]),
+            th.stack([-vec[1], vec[0], zero]),
+        ]
+    )
+
+
+def _identify_payload(
+    rots: list[th.Tensor],
+    forces: list[th.Tensor],
+    torques: list[th.Tensor],
+    gravity: th.Tensor,
+) -> tuple[th.Tensor, th.Tensor, th.Tensor, th.Tensor]:
+    """Least-squares payload identification from wrenches taken at several orientations.
+
+    With the load hanging rigidly past the sensor, each pose contributes
+
+        F_i = m * (R_i^T g) + F0
+        T_i = (m*c) x (R_i^T g) + T0
+
+    where `R_i` turns the sensor frame into world, `m` is the payload mass, `c` its
+    centre of mass in the sensor frame, and `F0`/`T0` a constant sensor offset. Both
+    are linear in the unknowns, so this is one least-squares solve each: 4 unknowns for
+    the force, 6 for the torque. Solving for `m*c` rather than `c` keeps it linear.
+
+    The readings must be UNTARED -- a tare subtracts a constant, which is precisely the
+    signal `F0`/`T0` absorb, and it would bias `m` if left in.
+
+    Returns (mass, com, force_offset, torque_offset).
+    """
+    device, n = gravity.device, len(rots)
+    eye = th.eye(3, dtype=th.float32, device=device)
+
+    a_mat = th.zeros(3 * n, 4, device=device)
+    b_vec = th.zeros(3 * n, device=device)
+    for i, (rot, force) in enumerate(zip(rots, forces)):
+        a_mat[3 * i : 3 * i + 3, 0] = rot.T @ gravity
+        a_mat[3 * i : 3 * i + 3, 1:4] = eye
+        b_vec[3 * i : 3 * i + 3] = force
+    sol = th.linalg.lstsq(a_mat, b_vec.unsqueeze(-1)).solution.squeeze(-1)
+    mass, force_offset = sol[0], sol[1:4]
+
+    c_mat = th.zeros(3 * n, 6, device=device)
+    d_vec = th.zeros(3 * n, device=device)
+    for i, (rot, torque) in enumerate(zip(rots, torques)):
+        c_mat[3 * i : 3 * i + 3, 0:3] = -_skew(rot.T @ gravity)
+        c_mat[3 * i : 3 * i + 3, 3:6] = eye
+        d_vec[3 * i : 3 * i + 3] = torque
+    sol = th.linalg.lstsq(c_mat, d_vec.unsqueeze(-1)).solution.squeeze(-1)
+    return mass, sol[0:3] / mass, force_offset, sol[3:6]
+
+
+def ft_sensor_identify_payload(env: BaseEnv, cfg: ExpConfig) -> None:
+    """Measures the mass and centre of mass of whatever hangs past the F/T sensor.
+
+    Visits a spread of wrist orientations, records the untared wrench at each, and fits
+    the payload from them. Run it on both backends: the difference between the two
+    answers IS the sim-to-real gap, expressed in the two numbers that cause it, rather
+    than as an unexplained offset in the readings.
+
+    On the real robot the joint targets below must be reachable and collision-free from
+    home -- check them in RViz before running.
+    """
+    logger = get_logger("ft_sensor")
+    logger.info("Starting F/T payload identification")
+
+    manipulator = env.manipulator
+    scene = env._scene
+    device = cfg.get_device()
+    dt = env.get_policy_dt()
+
+    SETTLE_SECONDS = 4.0
+    # Offsets in degrees from the home configuration, applied to
+    # [shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3]. Only the wrist
+    # moves, so the tool stays put while gravity sweeps around the sensor frame -- that
+    # spread is what separates mass from centre of mass. Kept inside the URDF wrist
+    # limits (wrist_1 [-2.79, -0.70], wrist_2 [-2.27, -0.87], wrist_3 [-2.27, 2.27]).
+    POSE_OFFSETS_DEG = (
+        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 40.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, -40.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, 35.0, 0.0),
+        (0.0, 0.0, 0.0, 0.0, -35.0, 0.0),
+        (0.0, 0.0, 0.0, 30.0, 25.0, 90.0),
+        (0.0, 0.0, 0.0, -30.0, -25.0, -90.0),
+    )
+
+    home = th.tensor(cfg.robot_cfg.default_arm_dof, dtype=th.float32, device=device)
+    settle_steps = max(1, round(SETTLE_SECONDS / dt))
+
+    manipulator.ctrl_go_to_home()
+    for _ in range(settle_steps):
+        _step(scene)
+
+    # Identification needs the untared signal; a tare would hide the very offset the
+    # fit estimates and drag the mass with it.
+    manipulator.clear_ft_bias()
+
+    rots, forces, torques = [], [], []
+    for i, offsets in enumerate(POSE_OFFSETS_DEG):
+        target = home + th.deg2rad(th.tensor(offsets, dtype=th.float32, device=device))
+        manipulator.ctrl_go_to_joints(target)
+        for _ in range(settle_steps):
+            _step(scene)
+
+        quat, _ = _sensor_quat(manipulator)
+        wrench = manipulator.get_ft_wrench()[0]
+        rots.append(_quat_to_matrix(quat))
+        forces.append(wrench[:3].clone())
+        torques.append(wrench[3:].clone())
+        logger.info(f"  pose {i}: offsets={offsets} wrench={_fmt_wrench(wrench)}")
+
+    gravity = th.tensor([0.0, 0.0, -9.81], dtype=th.float32, device=device)
+    mass, com, force_offset, torque_offset = _identify_payload(
+        rots, forces, torques, gravity
+    )
+
+    # Residual: what the fitted model fails to explain, in Newtons. Large values mean
+    # the load is not rigid, the arm had not settled, or a pose was not reached.
+    residuals = [
+        th.linalg.norm(f - (mass * (r.T @ gravity) + force_offset))
+        for r, f in zip(rots, forces)
+    ]
+
+    logger.info("=" * 78)
+    logger.info(f"Payload identification over {len(rots)} poses")
+    logger.info(f"  mass            = {float(mass):8.4f} kg")
+    logger.info(
+        f"  centre of mass  = [{' '.join(f'{v:8.4f}' for v in com.tolist())}] m "
+        "(sensor frame)"
+    )
+    logger.info(
+        f"  force offset    = {_fmt_wrench(th.cat([force_offset, torque_offset]))}"
+    )
+    logger.info(
+        f"  fit residual    = {float(th.stack(residuals).max()):.4f} N max, "
+        f"{float(th.stack(residuals).mean()):.4f} N mean"
+    )
+    if _is_modelled(manipulator):
+        modelled = float(manipulator._gravity_link_masses[0].sum())
+        logger.info(
+            f"  URDF model says   {modelled:8.4f} kg "
+            f"-> gap {1000 * (float(mass) - modelled):+.1f} g"
+        )
     logger.info("=" * 78)
 
 
