@@ -63,6 +63,26 @@ class CamerasFovCfg(ToggleCfg):
 
 
 @dataclass(slots=True, frozen=True)
+class FtSensorNoiseCfg(ToggleCfg):
+    """Gaussian measurement noise added to the simulated F/T reading."""
+
+    force_std: list[float] = field(default_factory=lambda: [0.0035, 0.0056, 0.0150])
+    force_limit: list[float] = field(default_factory=lambda: [0.0105, 0.0168, 0.0449])
+    torque_std: list[float] = field(default_factory=lambda: [0.00023, 0.00025, 0.00007])
+    torque_limit: list[float] = field(
+        default_factory=lambda: [0.00069, 0.00074, 0.00020]
+    )
+
+
+@dataclass(slots=True, frozen=True)
+class FtSensorBiasCfg(ToggleCfg):
+    """A constant F/T offset that survives taring, resampled each episode."""
+
+    force_range: list[float] = field(default_factory=lambda: [0.10, 0.15, 0.35])
+    torque_range: list[float] = field(default_factory=lambda: [0.006, 0.003, 0.001])
+
+
+@dataclass(slots=True, frozen=True)
 class DomainRandomizationCfg(ToggleCfg):
     debug_viewer: bool = False
 
@@ -75,3 +95,6 @@ class DomainRandomizationCfg(ToggleCfg):
     )
 
     cameras_fov: CamerasFovCfg = field(default_factory=CamerasFovCfg)
+
+    ft_sensor_noise: FtSensorNoiseCfg = field(default_factory=FtSensorNoiseCfg)
+    ft_sensor_bias: FtSensorBiasCfg = field(default_factory=FtSensorBiasCfg)

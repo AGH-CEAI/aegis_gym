@@ -46,6 +46,7 @@ class GenesisScene(BaseScene):
             RandomizationType.CAMERAS_EXTRINSICS: self._rand_cameras_extrinsics,
             RandomizationType.MANIPULATOR_MAX_SPEED: self._rand_manipulator_max_speed,
             RandomizationType.MANIPULATOR_PD_GAINS: self._rand_manipulator_pd_gains,
+            RandomizationType.FT_SENSOR_BIAS: self._rand_ft_sensor_bias,
         }
         self._cfg_env = cfg_env
         self._cfg_dr = cfg_dr
@@ -373,6 +374,7 @@ class GenesisScene(BaseScene):
             cameras_obs_getter=self.observe_camera,
             available_cameras=self._cameras_modalities,
             cfg_robot=cfg,
+            cfg_dr=self._cfg_dr,
             show_cell=self.show_cell,
             device=self.device,
         )
@@ -501,6 +503,15 @@ class GenesisScene(BaseScene):
         )
 
         self.manipulator.set_joints_pd_gains(kp_gain=kp_scale, kv_gain=kv_scale)
+
+    def _rand_ft_sensor_bias(self, envs_idx: th.Tensor) -> None:
+        cfg = self._cfg_dr.ft_sensor_bias
+        if not cfg.enabled:
+            return
+
+        ranges = th.tensor([[*cfg.force_range, *cfg.torque_range]], device=self.device)
+        bias = (th.rand(len(envs_idx), 6, device=self.device) * 2.0 - 1.0) * ranges
+        self.manipulator.set_ft_residual_bias(bias, envs_idx=envs_idx)
 
     def _log_state_to_plot_juggler(self) -> None:
         if not self._enable_pj_logging:

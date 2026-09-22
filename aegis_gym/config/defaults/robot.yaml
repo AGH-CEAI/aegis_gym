@@ -6,3 +6,10 @@ ik_method: "dls_ikv"
 urdf_id_cell: "c44c56e7671d4004b120b0341fb727a4"
 urdf_id_cell_collision: "0424f220ddc54091ae3b56b29854532f"
 urdf_id_no_cell: "718ea536c68c4aaba79d1515ced27eeb"
+
+# Measured with `ft_sensor_identify_payload` on the real cell (two runs: 1.3604 /
+# 1.3578 kg, COM repeatable to 0.1 mm). The URDF link sum is 1.2760 kg at z=65.7 mm,
+# so it under-reads by 83 g and puts the COM 6.6 mm too far out.
+# Re-measure after any change to the gripper, its cabling or the sensor adapter.
+fts_payload_mass: 1.3591
+fts_payload_com: [0.0007, 0.0003, 0.0591]

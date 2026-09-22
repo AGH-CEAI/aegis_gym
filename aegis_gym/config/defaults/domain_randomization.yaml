@@ -31,3 +31,17 @@ cameras_extrinsics:
     tool_cams:
         translation_std: 0.001
         rotation_std_deg: 0.6
+ft_sensor_noise:
+    enabled: True
+    # Measured on the real sensor, 5 min at rest, ros2_net_ft_driver particle filter
+    # at 8 (max). Per axis [x, y, z]; limits are 3 sigma.
+    force_std: [0.0035, 0.0056, 0.0150]
+    force_limit: [0.0105, 0.0168, 0.0449]
+    torque_std: [0.00023, 0.00025, 0.00007]
+    torque_limit: [0.00069, 0.00074, 0.00020]
+ft_sensor_bias:
+    enabled: True
+    # Residual offset left by a real tare, resampled per episode, uniform in +-range.
+    # Measured leftovers after the driver's zeroing were |F|=0.34 N, |T|=0.006 Nm.
+    force_range: [0.10, 0.15, 0.35]
+    torque_range: [0.006, 0.003, 0.001]
