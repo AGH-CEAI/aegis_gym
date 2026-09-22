@@ -95,6 +95,22 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """Move to an absolute arm joint configuration.
+
+        Args:
+            joints: [num_envs, 6] or [6] target joint positions in radians, ordered
+                    [shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3].
+
+        Unlike `ctrl_go_to_goal` this asks for nothing to be solved: the configuration
+        is stated outright, so there is no IK or planning that can pick a different
+        branch in simulation than on the robot. The gripper is left as it is.
+        """
+        ...
+
+    @abstractmethod
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         """Open the gripper to its maximum width."""
         ...

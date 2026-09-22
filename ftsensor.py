@@ -232,37 +232,24 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
     _log_gravity_links(manipulator)
 
     HOLD_SECONDS = 10.0
+    # How long to keep stepping after the goal is issued, so the arm reaches it and
+    # the reading settles before it is logged.
+    MOVE_SETTLE_SECONDS = 5.0
+    # The arm configuration in which the TCP sits 90 deg from home, measured on the
+    # real robot from /joint_states and reordered into kinematic order. Commanded as
+    # joints rather than as a TCP pose on purpose: the configuration is stated
+    # outright, so no IK or planner can put the simulator on a different branch from
+    # the robot, and there is nothing left to "not accept".
+    ROTATED_ARM_DOF = (
+        -0.999880615864889,  # shoulder_pan
+        -1.5083312888494511,  # shoulder_lift
+        2.2797167936908167,  # elbow
+        -0.7881105703166504,  # wrist_1
+        -0.9998858610736292,  # wrist_2
+        -1.5612619558917444,  # wrist_3
+    )
+    # What that configuration is expected to be relative to home, for the check below.
     ROTATION_DEG = 90.0
-    ROTATION_SPEED_DPS = 30.0
-    # The axis to swing the gripper about, and the frame it is given in:
-    #   "world" -- a fixed direction in the cell. World X swings the tool to the
-    #              RIGHT, which is the motion this test wants; the tool's own axes
-    #              turn under it as it goes.
-    #   "tool"  -- fixed in the sensor, so it turns with the tool. World X and tool
-    #              X are different motions: at home the tool's axes point roughly
-    #              along world (+Y, +X, -Z), so tool X is world Y, i.e. FORWARD.
-    # This also decides which component the load lands on: swinging right about
-    # world X puts gravity on the tool's local X, not its Y. The "home frame" and
-    # "rotated frame" lines below are what makes the resulting wrench readable.
-    ROTATION_AXIS = (1.0, 0.0, 0.0)
-    ROTATION_FRAME = "world"
-
-    # The real arm is held to `action_max_angular_speed` from the config; exceeding it
-    # here would drive the hardware faster than the task is allowed to. Clamp rather
-    # than trust the constant above, and stretch the move so it still covers the angle.
-    speed_dps = ROTATION_SPEED_DPS
-    max_dps = float(env.max_angular_speed) * 180.0 / float(th.pi)
-    if speed_dps > max_dps:
-        logger.warning(
-            f"  rotation speed {speed_dps:.1f} deg/s exceeds the configured limit "
-            f"{max_dps:.1f} deg/s; clamping."
-        )
-        speed_dps = max_dps
-
-    if ROTATION_FRAME not in ("world", "tool"):
-        raise ValueError(
-            f"ROTATION_FRAME must be 'world' or 'tool', got {ROTATION_FRAME!r}"
-        )
 
     hold_steps = max(1, round(HOLD_SECONDS / dt))
     log_every = max(1, round(1.0 / dt))  # once per simulated second
@@ -289,47 +276,26 @@ def ft_sensor_gravity_test(env: BaseEnv, cfg: ExpConfig) -> None:
             _log_wrench(manipulator, i)
     home = _read_both(manipulator)
 
-    rotation_steps = max(1, round((ROTATION_DEG / speed_dps) / dt))
-    logger.info(
-        f"Rotating wrist {ROTATION_DEG:.0f} deg about the {ROTATION_FRAME} "
-        f"{ROTATION_AXIS} axis to swing the gripper off-axis:"
+    logger.info(f"Moving to the rotated configuration (joint goal): {ROTATED_ARM_DOF}")
+    manipulator.ctrl_go_to_joints(
+        th.tensor(ROTATED_ARM_DOF, dtype=th.float32, device=device)
     )
-    axis = th.tensor(ROTATION_AXIS, dtype=th.float32, device=device)
-    for _ in range(rotation_steps):
-        if ROTATION_FRAME == "tool":
-            # Recomputed every step: the axis is fixed in the tool, so its world
-            # direction turns with the tool as the rotation proceeds.
-            quat = _sensor_quat(manipulator)[0].unsqueeze(0)
-            axis_world = transform_by_quat(axis.expand_as(quat[:, :3]), quat)
-        else:
-            # Fixed in the cell, so the same world direction on every step.
-            axis_world = axis.expand(env.num_envs, 3)
-        action = th.zeros(env.num_envs, 6, device=device)
-        # Both backends take this in rad/s: the sim manipulator's own max speeds are
-        # 1.0, and the bridge forwards the twist to `servo_tcp` unscaled.
-        action[:, 3:] = axis_world * (speed_dps * th.pi / 180.0)
-        manipulator.ctrl_apply_vel_action(action, open_gripper=None)
+    for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
         _step(scene)
 
-    manipulator.ctrl_apply_vel_action(
-        th.zeros(env.num_envs, 6, device=device), open_gripper=None
-    )
-    for _ in range(round(0.5 / dt)):  # let the wrist settle before reading
-        _step(scene)
-
-    # Never assume the commanded rotation happened: the wrist joint limits are
-    # narrow and `enable_joint_limit=True`, so a blocked rotation would look
-    # exactly like a frame bug in the wrench below.
+    # Never assume the arm arrived: a joint goal cannot be refused for want of a
+    # solution, but it can still be clipped by limits or simply not reached yet, and
+    # either would look exactly like a frame bug in the wrench below.
     angle, axis = _rotation_since(quat_home, _sensor_quat(manipulator)[0])
     logger.info(
         f"  achieved {angle:.2f} deg about world axis {axis} "
-        f"(commanded {ROTATION_DEG:.0f} deg about {ROTATION_FRAME} {ROTATION_AXIS} "
-        f"at {speed_dps:.1f} deg/s)"
+        f"(the measured configuration should sit {ROTATION_DEG:.0f} deg from home)"
     )
     if abs(angle - ROTATION_DEG) > 5.0:
         logger.warning(
-            f"  the wrist reached {angle:.2f} deg, not {ROTATION_DEG:.0f} deg -- "
-            "joint limits or IK, NOT the sensor frame. Read the wrench accordingly."
+            f"  the arm sits {angle:.2f} deg from home, not {ROTATION_DEG:.0f} deg -- "
+            "it did not reach the commanded joints (limits, or still moving), NOT the "
+            "sensor frame. Read the wrench accordingly."
         )
     _log_frame(manipulator, "rotated")
 

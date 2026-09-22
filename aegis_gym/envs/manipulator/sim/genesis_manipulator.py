@@ -365,6 +365,27 @@ class GenesisManipulator(BaseManipulator):
             position=default_joint_angles, envs_idx=idx
         )
 
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+
+        joints = joints.reshape(-1, self._arm_dof_dim).to(
+            dtype=th.float32, device=self.device
+        )
+        if joints.shape[0] == 1:
+            joints = joints.expand(len(idx), self._arm_dof_dim)
+
+        # Only the arm DOFs are driven; the fingers keep whatever target they hold, so
+        # this cannot disturb the gripper mid-test.
+        self._robot_entity.control_dofs_position(
+            position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
+        )
+
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx

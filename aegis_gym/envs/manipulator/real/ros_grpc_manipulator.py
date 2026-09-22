@@ -33,6 +33,19 @@ from aegis_gym.config.types import CameraName, RobotCfg
 
 from ..base_manipulator import BaseManipulator, CameraModality
 
+# Kinematic order, which is what this project uses everywhere for arm joints
+# (`RobotCfg.default_arm_dof`, the Genesis DOF order). Neither `AegisJointName` nor the
+# /joint_states topic is in this order, so anything crossing the bridge is paired by
+# name rather than by position.
+_ARM_JOINT_NAMES = (
+    AegisJointName.SHOULDER_PAN_JOINT,
+    AegisJointName.SHOULDER_LIFT_JOINT,
+    AegisJointName.ELBOW_JOINT,
+    AegisJointName.WRIST_1_JOINT,
+    AegisJointName.WRIST_2_JOINT,
+    AegisJointName.WRIST_3_JOINT,
+)
+
 
 class PoseTransformUtils:
     @staticmethod
@@ -261,18 +274,26 @@ class RosGrpcManipulator(BaseManipulator):
     ) -> None:
         self._servo_disable()
 
-        goal_pose = goal_pose.squeeze(dim=0)
+        # `squeeze` returns a view, so the conversion below would otherwise rewrite the
+        # caller's own tensor in place and leave it holding an XYZW quaternion.
+        goal_pose = goal_pose.squeeze(dim=0).clone()
         goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
 
         target_pos_np = goal_pose[:3].detach().cpu().numpy()
         target_ori_np = goal_pose[3:7].detach().cpu().numpy()
 
-        self._run_coro(
+        success, msg = self._run_coro(
             self._robot_client.goto_pose(
                 position=target_pos_np,
                 orientation=target_ori_np,
             )
         )
+        # A rejected plan used to pass silently, leaving the arm where it was while the
+        # caller carried on as if it had moved.
+        if not success:
+            raise RuntimeError(
+                f"The planner did not accept the TCP goal {goal_pose.tolist()}: {msg}"
+            )
 
         if open_gripper is None:
             return
@@ -289,6 +310,30 @@ class RosGrpcManipulator(BaseManipulator):
                 positions=tuple(self.dof_home_dict.values()),
             )
         )
+
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        joints = joints.reshape(-1)
+        if joints.numel() != len(_ARM_JOINT_NAMES):
+            raise ValueError(
+                f"Expected {len(_ARM_JOINT_NAMES)} arm joint positions, "
+                f"got {joints.numel()}"
+            )
+
+        self._servo_disable()
+        # Paired by name rather than by position: the bridge's joint enum is not in
+        # kinematic order, and neither is the /joint_states topic.
+        success, msg = self._run_coro(
+            self._robot_client.goto_joints(
+                names=_ARM_JOINT_NAMES,
+                positions=tuple(joints.detach().cpu().tolist()),
+            )
+        )
+        if not success:
+            raise RuntimeError(
+                f"The planner did not accept the joint goal {joints.tolist()}: {msg}"
+            )
 
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         if self._gripper_last_action:
