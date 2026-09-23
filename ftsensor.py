@@ -44,6 +44,7 @@ def main():
 
     ft_sensor_gravity_test(env=env, cfg=cfg)
     # ft_sensor_identify_payload(env=env, cfg=cfg)
+    # ft_sensor_contact_drag_test(env=env, cfg=cfg)
     # ft_sensor_playgraund_move(env=env, cfg=cfg)
 
 
@@ -518,6 +519,331 @@ def ft_sensor_identify_payload(env: BaseEnv, cfg: ExpConfig) -> None:
             f"-> gap {1000 * (float(mass) - modelled):+.1f} g"
         )
     logger.info("=" * 78)
+
+
+def _tcp_velocity(
+    env: BaseEnv,
+    manipulator: BaseManipulator,
+    direction_tcp: tuple[float, float, float],
+    speed: float,
+    device: th.device,
+) -> th.Tensor:
+    """A world-frame twist, [num_envs, 6], moving at `speed` along a TCP-frame direction.
+
+    `ctrl_apply_vel_action` wants world axes on both backends -- the sim IK uses a
+    world-frame Jacobian and the bridge forwards the twist to `servo_tcp` unscaled -- so
+    the direction is rotated out of the TCP frame here. Recomputed each step, because
+    the TCP turns as the arm moves and a direction fixed in it does not stay fixed in
+    the cell. The sensor's output frame and the TCP share an orientation, so the axes
+    named here are the same ones the wrench is reported in.
+    """
+    quat, _ = _sensor_quat(manipulator)
+    vec = th.tensor(direction_tcp, dtype=th.float32, device=device).unsqueeze(0)
+    vec = vec / th.linalg.norm(vec)
+    world = transform_by_quat(vec, quat.unsqueeze(0))
+    action = th.zeros(env.num_envs, 6, device=device)
+    action[:, :3] = world * speed
+    return action
+
+
+def _travelled(manipulator: BaseManipulator, origin: th.Tensor) -> float:
+    """Distance the TCP has actually covered since `origin`, in metres.
+
+    Measured, never integrated from the command. A velocity command is a request: the
+    sim tracks it only as well as its gains allow, and on the real robot `servo_tcp`
+    keeps running at that velocity until it is superseded, so a slow loop iteration
+    carries the arm further than the commanded distance implies. Dead reckoning
+    under-reports both, which is the wrong direction for a safety budget.
+    """
+    return float(th.linalg.norm(manipulator.get_tcp_position()[0] - origin))
+
+
+def _stop(env: BaseEnv, manipulator: BaseManipulator, device: th.device) -> None:
+    """Commands zero velocity. Called on every exit path, including failures."""
+    manipulator.ctrl_apply_vel_action(
+        th.zeros(env.num_envs, 6, device=device), open_gripper=None
+    )
+
+
+def _clamp_speed(env: BaseEnv, speed: float, label: str) -> float:
+    """Keeps a commanded speed inside the configured limit for the cell."""
+    logger = get_logger("ft_sensor")
+    limit = float(env.max_linear_speed)
+    if speed > limit:
+        logger.warning(
+            f"  {label} speed {speed:.4f} m/s exceeds the configured limit "
+            f"{limit:.4f} m/s; clamping."
+        )
+        return limit
+    return speed
+
+
+def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
+    """Touches the table under velocity control, then drags along the surface.
+
+    Three phases: descend along the TCP's own Z until the sensor feels CONTACT_FORCE_N,
+    stop and settle, then translate along the TCP's X while logging. The point is the
+    drag: the normal force shows how well the height is held, and the tangential force
+    is friction building up and breaking away, which is the first reading in this whole
+    exercise that is not just gravity.
+
+    Velocity control on purpose -- a planned move cannot stop on a force threshold.
+
+    SAFETY: this drives the arm into a surface. Every phase is bounded by distance and
+    by an abort force, the approach speed is clamped to the configured limit, and the
+    arm is stopped and retracted on every exit path including an exception. Run it in
+    simulation first and watch the numbers before letting it near the real cell.
+    """
+    logger = get_logger("ft_sensor")
+    logger.info("Starting the F/T contact and drag test")
+
+    manipulator = env.manipulator
+    scene = env._scene
+    device = cfg.get_device()
+    dt = env.get_policy_dt()
+
+    # Axes are given in the TCP frame, which is also the sensor's output frame, so a
+    # force reported on Z is the force along APPROACH_AXIS_TCP.
+    APPROACH_AXIS_TCP = (0.0, 0.0, 1.0)
+    DRAG_AXIS_TCP = (1.0, 0.0, 0.0)
+    # Home puts the tool over the cage, not the table, so step out along the TCP's own
+    # X before descending. Same axis the drag runs along, so the drag continues the
+    # direction this move starts in.
+    START_OFFSET_TCP = (1.0, 0.0, 2.0)
+    START_OFFSET_M = 0.15
+    # The approach speed sets how finely contact can be resolved, because the force
+    # jumps by `stiffness * speed * dt` between two samples and that jump is the only
+    # warning before the threshold is passed. At 25 Hz, stopping within 1 N needs
+    # roughly 28 mm/s on something soft (900 N/m), 2.5 mm/s at 10 kN/m and 0.25 mm/s on
+    # a rigid table. Too fast and the reading goes from 0 N to past ABORT_FORCE_N in one
+    # step, never showing the contact at all.
+    APPROACH_SPEED_MPS = 0.15
+    DRAG_SPEED_MPS = 0.010
+
+    CONTACT_FORCE_N = 1.0  # what counts as "touching"
+    ABORT_FORCE_N = 20.0  # anything past this and the test gives up
+    MAX_APPROACH_M = 2.00  # travel budget if the surface is never felt
+    DRAG_DISTANCE_M = 0.05
+    RETRACT_M = 0.03
+    SETTLE_SECONDS = 1.0
+    MOVE_SETTLE_SECONDS = 5.0  # budget for the planned offset move to complete
+
+    approach_speed = _clamp_speed(env, APPROACH_SPEED_MPS, "approach")
+    drag_speed = _clamp_speed(env, DRAG_SPEED_MPS, "drag")
+    settle_steps = max(1, round(SETTLE_SECONDS / dt))
+    log_every = max(1, round(0.25 / dt))
+
+    def _unit(vec: tuple[float, float, float]) -> th.Tensor:
+        out = th.tensor(vec, dtype=th.float32, device=device)
+        return out / th.linalg.norm(out)
+
+    axis = _unit(APPROACH_AXIS_TCP)
+    drag_axis = _unit(DRAG_AXIS_TCP)
+
+    def force_along(unit_axis: th.Tensor) -> float:
+        """Signed force on a TCP-frame axis. The sensor reports in that same frame, so
+        this is a projection and not a change of frame."""
+        return float(manipulator.get_ft_wrench()[0, :3] @ unit_axis)
+
+    manipulator.ctrl_go_to_home()
+    for _ in range(settle_steps):
+        _step(scene)
+    _log_frame(manipulator, "home")
+
+    # A planned TCP goal, not a velocity ramp: this is free-space and point-to-point,
+    # with no force threshold to stop on, so the manipulation stack should own the
+    # trajectory, the joint limits and -- the reason it matters here -- the collision
+    # checking. Clearing the cage is exactly the move that wants a planner rather than
+    # a blind velocity command.
+    logger.info(
+        f"Moving {START_OFFSET_M * 100:.0f} cm along TCP{START_OFFSET_TCP} to clear "
+        "the cage and sit over the table"
+    )
+    pose = manipulator.get_tcp_pose().clone()
+    quat, _ = _sensor_quat(manipulator)
+    offset_world = transform_by_quat(
+        _unit(START_OFFSET_TCP).unsqueeze(0), quat.unsqueeze(0)
+    )
+    origin = manipulator.get_tcp_position()[0].clone()
+    manipulator.ctrl_go_to_goal(
+        th.cat([pose[:, :3] + offset_world * START_OFFSET_M, pose[:, 3:]], dim=-1),
+        open_gripper=None,
+    )
+    for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
+        _step(scene)
+    moved = _travelled(manipulator, origin)
+    logger.info(f"  moved {moved * 1000:.1f} mm of {START_OFFSET_M * 1000:.0f} mm")
+    if abs(moved - START_OFFSET_M) > 0.005:
+        logger.warning(
+            "  the arm did not reach the offset -- it may still be over the cage. "
+            "Check that before letting it descend."
+        )
+
+    # Tared here rather than at home, so the offset is taken in the pose the approach
+    # actually starts from.
+    # Tared in free space, so every force below is the contact, not the tool's weight.
+    manipulator.set_ft_bias()
+    logger.info("  tared in free space before the approach")
+
+    # Closed after the tare, so the fingers meet the surface rather than straddle it.
+    # The two fingers travel the same distance in opposite directions, so a symmetric
+    # close shifts no mass across the sensor and the tare stays valid -- the reading
+    # logged below is the check on that, and should still be ~0.
+    manipulator.ctrl_gripper_close()
+    for _ in range(settle_steps):
+        _step(scene)
+    logger.info(
+        f"  gripper closed, wrench now {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+    )
+
+    # Said out loud before anything moves: if the sign is wrong this is the line that
+    # shows it, and the approach axis points wherever the tool is actually facing.
+    quat, _ = _sensor_quat(manipulator)
+    world_dir = transform_by_quat(axis.unsqueeze(0), quat.unsqueeze(0))[0]
+    logger.info(
+        f"  approach axis TCP{APPROACH_AXIS_TCP} points along world "
+        f"[{' '.join(f'{v:+.3f}' for v in world_dir.tolist())}] "
+        f"({'downward' if world_dir[2] < -0.5 else 'NOT downward -- check this'})"
+    )
+
+    try:
+        # --- phase 1: approach until the surface is felt ----------------------
+        # A backstop for a stalled or frozen pose, not the budget -- generous, so
+        # ordinary tracking error never trips it. The budget is measured travel.
+        max_steps = max(1, round(3.0 * MAX_APPROACH_M / approach_speed / dt))
+        logger.info(
+            f"Phase 1: descending at {approach_speed * 1000:.1f} mm/s until "
+            f"|Fz| >= {CONTACT_FORCE_N:.2f} N (budget {MAX_APPROACH_M * 100:.0f} cm)"
+        )
+        origin = manipulator.get_tcp_position()[0].clone()
+        touched = False
+        moved = 0.0
+        for i in range(max_steps):
+            manipulator.ctrl_apply_vel_action(
+                _tcp_velocity(
+                    env, manipulator, APPROACH_AXIS_TCP, approach_speed, device
+                ),
+                open_gripper=None,
+            )
+            _step(scene)
+
+            moved = _travelled(manipulator, origin)
+            f_n = force_along(axis)
+            if i % log_every == 0:
+                logger.info(
+                    f"  [{moved * 1000:6.1f} mm] "
+                    f"Fz={f_n:+7.3f} N  {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+                )
+            if abs(f_n) >= ABORT_FORCE_N:
+                raise RuntimeError(
+                    f"Contact force {f_n:+.3f} N exceeded the abort limit "
+                    f"{ABORT_FORCE_N:.1f} N after {moved * 1000:.1f} mm -- stopping."
+                )
+            if abs(f_n) >= CONTACT_FORCE_N:
+                touched = True
+                logger.info(f"  contact after {moved * 1000:.1f} mm, Fz={f_n:+.3f} N")
+                break
+            if moved >= MAX_APPROACH_M:
+                break
+        _stop(env, manipulator, device)
+
+        if not touched:
+            logger.warning(
+                f"  no contact after {moved * 1000:.1f} mm of travel (budget "
+                f"{MAX_APPROACH_M * 100:.0f} cm) -- the surface is out of reach, or "
+                "the sensor is not reporting. Skipping the drag."
+            )
+            return
+
+        for _ in range(settle_steps):
+            _step(scene)
+        settled = manipulator.get_ft_wrench()[0].clone()
+        logger.info(f"  settled on the surface: {_fmt_wrench(settled)}")
+
+        # --- phase 2: drag along the surface ----------------------------------
+        drag_steps = max(1, round(3.0 * DRAG_DISTANCE_M / drag_speed / dt))
+        logger.info(
+            f"Phase 2: dragging {DRAG_DISTANCE_M * 100:.0f} cm along TCP"
+            f"{DRAG_AXIS_TCP} at {drag_speed * 1000:.1f} mm/s"
+        )
+        origin = manipulator.get_tcp_position()[0].clone()
+        peak_tangential = 0.0
+        for i in range(drag_steps):
+            manipulator.ctrl_apply_vel_action(
+                _tcp_velocity(env, manipulator, DRAG_AXIS_TCP, drag_speed, device),
+                open_gripper=None,
+            )
+            _step(scene)
+
+            moved = _travelled(manipulator, origin)
+            wrench = manipulator.get_ft_wrench()[0]
+            f_n = force_along(axis)
+            f_t = float(wrench[:3] @ drag_axis)
+            peak_tangential = max(peak_tangential, abs(f_t))
+            if abs(f_n) >= ABORT_FORCE_N:
+                raise RuntimeError(
+                    f"Normal force {f_n:+.3f} N exceeded the abort limit during the "
+                    f"drag, after {moved * 1000:.1f} mm -- stopping."
+                )
+            if i % log_every == 0:
+                mu = abs(f_t / f_n) if abs(f_n) > 1e-6 else float("nan")
+                logger.info(
+                    f"  [{moved * 1000:6.1f} mm] "
+                    f"Fnormal={f_n:+7.3f} N  Ftangential={f_t:+7.3f} N  "
+                    f"ratio={mu:5.2f}  {_fmt_wrench(wrench)}"
+                )
+            if moved >= DRAG_DISTANCE_M:
+                logger.info(f"  drag complete at {moved * 1000:.1f} mm")
+                break
+        _stop(env, manipulator, device)
+        for _ in range(settle_steps):
+            _step(scene)
+
+        logger.info("=" * 78)
+        logger.info("Contact and drag summary")
+        logger.info(f"  on contact, settled   {_fmt_wrench(settled)}")
+        logger.info(
+            f"  after the drag        {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+        )
+        logger.info(f"  peak tangential force {peak_tangential:.3f} N")
+        logger.info(
+            "  the tangential/normal ratio is an apparent friction coefficient; it "
+            "rises while the tool sticks and levels off once it slides"
+        )
+        logger.info("=" * 78)
+    finally:
+        # Whatever happened, do not leave the arm loaded against the table. The
+        # velocity command is dropped first, so the arm is already still before the
+        # planner is asked for anything.
+        _stop(env, manipulator, device)
+        logger.info(f"Retracting {RETRACT_M * 100:.0f} cm")
+        try:
+            pose = manipulator.get_tcp_pose().clone()
+            quat, _ = _sensor_quat(manipulator)
+            back = transform_by_quat(
+                _unit(tuple(-v for v in APPROACH_AXIS_TCP)).unsqueeze(0),
+                quat.unsqueeze(0),
+            )
+            origin = manipulator.get_tcp_position()[0].clone()
+            manipulator.ctrl_go_to_goal(
+                th.cat([pose[:, :3] + back * RETRACT_M, pose[:, 3:]], dim=-1),
+                open_gripper=None,
+            )
+            for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
+                _step(scene)
+            logger.info(
+                f"  retracted {_travelled(manipulator, origin) * 1000:.1f} mm, "
+                f"clear of the surface: "
+                f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+            )
+        except Exception as exc:  # noqa: BLE001 - see below; nothing may escape here
+            # This runs while another exception may already be propagating, and that
+            # one is the one worth seeing. Report the failed retreat loudly, but do
+            # not let it replace the cause.
+            logger.error(
+                f"  RETRACT FAILED ({exc}) -- the tool may still be loaded against "
+                "the surface. Clear it by hand before running again."
+            )
 
 
 def ft_sensor_playgraund_move(env: BaseEnv, cfg: ExpConfig) -> None:
