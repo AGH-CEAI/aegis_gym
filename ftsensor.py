@@ -1148,7 +1148,12 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         origin = manipulator.get_tcp_position()[0].clone()
         probe: list[tuple[float, float]] = []  # (travel, force), for the stiffness
         touched = False
-        for _ in range(max(1, round(3.0 * MAX_APPROACH_M / approach_speed / dt))):
+        # A silent approach cannot be diagnosed. Standing still, descending through
+        # empty space and resting on the surface without building force all look
+        # identical from outside the loop, and they have entirely different causes.
+        press_log_every = max(1, round(2.0 / dt))
+        stalled_since: float | None = None
+        for i in range(max(1, round(3.0 * MAX_APPROACH_M / approach_speed / dt))):
             manipulator.ctrl_apply_vel_action(
                 _tcp_velocity(
                     env, manipulator, APPROACH_AXIS_TCP, approach_speed, device
@@ -1158,6 +1163,22 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
             _step(scene)
             f_n, _ = reading()
             moved = _travelled(manipulator, origin)
+            if i % press_log_every == 0:
+                logger.info(
+                    f"    t={i * dt:6.1f} s  travel={moved * 1000:7.2f} mm  "
+                    f"Fn={f_n:6.2f} N"
+                )
+                # Held up by something without registering force: the arm is pushing
+                # into a surface and the reading is not following. That is the signature
+                # of a servo that cannot accumulate force, which is what the integrated
+                # setpoint in `_servo_arm` exists to prevent -- so if it shows up here
+                # again, suspect the arm is being driven by some other path.
+                if stalled_since is not None and moved - stalled_since < 1e-4:
+                    logger.warning(
+                        f"    stalled at {moved * 1000:.2f} mm with only "
+                        f"{f_n:.2f} N -- blocked but not loading"
+                    )
+                stalled_since = moved
             if f_n >= TOUCH_FORCE_N:
                 probe.append((moved, f_n))
             if f_n >= ABORT_FORCE_N:

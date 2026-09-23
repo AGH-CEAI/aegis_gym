@@ -137,6 +137,13 @@ class GenesisManipulator(BaseManipulator):
         self.max_linear_speed = 1.0
         self.max_angular_speed = 1.0
 
+        # The servo integrates its own setpoint (see `_servo_arm`), so it needs to know
+        # how long each command is held for. The scene overwrites this with `policy_dt`
+        # when it builds the manipulator; 25 Hz is the rate the real cell servos at.
+        self.servo_dt = 0.04
+        self._q_servo_target: th.Tensor | None = None
+        self._servo_max_error = float(cfg_robot.servo_follow_error_max_rad)
+
         self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
 
         self._ik_method = cfg_robot.ik_method
@@ -306,23 +313,65 @@ class GenesisManipulator(BaseManipulator):
             case _:
                 raise ValueError(f"Invalid IK method: {self._ik_method}")
 
-        # Set gripper position if specified
+        # Set gripper position if specified. Scoped to the fingers: a whole-DOF
+        # position command here would reset the arm's setpoint to wherever the arm
+        # currently is, which is precisely the accumulation `_servo_arm` depends on.
         if open_gripper is not None:
             q_pos = self._robot_entity.get_qpos()
             if open_gripper:
                 q_pos[:, self._fingers_dof] = self._gripper_open_dof
             else:
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
-            # Control gripper with position control
-            if q_vel is not None:
-                self._robot_entity.control_dofs_position(
-                    position=q_pos[:, self._fingers_dof],
-                    dofs_idx_local=self._fingers_dof,
-                )
-            self._robot_entity.control_dofs_position(position=q_pos)
+            self._robot_entity.control_dofs_position(
+                position=q_pos[:, self._fingers_dof],
+                dofs_idx_local=self._fingers_dof,
+            )
 
-        self._robot_entity.control_dofs_velocity(
-            velocity=q_vel[:, self._arm_dof_idx], dofs_idx_local=self._arm_dof_idx
+        self._servo_arm(q_vel[:, self._arm_dof_idx])
+
+    def resync_servo_target(self) -> None:
+        """Drops the integrated setpoint, so the next velocity action starts from
+        wherever the arm actually is.
+
+        Anything that moves the arm by other means has to call this, or the servo will
+        carry a following error left over from a pose that no longer exists.
+        """
+        self._q_servo_target = None
+
+    def _servo_arm(self, q_vel_arm: th.Tensor) -> None:
+        """Advances the arm's joint setpoint by the commanded velocity, the way the
+        robot's own `speedj` does, and drives the joints to it.
+
+        Handing `q_vel_arm` straight to `control_dofs_velocity` looks equivalent and is
+        not. That controller is proportional on velocity alone, so once contact blocks
+        the joint it settles at `kv * q_vel` and stays there for good: the achievable
+        contact force becomes a fixed multiple of the commanded *speed*, about 1.1 N per
+        mm/s here, and pressing for longer adds nothing. Measured at 1.5 mm/s it tops
+        out at 1.66 N after 10 s and is still 1.65 N after 40 s -- which is why a probe
+        waiting on 5 N waited forever. Re-deriving a position target from the measured
+        pose each step has the same defect for the same reason: the error is reset
+        before it can grow.
+
+        Integrating instead means the setpoint keeps descending while the tool is held
+        up by the surface. Following error accumulates, and with it the torque, exactly
+        as on the real arm -- where that accumulation is visible as the 51 -> 103 mm of
+        commanded travel the arm reports while the force builds.
+
+        Unbounded, that reaches any force at all (611 N in the same 40 s test), which is
+        not the real robot either: the cell bounds it with a force limit and a
+        protective stop. `_servo_max_error` is that bound, expressed as the largest
+        following error a joint may hold.
+        """
+        q_now = self._robot_entity.get_qpos()[:, self._arm_dof_idx]
+        if self._q_servo_target is None or self._q_servo_target.shape != q_now.shape:
+            self._q_servo_target = q_now.clone()
+
+        target = self._q_servo_target + q_vel_arm * self.servo_dt
+        self._q_servo_target = th.clamp(
+            target, q_now - self._servo_max_error, q_now + self._servo_max_error
+        )
+        self._robot_entity.control_dofs_position(
+            position=self._q_servo_target, dofs_idx_local=self._arm_dof_idx
         )
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
@@ -396,6 +445,7 @@ class GenesisManipulator(BaseManipulator):
     ) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
+        self.resync_servo_target()
 
     def ctrl_go_to_goal(
         self,
@@ -416,6 +466,7 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
+        self.resync_servo_target()
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
@@ -431,6 +482,7 @@ class GenesisManipulator(BaseManipulator):
         self._robot_entity.control_dofs_position(
             position=default_joint_angles, envs_idx=idx
         )
+        self.resync_servo_target()
 
     def ctrl_go_to_joints(
         self, joints: th.Tensor, envs_idx: th.Tensor | None = None
@@ -452,6 +504,7 @@ class GenesisManipulator(BaseManipulator):
         self._robot_entity.control_dofs_position(
             position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
         )
+        self.resync_servo_target()
 
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (

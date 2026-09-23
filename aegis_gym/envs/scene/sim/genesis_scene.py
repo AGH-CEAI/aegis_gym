@@ -380,6 +380,9 @@ class GenesisScene(BaseScene):
         )
         self.manipulator.max_linear_speed = self._max_linear_speed
         self.manipulator.max_angular_speed = self._max_angular_speed
+        # Each action is held for one policy step; that is the interval the servo
+        # integrates its setpoint over.
+        self.manipulator.servo_dt = self.policy_dt
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
