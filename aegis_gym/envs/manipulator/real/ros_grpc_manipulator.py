@@ -111,6 +111,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._run_coro(self._robot_client.connect())
 
         self._ft_bias_active = False
+        self.set_ft_payload(robot_cfg.fts_payload_mass, robot_cfg.fts_payload_com)
 
         self._gripper_last_action = False  # Forcing first opening
         self.ctrl_gripper_open()

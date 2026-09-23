@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.geom import transform_by_quat
 from aegis_gym.config.types import CameraModality, CameraName
 
 
@@ -15,8 +16,12 @@ class BaseManipulator(ABC):
         ignore it or assert it is None.
     """
 
+    GRAVITY_WORLD = (0.0, 0.0, -9.81)
+
     def __init__(self, device: th.device | None = None):
         self.device: th.device = device or th.device("cpu")
+        self._ft_payload_mass: th.Tensor | None = None
+        self._ft_payload_com: th.Tensor | None = None
 
     @abstractmethod
     def shutdown(self) -> None:
@@ -53,7 +58,10 @@ class BaseManipulator(ABC):
         """
         Apply the action (velocity servoing) to the robot.
 
+        The action is NORMALISED to [-1, 1] per axis, not a velocity in m/s or rad/s.
         Args:
+            action: [num_envs, 6] tensor of normalised end-effector velocities
+                    [vx, vy, vz, wx, wy, wz] where v is linear and w is angular
             action: [num_envs, 6] tensor containing target end-effector velocities
                     [vx, vy, vz, wx, wy, wz] where v is linear and w is angular velocity
             open_gripper: Optional bool to control gripper state
@@ -172,6 +180,41 @@ class BaseManipulator(ABC):
     def is_ft_biased(self) -> bool:
         """Whether a tare is currently applied."""
         ...
+
+    def set_ft_payload(self, mass: float | None, com: list[float] | None) -> None:
+        """Registers the payload hanging past the sensor, as measured by
+        `ft_sensor_identify_payload` (kg, and metres in the sensor frame).
+
+        Passing None for the mass clears it, which disables `get_ft_wrench_gravity()`.
+        """
+        if mass is None:
+            self._ft_payload_mass = None
+            self._ft_payload_com = None
+            return
+        if com is None:
+            raise ValueError("A payload mass needs a centre of mass to go with it.")
+        self._ft_payload_mass = th.tensor(mass, dtype=th.float32, device=self.device)
+        self._ft_payload_com = th.tensor([com], dtype=th.float32, device=self.device)
+
+    def get_ft_wrench_gravity(self) -> th.Tensor | None:
+        if self._ft_payload_mass is None:
+            return None
+
+        quat = self.get_tcp_orientation()  # the sensor's output frame; see the docs
+        gravity = th.tensor(
+            self.GRAVITY_WORLD, dtype=th.float32, device=self.device
+        ).expand(quat.shape[0], 3)
+        quat_conj = quat * th.tensor(
+            [1.0, -1.0, -1.0, -1.0], device=quat.device, dtype=quat.dtype
+        )
+        force = transform_by_quat(self._ft_payload_mass * gravity, quat_conj)
+        com = self._ft_payload_com.expand_as(force)
+        return th.cat([force, th.linalg.cross(com, force, dim=-1)], dim=-1)
+
+    def get_ft_wrench_compensated(self) -> th.Tensor:
+        wrench = self.get_ft_wrench()
+        gravity = self.get_ft_wrench_gravity()
+        return wrench if gravity is None else wrench - gravity
 
     @abstractmethod
     def get_tcp_pose(self) -> th.Tensor:

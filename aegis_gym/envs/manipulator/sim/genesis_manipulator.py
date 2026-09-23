@@ -137,7 +137,11 @@ class GenesisManipulator(BaseManipulator):
         self.max_linear_speed = 1.0
         self.max_angular_speed = 1.0
 
+        self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
+
         self._ik_method = cfg_robot.ik_method
+        self._fts_use_contact = cfg_robot.fts_wrench_source == "contact"
+        logger.info(f"F/T contact model: {cfg_robot.fts_wrench_source}")
 
         self._setup_config()
         self._add_joint_torque_sensor()
@@ -195,6 +199,12 @@ class GenesisManipulator(BaseManipulator):
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
         self._fts_link = self._robot_entity.get_link("tool_mount_link")
         self._gravity_links = self._get_downstream_links(self._fts_link)
+        # Global link indices past the sensor, for matching contacts against.
+        self._gravity_link_idx = th.tensor(
+            [link.idx for link in self._gravity_links],
+            dtype=th.int32,
+            device=self.device,
+        )
         # Mass/COM are only available once the Genesis scene is built, so these are
         # filled in lazily on first use (see `_gravity_wrench_world`).
         self._gravity_link_masses: th.Tensor | None = None
@@ -579,17 +589,11 @@ class GenesisManipulator(BaseManipulator):
         the tare is applied inside it. This exists to check the simulated model against
         real data, where the untared term is what a sign or frame error shows up in.
         """
-        # TODO(issue#126) get the F\T sensing from genesis
-        tau = self.get_joints_efforts()  # [num_envs, 6]
-
-        jacobian = self._robot_entity.get_jacobian(link=self._fts_link)
-        jacobian_arm = jacobian[:, :, self._arm_dof_idx]  # [num_envs, 6, 6]
-        jacobian_arm_T = jacobian_arm.transpose(1, 2)  # [num_envs, 6, 6]
-
-        # `tau = J^T @ F` solves for the wrench the arm delivers to hold/push the tip.
-        # A real F/T sensor reports the opposite: the load's reaction acting on the sensor
-        # (e.g. a hanging weight reads as pulling down, not as the arm holding it up).
-        wrench_world = -(th.linalg.pinv(jacobian_arm_T) @ tau.unsqueeze(-1)).squeeze(-1)
+        wrench_world = (
+            self._contact_wrench_world()
+            if self._fts_use_contact
+            else self._jacobian_wrench_world()
+        )
         wrench_world = wrench_world + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
@@ -600,6 +604,44 @@ class GenesisManipulator(BaseManipulator):
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
         return self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
+
+    def _contact_wrench_world(self) -> th.Tensor:
+        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        contacts = self._robot_entity.get_contacts(
+            exclude_self_contact=True, is_padded=True
+        )
+
+        valid = contacts["valid_mask"]  # [num_envs, n_contacts]
+        if valid.numel() == 0:
+            return th.zeros((sensor_pos.shape[0], 6), device=self.device)
+
+        # `force_b` is the force on `link_b` and `force_a` the force on `link_a`; take
+        # whichever side of the pair is ours, and drop contacts upstream of the sensor.
+        is_a = th.isin(contacts["link_a"], self._gravity_link_idx)
+        is_b = th.isin(contacts["link_b"], self._gravity_link_idx)
+        force = th.where(is_b.unsqueeze(-1), contacts["force_b"], contacts["force_a"])
+        keep = (valid & (is_a | is_b)).unsqueeze(-1)
+        force = th.where(keep, force, th.zeros_like(force))
+
+        lever = contacts["position"] - sensor_pos.unsqueeze(1)
+        return th.cat(
+            [force.sum(dim=1), th.linalg.cross(lever, force, dim=-1).sum(dim=1)],
+            dim=-1,
+        )
+
+    def _jacobian_wrench_world(self) -> th.Tensor:
+        """Wrench inferred from actuator torque. See `_contact_wrench_world()` for why
+        this is kept only for comparison."""
+        tau = self.get_joints_efforts()  # [num_envs, 6]
+
+        jacobian = self._robot_entity.get_jacobian(link=self._fts_link)
+        jacobian_arm = jacobian[:, :, self._arm_dof_idx]  # [num_envs, 6, 6]
+        jacobian_arm_T = jacobian_arm.transpose(1, 2)  # [num_envs, 6, 6]
+
+        # `tau = J^T @ F` solves for the wrench the arm delivers to hold/push the tip.
+        # A real F/T sensor reports the opposite: the load's reaction acting on the sensor
+        # (e.g. a hanging weight reads as pulling down, not as the arm holding it up).
+        return -(th.linalg.pinv(jacobian_arm_T) @ tau.unsqueeze(-1)).squeeze(-1)
 
     def _add_ft_noise(self, wrench: th.Tensor) -> th.Tensor:
         """Gaussian measurement noise, drawn fresh per read and truncated per axis."""

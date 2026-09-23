@@ -378,6 +378,8 @@ class GenesisScene(BaseScene):
             show_cell=self.show_cell,
             device=self.device,
         )
+        self.manipulator.max_linear_speed = self._max_linear_speed
+        self.manipulator.max_angular_speed = self._max_angular_speed
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
