@@ -1,5 +1,3 @@
-import time
-
 import genesis.utils.geom as gu
 import torch as th
 
@@ -622,7 +620,15 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
     APPROACH_SPEED_MPS = 0.15
     DRAG_SPEED_MPS = 0.010
 
-    CONTACT_FORCE_N = 1.0  # what counts as "touching"
+    CONTACT_FORCE_N = 1.0  # what counts as "touching", and the force held afterwards
+    # Normal-force P control. Once the tool is on the surface neither position nor
+    # velocity control can hold a force: the contact force follows from how deep the
+    # tool is pressed, and nothing regulates that depth. Commanding zero velocity is
+    # worse still -- it holds zero velocity, not zero position, so the contact impulse
+    # pushes the arm off the surface and no restoring term brings it back. So the
+    # normal direction is driven by the force error instead of being held still.
+    FORCE_GAIN_MPS_PER_N = 0.004
+    MAX_NORMAL_SPEED_MPS = 0.005
     ABORT_FORCE_N = 100.0  # anything past this and the test gives up
     MAX_APPROACH_M = 2.00  # travel budget if the surface is never felt
     DRAG_DISTANCE_M = 0.05
@@ -646,6 +652,19 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
         """Signed force on a TCP-frame axis. The sensor reports in that same frame, so
         this is a projection and not a change of frame."""
         return float(manipulator.get_ft_wrench()[0, :3] @ unit_axis)
+
+    def normal_speed() -> float:
+        """Speed along the approach axis that drives the contact force toward
+        CONTACT_FORCE_N. Positive presses in, negative backs off.
+
+        Magnitude, not sign: which way the surface pushes depends on how the tool is
+        oriented, and only how hard it pushes is being regulated.
+        """
+        error = CONTACT_FORCE_N - abs(force_along(axis))
+        return max(
+            -MAX_NORMAL_SPEED_MPS,
+            min(MAX_NORMAL_SPEED_MPS, FORCE_GAIN_MPS_PER_N * error),
+        )
 
     manipulator.ctrl_go_to_home()
     for _ in range(settle_steps):
@@ -748,9 +767,8 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
             if moved >= MAX_APPROACH_M:
                 break
 
-        _stop(env, manipulator, device)
-
         if not touched:
+            _stop(env, manipulator, device)
             logger.warning(
                 f"  no contact after {moved * 1000:.1f} mm of travel (budget "
                 f"{MAX_APPROACH_M * 100:.0f} cm) -- the surface is out of reach, or "
@@ -758,13 +776,32 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
             )
             return
 
-        for _ in range(settle_steps):
+        # Deliberately no `_stop()` here: the arm keeps regulating the normal force
+        # from the instant of contact, so it settles onto the surface instead of being
+        # bounced off it by the impact.
+        logger.info(
+            f"  holding {CONTACT_FORCE_N:.2f} N for {SETTLE_SECONDS:.0f}s to settle"
+        )
+        for i in range(settle_steps):
+            manipulator.ctrl_apply_vel_action(
+                _tcp_velocity(
+                    env, manipulator, APPROACH_AXIS_TCP, normal_speed(), device
+                ),
+                open_gripper=None,
+            )
             _step(scene)
-        settled = manipulator.get_ft_wrench()[0].clone()
-        logger.info(f"  touch the the surface (now wait 5s): {_fmt_wrench(settled)}")
-        time.sleep(5)
+            if i % log_every == 0:
+                logger.info(
+                    f"    Fz={force_along(axis):+7.3f} N  "
+                    f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+                )
         settled = manipulator.get_ft_wrench()[0].clone()
         logger.info(f"  settled on the surface: {_fmt_wrench(settled)}")
+        if abs(force_along(axis)) < 0.5 * CONTACT_FORCE_N:
+            logger.warning(
+                "  the normal force collapsed while settling -- the tool is off the "
+                "surface. The drag below will measure nothing."
+            )
 
         # --- phase 2: drag along the surface ----------------------------------
         drag_steps = max(1, round(3.0 * DRAG_DISTANCE_M / drag_speed / dt))
@@ -775,8 +812,13 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
         origin = manipulator.get_tcp_position()[0].clone()
         peak_tangential = 0.0
         for i in range(drag_steps):
+            # Tangential travel plus the normal correction, so the tool follows the
+            # surface instead of flying off it the moment the table is not level.
             manipulator.ctrl_apply_vel_action(
-                _tcp_velocity(env, manipulator, DRAG_AXIS_TCP, drag_speed, device),
+                _tcp_velocity(env, manipulator, DRAG_AXIS_TCP, drag_speed, device)
+                + _tcp_velocity(
+                    env, manipulator, APPROACH_AXIS_TCP, normal_speed(), device
+                ),
                 open_gripper=None,
             )
             _step(scene)
