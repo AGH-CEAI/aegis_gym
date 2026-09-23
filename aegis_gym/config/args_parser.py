@@ -37,6 +37,7 @@ class LaunchArgs:
     control_type: Control | None
     env_name: str | None
     env_specific_dict: dict | None
+    ignore_env_dict_validation: bool | None
 
     calibration_move: list | None
     calibration_move_cartesian: list | None
@@ -153,6 +154,15 @@ def parse_arguments(
             "The entries that are not given keep their default value."
         ),
     )
+    p.add_argument(
+        "--ignore-env-dict-validation",
+        action="store_true",
+        default=False,
+        help=(
+            "Do not validate the `env_specific_dict` entries against the defaults "
+            "of the selected environment. Unknown keys are then passed through."
+        ),
+    )
     p.add_argument("--calibration-move", type=str_to_list, default=None)
     p.add_argument("--calibration-move-cart", type=str_to_list, default=None)
     p.add_argument("--calibration-steps", type=int, default=None)
@@ -238,6 +248,7 @@ def parse_arguments(
         control_type=args.control,
         env_name=args.env,
         env_specific_dict=args.env_dict,
+        ignore_env_dict_validation=args.ignore_env_dict_validation,
         calibration_move=args.calibration_move,
         calibration_move_cartesian=args.calibration_move_cart,
         calibration_steps=args.calibration_steps,

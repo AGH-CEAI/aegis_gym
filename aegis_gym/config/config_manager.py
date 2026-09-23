@@ -185,18 +185,80 @@ class ConfigManager:
         cfg_dict["env"]["env_specific_dict"] = cls._resolve_env_specific_dict(
             env_name=cfg_dict["env"]["env_name"],
             given=cfg_dict["env"]["env_specific_dict"],
+            validate=not args.ignore_env_dict_validation,
         )
 
     @classmethod
-    def _resolve_env_specific_dict(cls, env_name: str, given: dict | None) -> dict:
+    def _resolve_env_specific_dict(
+        cls, env_name: str, given: dict | None, validate: bool = True
+    ) -> dict:
         """
         Overrides the `env_name` environment defaults with the `given` entries.
         The entries that are not given keep their default value.
+        Unless `validate` is disabled, the `given` keys are checked against the
+        defaults, so a typo does not silently fall back to the default value.
         """
         from ..envs import get_env_class
 
         defaults = get_env_class(env_name).get_default_env_specific_dict()
+        if validate:
+            cls._validate_env_specific_dict(
+                env_name=env_name, defaults=defaults, given=given or {}
+            )
+        else:
+            get_logger("InitializeConfig").warning(
+                "Validation of the `env_specific_dict` keys is disabled!"
+            )
         return cls._deep_update(base=defaults, override=given or {})
+
+    @classmethod
+    def _validate_env_specific_dict(
+        cls, env_name: str, defaults: dict, given: dict
+    ) -> None:
+        """
+        Raises a `ValueError` if `given` holds keys that are absent in `defaults`.
+        """
+        unknown = cls._collect_unknown_keys(defaults=defaults, given=given)
+        if unknown:
+            known = cls._collect_known_keys(defaults=defaults)
+            raise ValueError(
+                f"Unknown `env_specific_dict` keys for the '{env_name}' environment: "
+                f"{', '.join(unknown)}. Available keys: {', '.join(known)}. "
+                "Use `--ignore-env-dict-validation` to skip this check."
+            )
+
+    @classmethod
+    def _collect_unknown_keys(
+        cls, defaults: dict, given: dict, prefix: str = ""
+    ) -> list[str]:
+        """
+        Returns the dot-separated paths of the `given` keys missing in `defaults`.
+        """
+        unknown = []
+        for key, value in given.items():
+            path = f"{prefix}{key}"
+            if key not in defaults:
+                unknown.append(path)
+            elif isinstance(defaults[key], dict) and isinstance(value, dict):
+                unknown.extend(
+                    cls._collect_unknown_keys(
+                        defaults=defaults[key], given=value, prefix=f"{path}."
+                    )
+                )
+        return unknown
+
+    @classmethod
+    def _collect_known_keys(cls, defaults: dict, prefix: str = "") -> list[str]:
+        """
+        Returns the dot-separated paths of all the `defaults` keys.
+        """
+        known = []
+        for key, value in defaults.items():
+            path = f"{prefix}{key}"
+            known.append(path)
+            if isinstance(value, dict):
+                known.extend(cls._collect_known_keys(defaults=value, prefix=f"{path}."))
+        return known
 
     @classmethod
     def _deep_update(cls, base: dict, override: dict) -> dict:
