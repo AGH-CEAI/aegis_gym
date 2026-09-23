@@ -240,8 +240,8 @@ class GenesisManipulator(BaseManipulator):
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
         # TODO(issue#98) Move the robot calibration data into the URDF-dataset
-        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 100.0, 100.0]
-        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 10.0, 10.0]
+        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 5000.0, 5000.0]
+        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 30.0, 30.0]
         FORCE_LOWER = [-87.0, -87.0, -87.0, -87.0, -87.0, -87.0, -100.0, -100.0]
         FORCE_UPPER = [87.0, 87.0, 87.0, 87.0, 87.0, 87.0, 100.0, 100.0]
 

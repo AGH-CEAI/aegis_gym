@@ -291,12 +291,15 @@ def _prepare_over_table(
     cfg: ExpConfig,
     settle_steps: int,
     tilt_quat: th.Tensor | None = None,
+    close_gripper: bool = True,
 ) -> None:
     """Home, clear the task object, step out over the table, tare, close the gripper.
 
     Shared by every contact test so they all start from the same state. `tilt_quat` is
     an optional extra rotation, applied in the TCP frame, for tests that want the tool
-    held at an angle before it comes down.
+    held at an angle before it comes down. `close_gripper` is a choice because it
+    decides where the tool touches: closed, the fingers meet on the tool axis and there
+    is no lateral offset to produce a moment; open, they sit either side of it.
     """
     logger = get_logger("ft_sensor")
     manipulator = env.manipulator
@@ -352,11 +355,15 @@ def _prepare_over_table(
 
     manipulator.set_ft_bias()
     logger.info("  tared in free space before the approach")
-    manipulator.ctrl_gripper_close()
+    if close_gripper:
+        manipulator.ctrl_gripper_close()
+    else:
+        manipulator.ctrl_gripper_open()
     for _ in range(settle_steps):
         _step(scene)
     logger.info(
-        f"  gripper closed, wrench now {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+        f"  gripper {'closed' if close_gripper else 'open'}, wrench now "
+        f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
     )
 
 
@@ -1084,6 +1091,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
     MAX_APPROACH_M = 0.20
     UNLOAD_FORCE_PER_STEP_N = 0.25  # sets the unload speed from the stiffness
     UNLOAD_SECONDS = 120.0
+
     SETTLE_SECONDS = 1.0
     RETRACT_M = 0.03
 
@@ -1113,10 +1121,17 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         [th.tensor([math.cos(half)], device=device), tilt_vec]
     ).unsqueeze(0)
 
-    _prepare_over_table(env, cfg, settle_steps, tilt_quat=tilt_quat)
+    # Open, not closed: the whole premise is that one finger lands off the tool axis.
+    # Closed, the two meet on the axis and there is no moment arm to measure -- which
+    # is why the first real run reported an arm that had nothing to do with the
+    # fingers at all.
+    _prepare_over_table(
+        env, cfg, settle_steps, tilt_quat=tilt_quat, close_gripper=False
+    )
     logger.info(
-        f"  tool tilted {TILT_DEG:.1f} deg about TCP{TILT_AXIS_TCP}, so one finger "
-        f"lands first with an expected arm of {EXPECTED_ARM_M * 1000:.0f} mm"
+        f"  tool tilted {TILT_DEG:.1f} deg about TCP{TILT_AXIS_TCP} with the gripper "
+        f"open, so one finger lands first with an expected arm of "
+        f"{EXPECTED_ARM_M * 1000:.0f} mm"
     )
 
     samples: list[tuple[float, float]] = []
@@ -1243,11 +1258,42 @@ def _log_torque_fit(samples: list[tuple[float, float]], expected_arm_m: float) -
 
     forces = th.tensor([f for f, _ in samples], dtype=th.float32)
     torques = th.tensor([abs(t) for _, t in samples], dtype=th.float32)
-    design = th.stack([forces, th.ones_like(forces)], dim=-1)
-    slope, intercept = th.linalg.lstsq(design, torques.unsqueeze(-1)).solution.reshape(
-        2
-    )
-    residual = torques - (slope * forces + intercept)
+
+    def _fit(mask: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+        design = th.stack([forces[mask], th.ones_like(forces[mask])], dim=-1)
+        slope, intercept = th.linalg.lstsq(
+            design, torques[mask].unsqueeze(-1)
+        ).solution.reshape(2)
+        return slope, intercept, torques - (slope * forces + intercept)
+
+    # Fit, then throw out whatever sits far off the line and fit again. The first
+    # moment of unloading is still dynamic -- on the real robot the first samples came
+    # back with the torque sign reversed, and left in they dragged the slope from 86 mm
+    # to 32 mm. Rejecting by residual rather than by a fixed time window adapts to the
+    # sweep, which is three samples on a compliant surface and hundreds on a rigid one.
+    keep = th.ones_like(forces, dtype=th.bool)
+    slope, intercept, residual = _fit(keep)
+    if len(samples) >= 6:
+        # Iterated, not one-shot: with a couple of bad points dragging the first line,
+        # their residuals are not yet extreme enough to stand out, so a single pass at
+        # 3x leaves them in. Two passes at 2.5x recovers the real robot's 86 mm from
+        # the same nine samples that a one-shot fit read as 11 mm.
+        for _ in range(3):
+            scale = float(residual[keep].abs().median())
+            if scale <= 0.0:
+                break
+            candidate = residual.abs() <= 2.5 * scale
+            if int(candidate.sum()) < 3 or bool((candidate == keep).all()):
+                break
+            keep = candidate
+            slope, intercept, residual = _fit(keep)
+        dropped = len(samples) - int(keep.sum())
+        if dropped:
+            logger.info(
+                f"  dropped {dropped} of {len(samples)} samples as off-line "
+                "(the unload transient)"
+            )
+    residual = residual[keep]
 
     logger.info("=" * 78)
     logger.info(
@@ -1261,8 +1307,16 @@ def _log_torque_fit(samples: list[tuple[float, float]], expected_arm_m: float) -
     logger.info(
         f"  offset        = {float(intercept):7.4f} Nm (a tare residual, not an arm)"
     )
-    logger.info(f"  fit residual  = {float(residual.abs().max()):7.4f} Nm max")
+    worst = float(residual.abs().max())
+    span = float(torques[keep].max() - torques[keep].min())
+    logger.info(f"  fit residual  = {worst:7.4f} Nm max")
     logger.info("=" * 78)
+    if span > 0 and worst > 0.1 * span:
+        logger.warning(
+            f"  the residual is {100 * worst / span:.0f} % of the torque span -- these "
+            "points are not on a line, so the slope is not a moment arm. Look for a "
+            "transient left in the sweep, or contact moving between fingers."
+        )
 
 
 def ft_sensor_playgraund_move(env: BaseEnv, cfg: ExpConfig) -> None:
