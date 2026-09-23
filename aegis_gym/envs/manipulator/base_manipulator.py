@@ -22,6 +22,7 @@ class BaseManipulator(ABC):
         self.device: th.device = device or th.device("cpu")
         self._ft_payload_mass: th.Tensor | None = None
         self._ft_payload_com: th.Tensor | None = None
+        self._ft_gravity_at_bias: th.Tensor | None = None
 
     @abstractmethod
     def shutdown(self) -> None:
@@ -211,10 +212,19 @@ class BaseManipulator(ABC):
         com = self._ft_payload_com.expand_as(force)
         return th.cat([force, th.linalg.cross(com, force, dim=-1)], dim=-1)
 
+    def note_ft_bias_pose(self) -> None:
+        """Records the payload's weight at the moment of taring."""
+        self._ft_gravity_at_bias = self.get_ft_wrench_gravity()
+
     def get_ft_wrench_compensated(self) -> th.Tensor:
+        """The measurement with the payload's weight modelled out, [num_envs, 6]."""
         wrench = self.get_ft_wrench()
         gravity = self.get_ft_wrench_gravity()
-        return wrench if gravity is None else wrench - gravity
+        if gravity is None:
+            return wrench
+        if self._ft_gravity_at_bias is not None:
+            gravity = gravity - self._ft_gravity_at_bias
+        return wrench - gravity
 
     @abstractmethod
     def get_tcp_pose(self) -> th.Tensor:

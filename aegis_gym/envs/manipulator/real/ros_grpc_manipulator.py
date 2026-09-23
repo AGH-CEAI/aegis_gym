@@ -387,6 +387,7 @@ class RosGrpcManipulator(BaseManipulator):
             raise RuntimeError(f"Failed to set the F/T sensor bias: {msg}")
         self._ft_bias_active = True
         self.read_state()  # so the next getter sees the tared measurement
+        self.note_ft_bias_pose()
         self.logger.info("F/T sensor tared in hardware")
 
     def clear_ft_bias(self) -> None:
@@ -395,6 +396,7 @@ class RosGrpcManipulator(BaseManipulator):
         if not success:
             raise RuntimeError(f"Failed to clear the F/T sensor bias: {msg}")
         self._ft_bias_active = False
+        self._ft_gravity_at_bias = None
         self.read_state()
         self.logger.info("F/T sensor bias cleared in hardware")
 

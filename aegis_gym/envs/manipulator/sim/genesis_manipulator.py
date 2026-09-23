@@ -321,7 +321,9 @@ class GenesisManipulator(BaseManipulator):
                 )
             self._robot_entity.control_dofs_position(position=q_pos)
 
-        self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        self._robot_entity.control_dofs_velocity(
+            velocity=q_vel[:, self._arm_dof_idx], dofs_idx_local=self._arm_dof_idx
+        )
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -570,9 +572,11 @@ class GenesisManipulator(BaseManipulator):
 
     def set_ft_bias(self) -> None:
         self._ft_bias = self.get_ft_wrench_raw().detach().clone()
+        self.note_ft_bias_pose()
 
     def clear_ft_bias(self) -> None:
         self._ft_bias = None
+        self._ft_gravity_at_bias = None
 
     def is_ft_biased(self) -> bool:
         return self._ft_bias is not None
