@@ -23,4 +23,4 @@ class EnvCfg(BaseCfg):
     visualize_cell: bool
     table_size: list[float]
     workbench_size: list[float]
-    env_specific_dict: dict | None
+    env_specific_dict: dict

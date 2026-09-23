@@ -75,13 +75,10 @@ class PushTEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        defaults = self.get_default_env_specific_dict()
-        env_dict = {**defaults, **(self._cfg_env.env_specific_dict or {})}
+        env_dict = self._cfg_env.env_specific_dict
 
-        self.reward_scales = {
-            **defaults["reward_scales"],
-            **env_dict["reward_scales"],
-        }
+        self.reward_scales = env_dict["reward_scales"]
+
         self.success_thresh = env_dict["success_intersection_thresh"]
         self.tee_friction = env_dict["friction"]
         self.goal_offset_xy = list(env_dict["goal_offset"])
