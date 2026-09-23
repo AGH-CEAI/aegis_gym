@@ -1,3 +1,5 @@
+import time
+
 import genesis.utils.geom as gu
 import torch as th
 
@@ -42,9 +44,9 @@ def main():
         calibration_movment(env, cfg)
         return
 
-    ft_sensor_gravity_test(env=env, cfg=cfg)
+    # ft_sensor_gravity_test(env=env, cfg=cfg)
     # ft_sensor_identify_payload(env=env, cfg=cfg)
-    # ft_sensor_contact_drag_test(env=env, cfg=cfg)
+    ft_sensor_contact_drag_test(env=env, cfg=cfg)
     # ft_sensor_playgraund_move(env=env, cfg=cfg)
 
 
@@ -621,7 +623,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
     DRAG_SPEED_MPS = 0.010
 
     CONTACT_FORCE_N = 1.0  # what counts as "touching"
-    ABORT_FORCE_N = 20.0  # anything past this and the test gives up
+    ABORT_FORCE_N = 100.0  # anything past this and the test gives up
     MAX_APPROACH_M = 2.00  # travel budget if the surface is never felt
     DRAG_DISTANCE_M = 0.05
     RETRACT_M = 0.03
@@ -745,6 +747,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 break
             if moved >= MAX_APPROACH_M:
                 break
+
         _stop(env, manipulator, device)
 
         if not touched:
@@ -757,6 +760,9 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
 
         for _ in range(settle_steps):
             _step(scene)
+        settled = manipulator.get_ft_wrench()[0].clone()
+        logger.info(f"  touch the the surface (now wait 5s): {_fmt_wrench(settled)}")
+        time.sleep(5)
         settled = manipulator.get_ft_wrench()[0].clone()
         logger.info(f"  settled on the surface: {_fmt_wrench(settled)}")
 
