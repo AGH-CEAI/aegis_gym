@@ -564,4 +564,23 @@ class GenesisScene(BaseScene):
         data["ft_sensor/torque/y"] = float(wrench[4])
         data["ft_sensor/torque/z"] = float(wrench[5])
 
+        # Gravity removed, so it is comparable with a tared sensor on the robot rather
+        # than carrying the tool's own 13.3 N.
+        comp = self.manipulator.get_ft_wrench_compensated()[0]
+        for i, axis in enumerate("xyz"):
+            data[f"ft_sensor/compensated/force/{axis}"] = float(comp[i])
+            data[f"ft_sensor/compensated/torque/{axis}"] = float(comp[i + 3])
+
+        # The servo's following error, per joint. With an integrating setpoint this is
+        # what generates the contact force -- force is K_eff times this -- so it is the
+        # signal to plot the force against when matching the simulation to the robot.
+        target = self.manipulator._q_servo_target
+        if target is not None:
+            measured = self.manipulator._robot_entity.get_qpos()[
+                :, self.manipulator._arm_dof_idx
+            ]
+            error = (target - measured)[0]
+            for name, err in zip(self._pj_joint_names, error.tolist()):
+                data[f"servo/follow_error/{name}"] = err
+
         self._pj.send(data)

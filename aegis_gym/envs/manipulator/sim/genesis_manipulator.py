@@ -255,6 +255,24 @@ class GenesisManipulator(BaseManipulator):
         # Sanity-check against the actual robot
         assert self._robot_entity.n_dofs == len(KP_GAINS)
 
+        # Joint stiffness is what sets how fast contact force builds: with an
+        # integrating setpoint the force is K_eff times the following error, so scaling
+        # kp scales the entire force-against-lag curve. Compared against the robot over
+        # the same 1.5 mm/s press, the simulated arm needed ~3.0 mm of command to reach
+        # 5 N where the robot needed ~2.8 mm -- about 6x softer -- and this is the knob
+        # that closes it. kv follows as sqrt(scale) so the damping ratio is preserved;
+        # raising kp on its own leaves the joint underdamped and it rings on contact.
+        scale = float(self._cfg_robot.servo_stiffness_scale)
+        if scale != 1.0:
+            root = math.sqrt(scale)
+            for i in range(self._arm_dof_dim):
+                KP_GAINS[i] *= scale
+                KV_GAINS[i] *= root
+            get_logger("Genesis::Manipulator").info(
+                f"Servo stiffness scaled x{scale:g} (kv x{root:.2f}); arm kp now "
+                f"{KP_GAINS[: self._arm_dof_dim]}"
+            )
+
         self._default_kp = self._build_gain_tensor(KP_GAINS)
         self._default_kv = self._build_gain_tensor(KV_GAINS)
         self._force_lower = self._build_gain_tensor(FORCE_LOWER)

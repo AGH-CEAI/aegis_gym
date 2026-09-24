@@ -13,6 +13,7 @@ from aegis_gym.config import (
 from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.manipulator import BaseManipulator
+from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
 from aegis_gym.envs.scene import GenesisScene
 from train import calibration_movment, create_env, init_clearml_task
 
@@ -280,6 +281,70 @@ def _log_contacts(manipulator: BaseManipulator, label: str) -> None:
 # --- shared setup for the contact tests -------------------------------------
 # Somewhere the arm cannot reach, so the reacher task's free box cannot be what the
 # tool lands on instead of the table.
+# Smallest normalised velocity worth sending. The action space is [-1, 1] and the
+# bridge's servo has a deadband, so a command a few thousandths of full scale is not a
+# slow move, it is no move. Anything that wants finer resolution than this has to come
+# down `action_max_linear_speed`, not shrink the action.
+# Numeric, because PlotJuggler plots numbers: this turns the phase into a step trace
+# the force curve can be lined up against.
+_PHASE_ID = {"approach": 0, "hold": 1, "release": 2, "unload": 3}
+
+
+class _ProbeStream:
+    """Publishes the probe's own derived signals to PlotJuggler, in both worlds.
+
+    The scene already streams joint states and the wrench, but only in simulation, and
+    it cannot know the quantities this test constructs: how far the command has gone,
+    how far the tool actually went, and the gap between them. That gap is what the
+    contact force is proportional to, so it is the abscissa any force curve has to be
+    plotted against if the two worlds are to be compared at all.
+
+    Same series names on both sides, deliberately -- overlaying a simulated run on a
+    real one should be selecting the same key twice, not eyeballing two plots that
+    happen to be named differently.
+    """
+
+    def __init__(self, cfg: ExpConfig) -> None:
+        self._pj = (
+            PlotJugglerUDP(host="127.0.0.1", port=9870)
+            if getattr(cfg.args, "plotjuggler", False)
+            else None
+        )
+        self._n = 0
+
+    def send(
+        self,
+        manipulator: BaseManipulator,
+        dt: float,
+        phase: str,
+        cmd_travel_m: float,
+        travel_m: float,
+        cmd_speed_mps: float,
+    ) -> None:
+        if self._pj is None:
+            return
+        wrench = manipulator.get_ft_wrench_compensated()[0].tolist()
+        data = {
+            "probe/t_s": self._n * dt,
+            "probe/phase": _PHASE_ID.get(phase, -1),
+            "probe/cmd_travel_mm": cmd_travel_m * 1000.0,
+            "probe/travel_mm": travel_m * 1000.0,
+            "probe/lag_mm": (cmd_travel_m - travel_m) * 1000.0,
+            "probe/cmd_speed_mm_s": cmd_speed_mps * 1000.0,
+        }
+        for i, axis in enumerate("xyz"):
+            data[f"probe/force/{axis}"] = wrench[i]
+            data[f"probe/torque/{axis}"] = wrench[i + 3]
+        self._pj.send(data)
+        self._n += 1
+
+
+MIN_ACTION_FRACTION = 0.01
+# Simulation has no deadband -- a velocity command is honoured however small -- so the
+# floor there only has to keep the sweep from taking all afternoon.
+MIN_ACTION_FRACTION_SIM = 2.0e-4
+_ACTION_WARNED: set[int] = set()
+
 OBJECT_PARK_POS = (1.5, 1.5, 0.05)
 START_OFFSET_TCP = (1.0, 0.0, 2.0)
 START_OFFSET_M = 0.15
@@ -703,13 +768,41 @@ def _tcp_velocity(
     `speed` is in m/s and is normalised against `env.max_linear_speed` before it goes
     out: the action space is [-1, 1] scaled by that maximum, so handing it a physical
     velocity would quietly rescale the motion by the same factor.
+
+    The normalised magnitude is bounded to 1 and checked against a floor. Both ends are
+    real failures seen on the robot. Above 1 the command is silently truncated, so the
+    motion is slower than the caller believes and every distance derived from it is
+    wrong. Below the floor it is inside the servo's deadband and nothing moves at all:
+    the first torque sweep asked for 215 um/s, which against a 0.098 m/s scale is an
+    action of 0.0022, and the arm sat still for 40 s while the contact force drifted
+    upward.
     """
     quat, _ = _sensor_quat(manipulator)
     vec = th.tensor(direction_tcp, dtype=th.float32, device=device).unsqueeze(0)
     vec = vec / th.linalg.norm(vec)
     world = transform_by_quat(vec, quat.unsqueeze(0))
+    scale = speed / float(env.max_linear_speed)
+    if abs(scale) > 1.0:
+        get_logger("ft_sensor").warning(
+            f"  {speed * 1000:.3f} mm/s is {abs(scale):.2f} of full scale -- the action "
+            f"saturates at 1.0, so the arm will move at "
+            f"{float(env.max_linear_speed) * 1000:.1f} mm/s instead."
+        )
+        scale = math.copysign(1.0, scale)
+    elif (
+        not _is_modelled(manipulator)
+        and 0.0 < abs(scale) < MIN_ACTION_FRACTION
+        and round(speed * 1e6) not in _ACTION_WARNED
+    ):
+        # Once per speed: this sits in a 25 Hz loop, and a warning per step buries the
+        # measurements it is meant to qualify.
+        _ACTION_WARNED.add(round(speed * 1e6))
+        get_logger("ft_sensor").warning(
+            f"  {speed * 1e6:.0f} um/s is an action of {abs(scale):.4f}, under the "
+            f"{MIN_ACTION_FRACTION:.3f} the servo resolves -- expect no motion."
+        )
     action = th.zeros(env.num_envs, 6, device=device)
-    action[:, :3] = world * (speed / float(env.max_linear_speed))
+    action[:, :3] = world * scale
     return action
 
 
@@ -1076,7 +1169,25 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
     TILT_AXIS_TCP = (0.0, 1.0, 0.0)  # about TCP Y, so the fingers separate along X
     APPROACH_AXIS_TCP = (0.0, 0.0, 1.0)
     TORQUE_AXIS_TCP = (0.0, 1.0, 0.0)  # the moment the offset contact produces
-    EXPECTED_ARM_M = 0.025  # half the finger separation, from the URDF
+    TANGENT_AXIS_TCP = (
+        1.0,
+        0.0,
+        0.0,
+    )  # the fingers separate along here, so friction does too
+    # The finger joints both originate on the tool axis (`xyz="0 0 0.099"`, axes +/-X)
+    # and open to 0.025, so each finger *origin* ends up 25 mm off-axis. The contact is
+    # on the pad, not at the origin: with the pad spanning the origin outwards its
+    # centroid sits near half that, which is what the solver measured (12.48 mm over two
+    # contact points). Treat this as the order of magnitude to sanity-check against, not
+    # as a figure the fit should reproduce.
+    EXPECTED_ARM_M = 0.025  # finger-origin offset from the URDF; the pad sits inboard
+    # Axial distance from the sensor origin down to the fingertip plane, summed along
+    # the URDF chain tool_mount_link -> robotiq_hande_end:
+    #   adapter_from_sensor 11.9 + adapter_end 7.0 + hande_base 11.0 + hande_end 145.5
+    # Friction at the pad pulls on this lever, and it is long enough that a couple of
+    # newtons of it outweighs the finger offset entirely. Simulation measures the real
+    # thing from the contact and overrides this; the robot has to trust the model.
+    EXPECTED_RZ_M = 0.1754
 
     # Bounded by the abort limit, not by patience: a 25 Hz step at speed v into a
     # contact of stiffness k lands k*v*dt newtons in one sample with no warning, so at
@@ -1084,18 +1195,62 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
     # inside ABORT_FORCE_N. Going faster does not fail gracefully -- it jumps straight
     # past the limit, which is what aborted the earlier runs.
     APPROACH_SPEED_MPS = 0.0015
+    # Once touching, slow down. K_eff is fitted against the following error, and at the
+    # traverse speed the force crosses 0.3 N to 5 N in about four steps -- a slope from
+    # four points, on the one number the two worlds have to agree on. Pressing at a
+    # fifth of the speed resolves the same span into tens of samples and costs seconds,
+    # because by then there is a fraction of a millimetre left to travel. The floor is
+    # the servo deadband, so on the robot this lands near 1 mm/s rather than 0.3.
+    PRESS_SPEED_MPS = 0.0003
     TOUCH_FORCE_N = 0.3  # counts as touching, for the stiffness estimate
     MAX_FORCE_N = 5.0  # press to here, then sweep back down
     MIN_FIT_FORCE_N = 0.5  # below this the reading is offset, not signal
     ABORT_FORCE_N = 30.0  # entry overshoot is expected; this bounds it
     MAX_APPROACH_M = 0.20
-    UNLOAD_FORCE_PER_STEP_N = 0.25  # sets the unload speed from the stiffness
     UNLOAD_SECONDS = 120.0
+
+    # Releasing is its own phase. Stopping the press does not stop the pressing: the
+    # servo's commanded pose is tens of millimetres inside the table by then -- that
+    # buried setpoint is what generated the force in the first place -- so a zero
+    # velocity command simply lets the controller finish converging on it. Measured on
+    # the robot, force went from 5.60 N at the end of the press to 16.20 N one second
+    # later. That error has to be wound back at a speed the arm actually tracks before
+    # any measurement sweep can mean anything.
+    HOLD_SECONDS = 5.0
+    RELEASE_SECONDS = 30.0
+    UNLOAD_TARGET_N_PER_STEP = 0.10  # sweep resolution to aim for
+    # The floor is not politeness, it is the servo's tracking limit, so it is defined
+    # as a fraction of the action range rather than as a velocity: the first real run
+    # asked for 215 um/s, an action of 0.0022, and the arm did not move -- force drifted
+    # *upward* for 40 s.
+    UNLOAD_MIN_SPEED_MPS = float(env.max_linear_speed) * (
+        MIN_ACTION_FRACTION_SIM if _is_modelled(manipulator) else MIN_ACTION_FRACTION
+    )
+    UNLOAD_MAX_SPEED_MPS = 5.0e-3
+    UNLOAD_ADAPT_EVERY = 25  # steps between speed corrections, ~1 s at 25 Hz
+    UNLOAD_STALL_SECONDS = 8.0  # force refusing to fall for this long is a failure
+    DESCEND_MARGIN_N = (
+        0.4  # force must fall this far below its peak to count as a sweep
+    )
 
     SETTLE_SECONDS = 1.0
     RETRACT_M = 0.03
 
+    stream = _ProbeStream(cfg)
     approach_speed = _clamp_speed(env, APPROACH_SPEED_MPS, "approach")
+    press_speed = _clamp_speed(
+        env,
+        max(
+            PRESS_SPEED_MPS,
+            float(env.max_linear_speed)
+            * (
+                MIN_ACTION_FRACTION_SIM
+                if _is_modelled(manipulator)
+                else MIN_ACTION_FRACTION
+            ),
+        ),
+        "press",
+    )
     settle_steps = max(1, round(SETTLE_SECONDS / dt))
 
     def _unit(vec: tuple[float, float, float]) -> th.Tensor:
@@ -1104,16 +1259,30 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
 
     axis = _unit(APPROACH_AXIS_TCP)
     torque_axis = _unit(TORQUE_AXIS_TCP)
+    tangent_axis = _unit(TANGENT_AXIS_TCP)
 
-    def reading() -> tuple[float, float]:
-        """Normal force magnitude and the torque about the probe axis, gravity removed.
+    def reading() -> tuple[float, float, float, float]:
+        """Normal force magnitude, signed normal and tangential force, and the torque
+        about the probe axis -- all gravity removed.
 
         `get_ft_wrench_compensated()` rather than the raw measurement: the tool is held
         at a tilt, so any orientation the arm drifts into swings the payload's weight
         onto these very axes at 0.23 N and 0.014 Nm per degree.
+
+        The tangential channel is here because the torque has two sources, not one:
+
+            tau_y = r_z * Fx  -  r_x * Fz
+
+        Only the second term is a finger offset. The first is the tangential force
+        acting at the long axial lever from the sensor down to the fingertip, about
+        150 mm, so a few newtons of friction there fakes tens of millimetres of arm. A
+        fit that sees only Fz has to attribute all of it to r_x, which is how the robot
+        came back with 85 mm against a 25 mm finger.
         """
         wrench = manipulator.get_ft_wrench_compensated()[0]
-        return abs(float(wrench[:3] @ axis)), float(wrench[3:] @ torque_axis)
+        f_z = float(wrench[:3] @ axis)
+        f_x = float(wrench[:3] @ tangent_axis)
+        return abs(f_z), f_z, f_x, float(wrench[3:] @ torque_axis)
 
     half = math.radians(TILT_DEG) / 2.0
     tilt_vec = _unit(TILT_AXIS_TCP) * math.sin(half)
@@ -1134,7 +1303,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         f"{EXPECTED_ARM_M * 1000:.0f} mm"
     )
 
-    samples: list[tuple[float, float]] = []
+    samples: list[tuple[float, float, float, float]] = []
     try:
         # Press in first and sweep on the way OUT. Loading is the dangerous direction:
         # one 25 Hz step at 5 mm/s into a 383 kN/m contact is 76 N, so a slow enough
@@ -1146,26 +1315,35 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
             f"|Fz| >= {MAX_FORCE_N:.1f} N"
         )
         origin = manipulator.get_tcp_position()[0].clone()
-        probe: list[tuple[float, float]] = []  # (travel, force), for the stiffness
+        # (following error, force). Force is not a function of how far the tool has
+        # gone, it is a function of how far the *command* has gone past it: with an
+        # integrating setpoint, F = K_eff * (commanded travel - actual travel). That
+        # slope is the whole force dynamic, and it is the one number that has to agree
+        # between the two worlds.
+        probe: list[tuple[float, float]] = []
+        cmd_travel = 0.0
         touched = False
         # A silent approach cannot be diagnosed. Standing still, descending through
         # empty space and resting on the surface without building force all look
         # identical from outside the loop, and they have entirely different causes.
         press_log_every = max(1, round(2.0 / dt))
         stalled_since: float | None = None
+        speed = approach_speed
         for i in range(max(1, round(3.0 * MAX_APPROACH_M / approach_speed / dt))):
             manipulator.ctrl_apply_vel_action(
-                _tcp_velocity(
-                    env, manipulator, APPROACH_AXIS_TCP, approach_speed, device
-                ),
+                _tcp_velocity(env, manipulator, APPROACH_AXIS_TCP, speed, device),
                 open_gripper=None,
             )
             _step(scene)
-            f_n, _ = reading()
+            cmd_travel += speed * dt
+            f_n, _, _, _ = reading()
             moved = _travelled(manipulator, origin)
+            lag = cmd_travel - moved
+            stream.send(manipulator, dt, "approach", cmd_travel, moved, speed)
             if i % press_log_every == 0:
                 logger.info(
-                    f"    t={i * dt:6.1f} s  travel={moved * 1000:7.2f} mm  "
+                    f"    t={i * dt:6.1f} s  cmd={cmd_travel * 1000:7.2f} mm  "
+                    f"travel={moved * 1000:7.2f} mm  lag={lag * 1000:6.3f} mm  "
                     f"Fn={f_n:6.2f} N"
                 )
                 # Held up by something without registering force: the arm is pushing
@@ -1180,14 +1358,24 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                     )
                 stalled_since = moved
             if f_n >= TOUCH_FORCE_N:
-                probe.append((moved, f_n))
+                if speed != press_speed:
+                    logger.info(
+                        f"  touched at {moved * 1000:.2f} mm ({f_n:.2f} N) -- pressing "
+                        f"on at {press_speed * 1000:.2f} mm/s to resolve the loading "
+                        f"curve"
+                    )
+                    speed = press_speed
+                probe.append((lag, f_n))
             if f_n >= ABORT_FORCE_N:
                 raise RuntimeError(
                     f"Contact force {f_n:.2f} N exceeded the abort limit"
                 )
             if f_n >= MAX_FORCE_N:
                 touched = True
-                logger.info(f"  reached {f_n:.2f} N after {moved * 1000:.1f} mm")
+                logger.info(
+                    f"  reached {f_n:.2f} N after {moved * 1000:.1f} mm of travel "
+                    f"({cmd_travel * 1000:.1f} mm commanded, {lag * 1000:.3f} mm lag)"
+                )
                 break
             if moved >= MAX_APPROACH_M:
                 break
@@ -1196,38 +1384,192 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.warning("  never reached the press force -- nothing to measure.")
             return
         _log_contacts(manipulator, "at full press")
+        # Geometry, straight from the solver: what the moment arm actually is, so the
+        # fitted one below has something to be right or wrong against.
+        r_z_m = EXPECTED_RZ_M
+        expected_arm_m = EXPECTED_ARM_M
+        lever = _contact_lever(manipulator)
+        if lever is not None:
+            r_z_m = abs(float(lever[2]))
+            # The solver's own contact geometry beats a nominal finger offset: it is
+            # where the pad actually touched, which is what the torque must reflect.
+            expected_arm_m = float(lever[0])
+            logger.info(
+                f"  contact centroid at r=[{lever[0] * 1000:+7.2f}, "
+                f"{lever[1] * 1000:+7.2f}, {lever[2] * 1000:+7.2f}] mm in the sensor "
+                f"frame -- lateral arm {abs(float(lever[0])) * 1000:.2f} mm, axial "
+                f"lever {r_z_m * 1000:.1f} mm (URDF says {EXPECTED_RZ_M * 1000:.1f})"
+            )
 
-        # Stiffness from the loading curve, so the unload speed can be chosen instead of
-        # guessed: too fast and the sweep is three points, too slow and a compliant
-        # surface takes minutes.
-        stiffness = _estimate_stiffness(probe)
-        unload_speed = UNLOAD_FORCE_PER_STEP_N / max(stiffness * dt, 1e-9)
-        unload_speed = min(unload_speed, _clamp_speed(env, 0.005, "unload"))
-        logger.info(
-            f"  contact stiffness ~{stiffness / 1000:.1f} kN/m -> unloading at "
-            f"{unload_speed * 1e6:.0f} um/s for ~{UNLOAD_FORCE_PER_STEP_N:.2f} N/step"
-        )
-
-        logger.info(f"Unloading and recording down to {MIN_FIT_FORCE_N:.1f} N")
         log_every = max(1, round(1.0 / dt))
         back = tuple(-v for v in APPROACH_AXIS_TCP)
-        for i in range(max(1, round(UNLOAD_SECONDS / dt))):
+
+        # The number the two worlds have to agree on. Fitted against the following
+        # error rather than the travel, which is what makes it a property of the servo
+        # instead of an artefact of how far the tool happened to move.
+        stiffness = _estimate_stiffness(probe)
+        logger.info("-" * 78)
+        logger.info(
+            f"  K_eff = {stiffness / 1000:7.1f} kN/m   over {len(probe)} loaded samples"
+        )
+        logger.info(
+            "  force = K_eff * following error. This slope IS the contact force "
+            "dynamic; to match the robot set"
+        )
+        logger.info("    servo_stiffness_scale = K_eff_real / K_eff_sim")
+        logger.info("-" * 78)
+
+        # Hold: command nothing and watch. Stopping the press does not stop the
+        # pressing -- by now the setpoint is buried below the surface, and that buried
+        # setpoint is what made the force -- so the servo keeps converging and the force
+        # keeps climbing. The robot went 5.60 N to 16.20 N this way. That ratio is a
+        # second, independent signature of the same stiffness, it needs no motion, and
+        # it costs five seconds.
+        logger.info(f"Holding {HOLD_SECONDS:.0f} s at zero commanded velocity")
+        f_hold_0 = f_n
+        for i in range(max(1, round(HOLD_SECONDS / dt))):
+            _stop(env, manipulator, device)
+            _step(scene)
+            f_n, _, _, _ = reading()
+            stream.send(
+                manipulator,
+                dt,
+                "hold",
+                cmd_travel,
+                _travelled(manipulator, origin),
+                0.0,
+            )
+            if i % log_every == 0:
+                logger.info(f"    F={f_n:7.3f} N")
+        logger.info(
+            f"  hold: {f_hold_0:.2f} N -> {f_n:.2f} N  "
+            f"(x{f_n / max(f_hold_0, 1e-9):.2f} after the command stopped; "
+            f"the robot did x2.89)"
+        )
+
+        phase = "release"
+
+        def retreat(speed: float) -> tuple[float, float, float, float]:
+            nonlocal cmd_travel
             manipulator.ctrl_apply_vel_action(
-                _tcp_velocity(env, manipulator, back, unload_speed, device),
+                _tcp_velocity(env, manipulator, back, speed, device),
                 open_gripper=None,
             )
             _step(scene)
-            f_n, t_y = reading()
-            if f_n >= MIN_FIT_FORCE_N:
-                samples.append((f_n, t_y))
+            cmd_travel -= speed * dt
+            stream.send(
+                manipulator,
+                dt,
+                phase,
+                cmd_travel,
+                _travelled(manipulator, origin),
+                -speed,
+            )
+            return reading()
+
+        # Phase 1: wind the buried setpoint back out, at the speed the approach just
+        # demonstrated the arm tracks, until the force is back under the press target.
+        release_speed = _clamp_speed(env, approach_speed, "release")
+        logger.info(
+            f"Releasing the press overshoot at {release_speed * 1000:.1f} mm/s until "
+            f"|Fz| <= {MAX_FORCE_N:.1f} N"
+        )
+        f_n, _, _, _ = reading()
+        f_release_peak = f_n
+        for i in range(max(1, round(RELEASE_SECONDS / dt))):
+            f_n, _, _, _ = retreat(release_speed)
+            f_release_peak = max(f_release_peak, f_n)
+            if i % log_every == 0:
+                logger.info(f"    F={f_n:7.3f} N")
+            if f_n <= MAX_FORCE_N:
+                break
+        else:
+            logger.warning(
+                f"  still {f_n:.2f} N after {RELEASE_SECONDS:.0f} s of retreat -- the "
+                f"arm is not backing off. Nothing below can be trusted."
+            )
+        logger.info(
+            f"  released: peaked at {f_release_peak:.2f} N after the press stopped "
+            f"(pressed to {MAX_FORCE_N:.1f} N), now {f_n:.2f} N"
+        )
+
+        # Phase 2: the measurement sweep. Speed is corrected from the force drop that
+        # is actually being observed, so it does not depend on the stiffness estimate,
+        # and it is floored at something the servo will execute.
+        logger.info(f"Unloading and recording down to {MIN_FIT_FORCE_N:.1f} N")
+        phase = "unload"
+        unload_speed = min(
+            max(
+                UNLOAD_TARGET_N_PER_STEP / max(stiffness * dt, 1e-9),
+                UNLOAD_MIN_SPEED_MPS,
+            ),
+            UNLOAD_MAX_SPEED_MPS,
+        )
+        unload_speed = _clamp_speed(env, unload_speed, "unload")
+        f_peak = f_n
+        descending = False
+        last_kept = float("inf")
+        rejected = 0
+        window_start_f = f_n
+        stalled_steps = 0
+        stall_limit = max(1, round(UNLOAD_STALL_SECONDS / dt))
+        for i in range(max(1, round(UNLOAD_SECONDS / dt))):
+            f_n, f_z, f_x, t_y = retreat(unload_speed)
+            f_peak = max(f_peak, f_n)
+            # Only the falling side is a sweep. On the robot the force climbed again
+            # halfway through the first run; those points are the servo pressing, not
+            # the contact unloading, and averaging them in is what produced moment arms
+            # swinging between 10 and 90 mm.
+            if not descending and f_n <= f_peak - DESCEND_MARGIN_N:
+                descending = True
+                last_kept = f_n + DESCEND_MARGIN_N
+            if descending and MIN_FIT_FORCE_N <= f_n <= last_kept + 0.2:
+                samples.append((f_n, f_z, f_x, t_y))
+                last_kept = min(last_kept, f_n)
+            elif descending:
+                rejected += 1
             if i % log_every == 0:
                 arm = 1000 * abs(t_y) / f_n if f_n > 1e-6 else float("nan")
-                logger.info(f"  F={f_n:7.3f} N  T={t_y:+8.4f} Nm  arm={arm:7.2f} mm")
-            if f_n < MIN_FIT_FORCE_N and samples:
+                logger.info(
+                    f"  F={f_n:7.3f} N  Ft={f_x:+7.3f} N  T={t_y:+8.4f} Nm  "
+                    f"arm={arm:7.2f} mm  v={unload_speed * 1e6:5.0f} um/s  "
+                    f"n={len(samples)}"
+                )
+            if descending and f_n < MIN_FIT_FORCE_N and samples:
                 logger.info(f"  unloaded after {i + 1} steps")
                 break
+            if (i + 1) % UNLOAD_ADAPT_EVERY == 0:
+                drop = (window_start_f - f_n) / UNLOAD_ADAPT_EVERY
+                window_start_f = f_n
+                if drop <= 0.0:
+                    stalled_steps += UNLOAD_ADAPT_EVERY
+                    unload_speed = min(unload_speed * 2.0, UNLOAD_MAX_SPEED_MPS)
+                    logger.warning(
+                        f"    force not falling ({f_n:.2f} N) -- retreating faster, "
+                        f"{unload_speed * 1e6:.0f} um/s"
+                    )
+                    if stalled_steps >= stall_limit:
+                        logger.error(
+                            f"  force has refused to fall for {UNLOAD_STALL_SECONDS:.0f} s "
+                            f"at up to {unload_speed * 1e6:.0f} um/s. The arm is not "
+                            f"tracking the retreat; abandoning the sweep."
+                        )
+                        break
+                else:
+                    stalled_steps = 0
+                    unload_speed = min(
+                        max(
+                            unload_speed * UNLOAD_TARGET_N_PER_STEP / drop,
+                            UNLOAD_MIN_SPEED_MPS,
+                        ),
+                        UNLOAD_MAX_SPEED_MPS,
+                    )
+        if rejected:
+            logger.info(
+                f"  skipped {rejected} samples where the force was rising again"
+            )
         _stop(env, manipulator, device)
-        _log_torque_fit(samples, EXPECTED_ARM_M)
+        _log_torque_fit(samples, expected_arm_m, r_z_m)
     finally:
         _stop(env, manipulator, device)
         logger.info(f"Retracting {RETRACT_M * 100:.0f} cm")
@@ -1249,12 +1591,19 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
 
 
 def _estimate_stiffness(probe: list[tuple[float, float]]) -> float:
-    """Contact stiffness in N/m from the (travel, force) pairs of the loading push.
+    """Effective servo stiffness in N/m from the (following error, force) pairs of the
+    loading push.
 
-    A straight line through the contact part of the approach. Needed because the safe
-    unload speed spans four orders of magnitude between a compliant fixture and a rigid
-    table, and guessing it wrong makes the sweep either three points long or minutes
-    long.
+    Fitted against the following error, not the travel. Travel is the wrong abscissa:
+    once the tool is on the surface it stops moving, so force keeps climbing while
+    travel stands still and the slope means nothing -- fitted that way the first real
+    run reported 29.1 kN/m where the same data against the command says otherwise. The
+    command keeps advancing regardless, and the gap between the two is exactly what the
+    joint controller converts into torque.
+
+    Doubling as the basis for the unload speed is not a coincidence. In contact the tool
+    barely moves, so retreating at v reduces the following error at v, and the force
+    falls at K_eff * v -- which is precisely the rate the sweep needs to control.
     """
     if len(probe) < 2:
         return 1e5  # no evidence; assume stiff, which errs towards a slower sweep
@@ -1265,27 +1614,92 @@ def _estimate_stiffness(probe: list[tuple[float, float]]) -> float:
     return max(slope, 1e3)
 
 
-def _log_torque_fit(samples: list[tuple[float, float]], expected_arm_m: float) -> None:
-    """Least-squares torque-vs-force line. The slope is the effective moment arm.
+def _contact_lever(manipulator: BaseManipulator) -> th.Tensor | None:
+    """Simulation only: the force-weighted contact centroid, as an offset from the
+    sensor origin expressed in the sensor frame, [3] in metres.
 
-    Fitting the slope rather than reading `torque / force` at one point is deliberate:
+    This is the moment arm as geometry rather than as something inferred from the
+    torque channel, so it is the one number that can say whether a fitted arm is right.
+    The wrench model builds its torque as `lever x force` about this same origin, which
+    makes the comparison exact by construction in simulation -- and that is the point:
+    it pins down what the torque channel *should* read, so any disagreement on the
+    robot is the robot's, not the fit's.
+    """
+    if not _is_modelled(manipulator):
+        return None
+    entity = manipulator._robot_entity
+    contacts = entity.get_contacts(exclude_self_contact=True, is_padded=True)
+    valid = contacts["valid_mask"]
+    if valid.numel() == 0:
+        return None
+
+    idx = manipulator._gravity_link_idx
+    is_a = th.isin(contacts["link_a"], idx)
+    is_b = th.isin(contacts["link_b"], idx)
+    force = th.where(is_b.unsqueeze(-1), contacts["force_b"], contacts["force_a"])
+    keep = (valid & (is_a | is_b)).unsqueeze(-1)
+    force = th.where(keep, force, th.zeros_like(force))
+
+    weight = th.linalg.norm(force, dim=-1)[0]  # [n_contacts]
+    total = float(weight.sum())
+    if total <= 1e-9:
+        return None
+    lever = contacts["position"][0] - manipulator._fts_link.get_pos()[0]
+    centroid_world = (lever * weight.unsqueeze(-1)).sum(dim=0) / total
+
+    quat, _ = _sensor_quat(manipulator)
+    quat_conj = quat * th.tensor([1.0, -1.0, -1.0, -1.0], device=quat.device)
+    return transform_by_quat(centroid_world.unsqueeze(0), quat_conj.unsqueeze(0))[0]
+
+
+def _log_torque_fit(
+    samples: list[tuple[float, float, float, float]],
+    expected_arm_m: float,
+    r_z_m: float,
+) -> None:
+    """Least-squares fits of the torque against the forces that can produce it.
+
+    Fitting a slope rather than reading `torque / force` at one point is deliberate:
     the slope is blind to any constant offset in either channel, so a residual tare
     error or an uncompensated bias cannot masquerade as a moment arm.
+
+    Two fits, because the torque has two sources:
+
+        tau_y = r_z * Fx  -  r_x * Fz
+
+    The one-term fit attributes everything to `r_x`, the lateral finger offset. That is
+    only honest when the contact is purely normal. Tilted and rubbing, the tangential
+    force acts at `r_z` -- the axial distance from the sensor down to the fingertip,
+    175.4 mm by the URDF chain -- so a few newtons of friction there shows up as tens of
+    millimetres of phantom arm.
+
+    `r_z` is supplied, not fitted, and that is not laziness. Under Coulomb friction at a
+    steady coefficient, `Fx = mu * |Fz|`, so the two columns of a two-term design matrix
+    are collinear and neither lever is identifiable however many samples are taken --
+    fitting both against a synthetic sweep of a true 12.5 mm finger at a 150 mm lever
+    returns 51.8 mm and 15.5 mm, confidently and wrongly. Since `r_z` is a fixed piece
+    of geometry, the honest move is to take it from the model and solve only for `r_x`.
     """
     logger = get_logger("ft_sensor")
     if len(samples) < 2:
         logger.warning("  too few samples to fit a moment arm.")
         return
 
-    forces = th.tensor([f for f, _ in samples], dtype=th.float32)
-    torques = th.tensor([abs(t) for _, t in samples], dtype=th.float32)
+    forces = th.tensor([s[0] for s in samples], dtype=th.float32)
+    f_z = th.tensor([s[1] for s in samples], dtype=th.float32)
+    f_x = th.tensor([s[2] for s in samples], dtype=th.float32)
+    t_y = th.tensor([s[3] for s in samples], dtype=th.float32)
+    # Signed, both channels. Fitting |tau| against |F| throws away which side of the
+    # tool axis the contact is on and lets a tare offset fold into the slope: on the
+    # run that validated this, it read -1.52 mm where the geometry said -31.53 mm.
+    torques = t_y
 
     def _fit(mask: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        design = th.stack([forces[mask], th.ones_like(forces[mask])], dim=-1)
+        design = th.stack([f_z[mask], th.ones_like(f_z[mask])], dim=-1)
         slope, intercept = th.linalg.lstsq(
             design, torques[mask].unsqueeze(-1)
         ).solution.reshape(2)
-        return slope, intercept, torques - (slope * forces + intercept)
+        return slope, intercept, torques - (slope * f_z + intercept)
 
     # Fit, then throw out whatever sits far off the line and fit again. The first
     # moment of unloading is still dynamic -- on the real robot the first samples came
@@ -1320,17 +1734,66 @@ def _log_torque_fit(samples: list[tuple[float, float]], expected_arm_m: float) -
     logger.info(
         f"Torque channel over {len(samples)} samples: torque = arm * force + offset"
     )
-    logger.info(f"  measured arm  = {float(slope) * 1000:7.2f} mm")
-    logger.info(
-        f"  expected arm  = {expected_arm_m * 1000:7.2f} mm (URDF finger offset)"
-    )
-    logger.info(f"  ratio         = {float(slope) / expected_arm_m:7.3f}")
+    arm = -float(slope)  # tau_y = -r_x * Fz
+    logger.info(f"  measured arm  = {arm * 1000:7.2f} mm")
+    logger.info(f"  expected arm  = {expected_arm_m * 1000:7.2f} mm")
+    logger.info(f"  ratio         = {arm / expected_arm_m:7.3f}")
     logger.info(
         f"  offset        = {float(intercept):7.4f} Nm (a tare residual, not an arm)"
     )
     worst = float(residual.abs().max())
     span = float(torques[keep].max() - torques[keep].min())
     logger.info(f"  fit residual  = {worst:7.4f} Nm max")
+
+    # Friction correction. The tangential term is subtracted using the geometric
+    # `r_z` rather than fitted alongside `r_x`; see the docstring for why fitting both
+    # cannot work on a monotone sweep.
+    tan_span = float(f_x[keep].max() - f_x[keep].min())
+    nrm_span = float(f_z[keep].max() - f_z[keep].min())
+    logger.info("-" * 78)
+    if int(keep.sum()) < 4 or tan_span < 0.05 * max(nrm_span, 1e-9):
+        logger.info(
+            f"  tangential force spans only {tan_span:.3f} N against {nrm_span:.3f} N "
+            f"normal -- contact is effectively frictionless, so the arm above is the "
+            f"whole story."
+        )
+    else:
+        corrected = t_y[keep] - r_z_m * f_x[keep]
+        design2 = th.stack([f_z[keep], th.ones_like(f_z[keep])], dim=-1)
+        slope2, off2 = th.linalg.lstsq(
+            design2, corrected.unsqueeze(-1)
+        ).solution.reshape(2)
+        resid2 = corrected - (slope2 * f_z[keep] + off2)
+        mu = tan_span / max(nrm_span, 1e-9)
+        logger.info(
+            f"  tangential force present (mu ~ {mu:.2f}), so part of that torque is "
+            f"friction at the {r_z_m * 1000:.1f} mm axial lever, not finger offset:"
+        )
+        logger.info(
+            f"    lateral arm r_x = {-float(slope2) * 1000:8.2f} mm (corrected)"
+        )
+        logger.info(f"    offset          = {float(off2):8.4f} Nm")
+        logger.info(f"    residual        = {float(resid2.abs().max()):8.4f} Nm max")
+        share_fric = abs(r_z_m * tan_span)
+        share_arm = abs(float(slope2) * nrm_span)
+        total = share_fric + share_arm
+        if total > 0:
+            frac = share_fric / total
+            logger.info(
+                f"    of the torque swing, {100 * (1 - frac):.0f} % is the "
+                f"finger offset and {100 * frac:.0f} % is friction at "
+                f"the axial lever"
+            )
+            if frac > 0.5:
+                # The correction subtracts the larger term, so its error lands on the
+                # smaller one: at this share a 10 % error in r_z moves the arm by
+                # roughly 35 %. Read it as an order of magnitude, not a measurement.
+                logger.warning(
+                    f"    friction carries {100 * frac:.0f} % of the torque, so the "
+                    f"corrected arm inherits the error in r_z amplified about "
+                    f"{frac / max(1 - frac, 1e-9):.1f}x. To measure the finger offset "
+                    f"properly, sweep at two tilt angles or on a lower-friction surface."
+                )
     logger.info("=" * 78)
     if span > 0 and worst > 0.1 * span:
         logger.warning(

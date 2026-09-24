@@ -36,3 +36,11 @@ class RobotCfg(BaseCfg):
     # order of magnitude rather than a calibration. Match it to the force limit set in
     # the real cell's safety configuration.
     servo_follow_error_max_rad: float
+
+    # Multiplies the arm's joint kp (kv follows as its square root, preserving the
+    # damping ratio). This is the sim-to-real knob for contact force *dynamics*: force
+    # is K_eff * following error, so it scales the force-against-lag slope directly.
+    # Measure K_eff with `ft_sensor_torque_probe` in both worlds and set this to
+    # K_eff_real / K_eff_sim. Note the joints also have a +/-87 Nm force range, which
+    # caps the achievable force independently once kp * error exceeds it.
+    servo_stiffness_scale: float
