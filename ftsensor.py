@@ -258,6 +258,23 @@ def _log_contacts(manipulator: BaseManipulator, label: str) -> None:
     if len(hits) > 4:
         logger.info(f"  {label}: ... and {len(hits) - 4} more contact point(s)")
 
+    net = th.zeros(3, device=manipulator.device)
+    for i in hits:
+        a_is_ours = bool(
+            th.isin(contacts["link_a"][0, i], manipulator._gravity_link_idx)
+        )
+        net = net + (
+            contacts["force_a"][0, i] if a_is_ours else contacts["force_b"][0, i]
+        )
+    normal = abs(float(net[2]))
+    tangential = float(th.linalg.norm(net[:2]))
+    if normal > 1e-6:
+        logger.info(
+            f"  {label}: world contact force [{net[0]:+7.3f} {net[1]:+7.3f} "
+            f"{net[2]:+7.3f}] N -> mobilised mu = {tangential / normal:.3f} "
+            f"(the robot measured 0.30)"
+        )
+
     # Like for like: the solver's own net contact force against the contact term the
     # wrench model builds -- both gravity-free, so a difference here is an
     # implementation error and nothing else. Comparing against the full wrench instead
@@ -1467,6 +1484,11 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
             f"  hold: {f_hold_0:.2f} N -> {f_n:.2f} N  "
             f"(x{f_n / max(f_hold_0, 1e-9):.2f} after the command stopped)"
         )
+        _log_contacts(manipulator, "at hold end")
+        logger.info(
+            f"  at hold end: wrench {_fmt_wrench(manipulator.get_ft_wrench_compensated()[0])}"
+        )
+
         # Time to peak IS the command latency. Nothing is being commanded, so any
         # further rise is the arm still executing what it was told before, and the
         # moment it stops rising is the moment that command finally expired. Measured
