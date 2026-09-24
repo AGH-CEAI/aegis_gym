@@ -20,3 +20,6 @@ class PlotJugglerUDP:
             self.sock.sendto(json.dumps(data).encode(), (self.host, self.port))
         except OSError as e:
             logger.error(f"UDP send error: {e}")
+
+    def close(self) -> None:
+        self.sock.close()
