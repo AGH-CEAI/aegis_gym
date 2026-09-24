@@ -568,8 +568,7 @@ class GenesisManipulator(BaseManipulator):
         return self._robot_entity.get_qpos()
 
     def get_joints_velocities(self) -> th.Tensor:
-        # TODO(issue#126) get the joints vel from genesis
-        raise NotImplementedError()
+        return self._robot_entity.get_dofs_velocity()
 
     def get_joints_efforts(self) -> th.Tensor:
         # TODO(issue#126) get the joints eff from genesis

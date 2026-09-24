@@ -29,7 +29,7 @@ class RosGrcpScene(BaseScene):
 
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
-        super().__init__(device=device)
+        super().__init__(device=device, enable_plotjuggler=cfg.args.enable_plotjuggler)
         self.CONTROL_TYPE = Control.ROS
         self._randomization_fns = {
             # TODO(issue#139) implement scene lighting randomization
@@ -48,7 +48,7 @@ class RosGrcpScene(BaseScene):
         self._global_entity_cnt = 0
         self._entity_registry: dict[int, BaseObject] = {}
 
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         self.manipulator.shutdown()
 
     def _extract_config(self) -> None:
@@ -103,7 +103,7 @@ class RosGrcpScene(BaseScene):
     def _get_manipulator(self) -> BaseManipulator:
         return self.manipulator
 
-    def update_state(self) -> None:
+    def _update_state(self) -> None:
         self.manipulator.read_state()
 
     def pre_step(self) -> None:

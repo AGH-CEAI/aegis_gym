@@ -26,7 +26,6 @@ from aegis_gym.envs.objects import (
     ObjectProperties,
     ObjectType,
 )
-from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
 
 from ..base_scene import BaseScene, RandomizationType
 
@@ -40,7 +39,7 @@ class GenesisScene(BaseScene):
         logger = get_logger("GenesisScene")
         cfg_env = cfg.env_cfg
         cfg_dr = cfg.dr_cfg
-        super().__init__(device=device)
+        super().__init__(device=device, enable_plotjuggler=cfg.args.enable_plotjuggler)
         self.CONTROL_TYPE = Control.SIM
         self._randomization_fns = {
             RandomizationType.CAMERAS_EXTRINSICS: self._rand_cameras_extrinsics,
@@ -52,8 +51,6 @@ class GenesisScene(BaseScene):
         self._cfg_dr = cfg_dr
         self._extract_config()
 
-        self._enable_pj_logging = cfg.args.enable_plotjuggler
-        self._setup_pj_server()
         match cfg.args.algorithm:
             case Algorithm.RL:
                 self.use_cameras = cfg.rl_cfg.use_cameras
@@ -99,24 +96,6 @@ class GenesisScene(BaseScene):
 
         self._max_linear_speed = self._cfg_env.action_max_linear_speed
         self._max_angular_speed = self._cfg_env.action_max_angular_speed
-
-    def _setup_pj_server(self) -> None:
-        logger = get_logger("GraspEnv")
-        self._pj: PlotJugglerUDP | None = None
-        if not self._enable_pj_logging:
-            return
-        ip = "127.0.0.1"
-        port = 9870
-        self._pj_joint_names = [
-            "shoulder_pan_joint",
-            "shoulder_lift_joint",
-            "elbow_joint",
-            "wrist_1_joint",
-            "wrist_2_joint",
-            "wrist_3_joint",
-        ]
-        self._pj = PlotJugglerUDP(host=ip, port=port)
-        logger.info(f"Enabled UDP server for PlotJuggler at {ip}:{port}")
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
@@ -353,7 +332,7 @@ class GenesisScene(BaseScene):
         rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
         return rgb
 
-    def shutdown(self) -> None:
+    def _shutdown(self) -> None:
         if hasattr(self, "manipulator") and self.manipulator is not None:
             del self.manipulator
 
@@ -399,8 +378,8 @@ class GenesisScene(BaseScene):
     def _get_manipulator(self) -> BaseManipulator:
         return self.manipulator
 
-    def update_state(self) -> None:
-        self._log_state_to_plot_juggler()
+    def _update_state(self) -> None:
+        pass
 
     def pre_step(self) -> None:
         pass
@@ -518,69 +497,18 @@ class GenesisScene(BaseScene):
         bias = (th.rand(len(envs_idx), 6, device=self.device) * 2.0 - 1.0) * ranges
         self.manipulator.set_ft_residual_bias(bias, envs_idx=envs_idx)
 
-    def _log_state_to_plot_juggler(self) -> None:
-        if not self._enable_pj_logging:
-            return
-
-        data = {}
-        # TODO(issue#128) change api to expose the robot entity
-        robot = self.manipulator._robot_entity
-        for name in self._pj_joint_names:
-            j = robot.get_joint(name=name)
-            for idx in j.dofs_idx_local:
-                # TODO(issue#119) investigate one query for obtaining all of the data
-                # Query each DOF individually to get scalar values
-                pos = robot.get_dofs_position([idx])
-                vel = robot.get_dofs_velocity([idx])
-                force = robot.get_dofs_force([idx])
-
-                # Convert to float - handle both tensor and array shapes
-                data[f"joint_states/{name}/position"] = float(pos.flatten()[0])
-                data[f"joint_states/{name}/velocity"] = float(vel.flatten()[0])
-                data[f"joint_states/{name}/effort"] = float(force.flatten()[0])
-
-        all_link_positions = robot.get_links_pos()
-        # all_link_quats = robot.get_links_quat()
-
-        link_positions = all_link_positions[0]
-        # link_quats = all_link_quats[0]
-
-        ee_idx = -1  # Last link = end effector
-        position = link_positions[ee_idx]
-
-        data["ee/position/x"] = float(position[0])
-        data["ee/position/y"] = float(position[1])
-        data["ee/position/z"] = float(position[2])
-        # TODO(issue#55) Enable orientation logging
-        # data["ee/orientation/roll"] = float(roll)
-        # data["ee/orientation/pitch"] = float(pitch)
-        # data["ee/orientation/yaw"] = float(yaw)
-
-        wrench = self.manipulator.get_ft_wrench()[0]
-        data["ft_sensor/force/x"] = float(wrench[0])
-        data["ft_sensor/force/y"] = float(wrench[1])
-        data["ft_sensor/force/z"] = float(wrench[2])
-        data["ft_sensor/torque/x"] = float(wrench[3])
-        data["ft_sensor/torque/y"] = float(wrench[4])
-        data["ft_sensor/torque/z"] = float(wrench[5])
-
-        # Gravity removed, so it is comparable with a tared sensor on the robot rather
-        # than carrying the tool's own 13.3 N.
-        comp = self.manipulator.get_ft_wrench_compensated()[0]
-        for i, axis in enumerate("xyz"):
-            data[f"ft_sensor/compensated/force/{axis}"] = float(comp[i])
-            data[f"ft_sensor/compensated/torque/{axis}"] = float(comp[i + 3])
-
+    def _collect_pj_extra_data(self) -> dict[str, float]:
         # The servo's following error, per joint. With an integrating setpoint this is
         # what generates the contact force -- force is K_eff times this -- so it is the
         # signal to plot the force against when matching the simulation to the robot.
         target = self.manipulator._q_servo_target
-        if target is not None:
-            measured = self.manipulator._robot_entity.get_qpos()[
-                :, self.manipulator._arm_dof_idx
-            ]
-            error = (target - measured)[0]
-            for name, err in zip(self._pj_joint_names, error.tolist()):
-                data[f"servo/follow_error/{name}"] = err
-
-        self._pj.send(data)
+        if target is None:
+            return {}
+        measured = self.manipulator.get_joints_positions()[
+            :, self.manipulator._arm_dof_idx
+        ]
+        error = (target - measured)[0].tolist()
+        return {
+            f"servo/follow_error/{name}": err
+            for name, err in zip(self.PJ_JOINT_NAMES, error)
+        }

@@ -358,17 +358,17 @@ class RosGrpcManipulator(BaseManipulator):
     def get_joints_positions(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 0]
+        return self._state[StateModality.JOINTS][:, :, 0]
 
     def get_joints_velocities(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 1]
+        return self._state[StateModality.JOINTS][:, :, 1]
 
     def get_joints_efforts(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 2]
+        return self._state[StateModality.JOINTS][:, :, 2]
 
     def get_ft_wrench(self) -> th.Tensor:
         """The F/T sensor measurement as the bridge reports it.
