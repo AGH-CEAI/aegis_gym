@@ -19,7 +19,5 @@ fts_payload_com: [0.0007, 0.0003, 0.0591]
 # 0.02 rad measures as a ~160 N ceiling at the tool; see RobotCfg for the full curve.
 servo_follow_error_max_rad: 0.02
 
-# 1.0 until measured. The first paired run suggested the robot is ~5.8x stiffer than
-# the simulated arm, but both estimates came from 2 s samples that straddled the whole
-# contact transition; re-measure with the per-step K_eff the probe now reports.
-servo_stiffness_scale: 1.0
+servo_stiffness_scale: 0.5
+servo_command_delay_s: 1.05

@@ -1,6 +1,7 @@
 import math
 import time
 import warnings
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
@@ -143,6 +144,8 @@ class GenesisManipulator(BaseManipulator):
         self.servo_dt = 0.04
         self._q_servo_target: th.Tensor | None = None
         self._servo_max_error = float(cfg_robot.servo_follow_error_max_rad)
+        self._servo_delay_s = float(cfg_robot.servo_command_delay_s)
+        self._servo_queue: deque[th.Tensor] = deque()
 
         self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
 
@@ -319,6 +322,7 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> None:
+        action = self._delay_command(action)
         action[:, :3] *= self.max_linear_speed
         action[:, 3:] *= self.max_angular_speed
 
@@ -347,6 +351,16 @@ class GenesisManipulator(BaseManipulator):
 
         self._servo_arm(q_vel[:, self._arm_dof_idx])
 
+    def _delay_command(self, action: th.Tensor) -> th.Tensor:
+        """Holds a command back by `servo_command_delay_s` before it reaches the arm."""
+        steps = round(self._servo_delay_s / max(self.servo_dt, 1e-9))
+        if steps <= 0:
+            return action
+        if not self._servo_queue:
+            self._servo_queue.extend(action.clone() for _ in range(steps))
+        self._servo_queue.append(action.clone())
+        return self._servo_queue.popleft()
+
     def resync_servo_target(self) -> None:
         """Drops the integrated setpoint, so the next velocity action starts from
         wherever the arm actually is.
@@ -355,6 +369,7 @@ class GenesisManipulator(BaseManipulator):
         carry a following error left over from a pose that no longer exists.
         """
         self._q_servo_target = None
+        self._servo_queue.clear()
 
     def _servo_arm(self, q_vel_arm: th.Tensor) -> None:
         """Advances the arm's joint setpoint by the commanded velocity, the way the

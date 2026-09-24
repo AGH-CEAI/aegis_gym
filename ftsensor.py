@@ -1195,13 +1195,14 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
     # inside ABORT_FORCE_N. Going faster does not fail gracefully -- it jumps straight
     # past the limit, which is what aborted the earlier runs.
     APPROACH_SPEED_MPS = 0.0015
-    # Once touching, slow down. K_eff is fitted against the following error, and at the
-    # traverse speed the force crosses 0.3 N to 5 N in about four steps -- a slope from
-    # four points, on the one number the two worlds have to agree on. Pressing at a
-    # fifth of the speed resolves the same span into tens of samples and costs seconds,
-    # because by then there is a fraction of a millimetre left to travel. The floor is
-    # the servo deadband, so on the robot this lands near 1 mm/s rather than 0.3.
-    PRESS_SPEED_MPS = 0.0003
+    # One speed for the whole press, deliberately. Slowing down on touch buys more
+    # samples across the loading curve, and it was worth it until the cell turned out
+    # to sit on about a second of command delay: the slow-down does not reach the arm
+    # until long after the press is over, so every estimator goes on dividing by a
+    # speed the arm is not running at. In simulation with the delay modelled that read
+    # K_eff as 160 kN/m against a true 6.7, and drove the following error negative --
+    # the same signature the robot produced. A constant speed cannot lie that way.
+    # The cost is roughly a dozen samples instead of twenty, which the fit tolerates.
     TOUCH_FORCE_N = 0.3  # counts as touching, for the stiffness estimate
     MAX_FORCE_N = 5.0  # press to here, then sweep back down
     MIN_FIT_FORCE_N = 0.5  # below this the reading is offset, not signal
@@ -1238,19 +1239,6 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
 
     stream = _ProbeStream(cfg)
     approach_speed = _clamp_speed(env, APPROACH_SPEED_MPS, "approach")
-    press_speed = _clamp_speed(
-        env,
-        max(
-            PRESS_SPEED_MPS,
-            float(env.max_linear_speed)
-            * (
-                MIN_ACTION_FRACTION_SIM
-                if _is_modelled(manipulator)
-                else MIN_ACTION_FRACTION
-            ),
-        ),
-        "press",
-    )
     settle_steps = max(1, round(SETTLE_SECONDS / dt))
 
     def _unit(vec: tuple[float, float, float]) -> th.Tensor:
@@ -1321,7 +1309,15 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         # slope is the whole force dynamic, and it is the one number that has to agree
         # between the two worlds.
         probe: list[tuple[float, float]] = []
+        # (commanded travel, force) over the same samples. A second estimator that
+        # never reads the robot's pose: force against how far the *command* has gone.
+        # If the tool were perfectly blocked the two would be identical, because then
+        # every millimetre of command becomes a millimetre of following error. They
+        # separate exactly insofar as the tool is still moving, which makes their ratio
+        # a measurement rather than a nuisance -- see `_estimate_stiffness_cmd`.
+        probe_cmd: list[tuple[float, float]] = []
         cmd_travel = 0.0
+        touched_logged = False
         touched = False
         # A silent approach cannot be diagnosed. Standing still, descending through
         # empty space and resting on the surface without building force all look
@@ -1358,14 +1354,14 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                     )
                 stalled_since = moved
             if f_n >= TOUCH_FORCE_N:
-                if speed != press_speed:
+                if not touched_logged:
+                    touched_logged = True
                     logger.info(
-                        f"  touched at {moved * 1000:.2f} mm ({f_n:.2f} N) -- pressing "
-                        f"on at {press_speed * 1000:.2f} mm/s to resolve the loading "
-                        f"curve"
+                        f"  touched at {moved * 1000:.2f} mm ({f_n:.2f} N) -- holding "
+                        f"{speed * 1000:.2f} mm/s through the loading curve"
                     )
-                    speed = press_speed
                 probe.append((lag, f_n))
+                probe_cmd.append((cmd_travel, f_n))
             if f_n >= ABORT_FORCE_N:
                 raise RuntimeError(
                     f"Contact force {f_n:.2f} N exceeded the abort limit"
@@ -1410,8 +1406,32 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         stiffness = _estimate_stiffness(probe)
         logger.info("-" * 78)
         logger.info(
-            f"  K_eff = {stiffness / 1000:7.1f} kN/m   over {len(probe)} loaded samples"
+            f"  K_eff(lag)  = {stiffness / 1000:7.1f} kN/m   over {len(probe)} samples"
         )
+        # The rate estimator uses the approach speed, not the press speed: if a command
+        # takes a second to land, the slow-down ordered at touch has not happened yet
+        # over the handful of samples this fits.
+        k_cmd = _estimate_stiffness_cmd(probe_cmd)
+        if k_cmd is not None:
+            logger.info(
+                f"  K_eff(cmd)  = {k_cmd / 1000:7.1f} kN/m   force against commanded "
+                f"travel, pose not used"
+            )
+            # K(cmd) is a lower bound: it charges the whole command to deflection.
+            # K(lag) credits the tool with whatever the reported pose says it moved.
+            # The gap is that motion, so the ratio says how much of the press the arm
+            # absorbed rather than delivered.
+            absorbed = k_cmd / max(stiffness, 1e-9)
+            logger.info(
+                f"  -> the tool kept moving through {100 * (1 - absorbed):.0f} % of "
+                f"the commanded press; only {100 * absorbed:.0f} % became deflection"
+            )
+            if absorbed < 0.25:
+                logger.warning(
+                    "  most of the command went into motion, not load, so K_eff(lag) "
+                    "rests almost entirely on the reported pose being right. Check it "
+                    "against an independent measurement before trusting the number."
+                )
         logger.info(
             "  force = K_eff * following error. This slope IS the contact force "
             "dynamic; to match the robot set"
@@ -1427,10 +1447,12 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         # it costs five seconds.
         logger.info(f"Holding {HOLD_SECONDS:.0f} s at zero commanded velocity")
         f_hold_0 = f_n
+        hold_trace: list[float] = []
         for i in range(max(1, round(HOLD_SECONDS / dt))):
             _stop(env, manipulator, device)
             _step(scene)
             f_n, _, _, _ = reading()
+            hold_trace.append(f_n)
             stream.send(
                 manipulator,
                 dt,
@@ -1443,9 +1465,21 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                 logger.info(f"    F={f_n:7.3f} N")
         logger.info(
             f"  hold: {f_hold_0:.2f} N -> {f_n:.2f} N  "
-            f"(x{f_n / max(f_hold_0, 1e-9):.2f} after the command stopped; "
-            f"the robot did x2.89)"
+            f"(x{f_n / max(f_hold_0, 1e-9):.2f} after the command stopped)"
         )
+        # Time to peak IS the command latency. Nothing is being commanded, so any
+        # further rise is the arm still executing what it was told before, and the
+        # moment it stops rising is the moment that command finally expired. Measured
+        # at 1.04 s on the real cell against one step in simulation -- the single
+        # largest dynamic difference between the two.
+        if hold_trace:
+            i_pk = max(range(len(hold_trace)), key=lambda k: hold_trace[k])
+            f_pk = hold_trace[i_pk]
+            logger.info(
+                f"  command latency ~{i_pk * dt:.2f} s (force peaked at {f_pk:.2f} N, "
+                f"{f_pk - f_hold_0:+.2f} N after the command stopped, then relaxed "
+                f"{100 * (f_n / max(f_pk, 1e-9) - 1):+.1f} %)"
+            )
 
         phase = "release"
 
@@ -1650,6 +1684,33 @@ def _contact_lever(manipulator: BaseManipulator) -> th.Tensor | None:
     quat, _ = _sensor_quat(manipulator)
     quat_conj = quat * th.tensor([1.0, -1.0, -1.0, -1.0], device=quat.device)
     return transform_by_quat(centroid_world.unsqueeze(0), quat_conj.unsqueeze(0))[0]
+
+
+def _estimate_stiffness_cmd(
+    probe_cmd: list[tuple[float, float]],
+) -> float | None:
+    """Effective stiffness in N/m from force against *commanded* travel.
+
+    Deliberately blind to the robot's reported pose, which is the one input
+    `_estimate_stiffness` cannot do without. That matters when the pose is the thing in
+    doubt: on a cell where a command takes about a second to land, the loop's idea of
+    how fast the arm is moving is wrong for the whole of a short press, and any
+    quantity built from it inherits that.
+
+    It is a lower bound, not a rival estimate. Charging every millimetre of command to
+    deflection is only exact if the tool is perfectly blocked; whatever it actually
+    moved is missing from the denominator here and present in the lag fit, so the two
+    bracket the truth and their ratio is how much of the press the arm absorbed.
+    """
+    if len(probe_cmd) < 4:
+        return None
+    x = th.tensor([v for v, _ in probe_cmd], dtype=th.float32)
+    f = th.tensor([v for _, v in probe_cmd], dtype=th.float32)
+    if float(x.max() - x.min()) <= 0.0:
+        return None
+    design = th.stack([x, th.ones_like(x)], dim=-1)
+    slope = float(th.linalg.lstsq(design, f.unsqueeze(-1)).solution.reshape(2)[0])
+    return max(slope, 0.0)
 
 
 def _log_torque_fit(

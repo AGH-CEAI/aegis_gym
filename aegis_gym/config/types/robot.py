@@ -44,3 +44,5 @@ class RobotCfg(BaseCfg):
     # K_eff_real / K_eff_sim. Note the joints also have a +/-87 Nm force range, which
     # caps the achievable force independently once kp * error exceeds it.
     servo_stiffness_scale: float
+
+    servo_command_delay_s: float
