@@ -1811,6 +1811,7 @@ def _log_torque_fit(
     # cannot work on a monotone sweep.
     tan_span = float(f_x[keep].max() - f_x[keep].min())
     nrm_span = float(f_z[keep].max() - f_z[keep].min())
+    corrected_ok = False
     logger.info("-" * 78)
     if int(keep.sum()) < 4 or tan_span < 0.05 * max(nrm_span, 1e-9):
         logger.info(
@@ -1835,6 +1836,9 @@ def _log_torque_fit(
         )
         logger.info(f"    offset          = {float(off2):8.4f} Nm")
         logger.info(f"    residual        = {float(resid2.abs().max()):8.4f} Nm max")
+        corrected_ok = float(resid2.abs().max()) <= 0.1 * max(
+            float(corrected.max() - corrected.min()), 1e-9
+        )
         share_fric = abs(r_z_m * tan_span)
         share_arm = abs(float(slope2) * nrm_span)
         total = share_fric + share_arm
@@ -1856,11 +1860,19 @@ def _log_torque_fit(
                     f"properly, sweep at two tilt angles or on a lower-friction surface."
                 )
     logger.info("=" * 78)
-    if span > 0 and worst > 0.1 * span:
+    if span > 0 and worst > 0.1 * span and not corrected_ok:
         logger.warning(
             f"  the residual is {100 * worst / span:.0f} % of the torque span -- these "
             "points are not on a line, so the slope is not a moment arm. Look for a "
             "transient left in the sweep, or contact moving between fingers."
+        )
+    elif span > 0 and worst > 0.1 * span:
+        # The one-term fit is scattered because it has nowhere to put the friction
+        # term, which is the normal case whenever the contact rubs. Saying "not on a
+        # line" here would be pointing at the fit that was superseded two lines above.
+        logger.info(
+            f"  (the one-term residual is {100 * worst / span:.0f} % of the span, as "
+            f"expected with friction present -- read the corrected arm above)"
         )
 
 

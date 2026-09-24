@@ -19,5 +19,5 @@ fts_payload_com: [0.0007, 0.0003, 0.0591]
 # 0.02 rad measures as a ~160 N ceiling at the tool; see RobotCfg for the full curve.
 servo_follow_error_max_rad: 0.02
 
-servo_stiffness_scale: 0.5
-servo_command_delay_s: 1.05
+servo_stiffness_scale: 0.65
+servo_command_delay_s: 1.20
