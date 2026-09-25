@@ -63,7 +63,6 @@ class RosGrcpScene(BaseScene):
         self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
-        self.box_size = tuple(self._cfg_env.box_size_default)
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt

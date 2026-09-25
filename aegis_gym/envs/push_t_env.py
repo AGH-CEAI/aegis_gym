@@ -75,16 +75,41 @@ class PushTEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        self.reward_scales = self._cfg_env.push_t_reward_scales
+        env_dict = self._cfg_env.env_specific_dict
 
-        self.success_thresh = self._cfg_env.tee_success_intersection_thresh
-        self.tee_friction = self._cfg_env.tee_friction
-        self.goal_offset_xy = self._cfg_env.tee_goal_offset
-        self.goal_z_rot = math.radians(self._cfg_env.tee_goal_z_rot_deg)
-        self.spawnbox_xlength = self._cfg_env.tee_spawnbox_xlength
-        self.spawnbox_ylength = self._cfg_env.tee_spawnbox_ylength
-        self.spawnbox_xoffset = self._cfg_env.tee_spawnbox_xoffset
-        self.spawnbox_yoffset = self._cfg_env.tee_spawnbox_yoffset
+        self.reward_scales = env_dict["reward_scales"]
+
+        self.success_thresh = env_dict["success_intersection_thresh"]
+        self.tee_friction = env_dict["friction"]
+        self.goal_offset_xy = list(env_dict["goal_offset"])
+        self.goal_z_rot = math.radians(env_dict["goal_z_rot_deg"])
+        self.spawnbox_xlength = env_dict["spawnbox_xlength"]
+        self.spawnbox_ylength = env_dict["spawnbox_ylength"]
+        self.spawnbox_xoffset = env_dict["spawnbox_xoffset"]
+        self.spawnbox_yoffset = env_dict["spawnbox_yoffset"]
+        self.mask_resolution = env_dict["mask_resolution"]
+        self.mask_half_width = env_dict["mask_half_width"]
+
+    @classmethod
+    def get_default_env_specific_dict(cls) -> dict:
+        return {
+            "reward_scales": {
+                "rotation_alignment": 1.0,
+                "position_alignment": 1.0,
+                "tcp_proximity": 1.0,
+                "success_bonus": 3.0,
+            },
+            "success_intersection_thresh": 0.90,
+            "friction": 0.4,
+            "goal_offset": [0.47, 0.0],
+            "goal_z_rot_deg": 0.0,
+            "spawnbox_xlength": 0.08,
+            "spawnbox_ylength": 0.2,
+            "spawnbox_xoffset": -0.04,
+            "spawnbox_yoffset": -0.1,
+            "mask_resolution": 64,
+            "mask_half_width": 0.15,
+        }
 
     def _observe_tcp_pose(self) -> th.Tensor:
         return self.manipulator.get_tcp_pose()
@@ -154,8 +179,9 @@ class PushTEnv(BaseEnv):
         polygon = section.discrete[0][:, :2]
 
         radius = float(np.linalg.norm(polygon, axis=1).max())
-        res = self._cfg_env.tee_mask_resolution
-        half_width = max(self._cfg_env.tee_mask_half_width, radius * 1.15)
+        # widen the grid if the configured half width cannot cover the footprint
+        self.mask_half_width = max(self.mask_half_width, radius * 1.15)
+        res, half_width = self.mask_resolution, self.mask_half_width
 
         lin = (np.arange(res, dtype=np.float64) + 0.5) / res * (
             2 * half_width
@@ -164,8 +190,6 @@ class PushTEnv(BaseEnv):
         grid_pts = np.stack([xx.ravel(), yy.ravel()], axis=-1)
         mask_np = check_points_in_polygon(grid_pts, polygon).reshape(res, res)
 
-        self._mask_res = res
-        self._mask_half_width = half_width
         self._px_per_meter = res / (2 * half_width)
         self._tee_mask = th.from_numpy(mask_np).to(device=self.device)
         self._tee_mask_flat = self._tee_mask.reshape(-1)
@@ -328,8 +352,8 @@ class PushTEnv(BaseEnv):
         tee_xy = tees_in_goal_xy[:, :, self._tee_mask_flat]  # [N, 2, K]
 
         # warped XY (goal frame) -> goal-mask pixel indices
-        res = self._mask_res
-        idx = th.floor((tee_xy + self._mask_half_width) * self._px_per_meter).long()
+        res = self.mask_resolution
+        idx = th.floor((tee_xy + self.mask_half_width) * self._px_per_meter).long()
         valid = (
             (idx[:, 0, :] >= 0)
             & (idx[:, 0, :] < res)

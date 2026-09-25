@@ -139,3 +139,43 @@ def test_robot_config_parsing():
 
     diffs = dict_diff(robot_dict, def_dict)
     assert not diffs, "\n".join(diffs)
+
+
+def test_env_specific_dict_defaults_are_resolved():
+    cm.setup_config(argv=[""])
+    env_dict = cm.get_config().env_cfg.env_specific_dict
+
+    assert env_dict == cm._resolve_env_specific_dict(env_name="reacher", given=None)
+
+
+def test_env_specific_dict_override_is_applied():
+    cm.setup_config(argv=["", "--env-dict", '{"box_fixed": False}'])
+    env_dict = cm.get_config().env_cfg.env_specific_dict
+
+    assert env_dict["box_fixed"] is False
+    assert env_dict["box_collision"] is False
+
+
+def test_env_specific_dict_unknown_key_raises():
+    with pytest.raises(ValueError, match="box_fixxed"):
+        cm.setup_config(argv=["", "--env-dict", '{"box_fixxed": False}'])
+
+
+def test_env_specific_dict_unknown_nested_key_raises():
+    with pytest.raises(ValueError, match="reward_scales.keypoint"):
+        cm.setup_config(argv=["", "--env-dict", '{"reward_scales": {"keypoint": 2.0}}'])
+
+
+def test_env_specific_dict_unknown_key_is_ignored_when_validation_disabled():
+    cm.setup_config(
+        argv=["", "--env-dict", '{"box_fixxed": False}', "--ignore-env-dict-validation"]
+    )
+    env_dict = cm.get_config().env_cfg.env_specific_dict
+
+    assert env_dict["box_fixxed"] is False
+
+
+def test_ignore_env_dict_validation_defaults_to_false():
+    args = parse_arguments(argv=[""])
+
+    assert args.ignore_env_dict_validation is False
