@@ -140,7 +140,7 @@ class GenesisScene(BaseScene):
                 substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.policy_dt,
+                dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -153,8 +153,8 @@ class GenesisScene(BaseScene):
                 plane_reflection=False,
             ),
             viewer_options=gs.options.ViewerOptions(
-                # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=60,
+                # refresh_rate=int(0.5 / self.ctrl_dt),
+                refresh_rate=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
