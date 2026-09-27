@@ -259,8 +259,6 @@ class GenesisScene(BaseScene):
             fov=fov,
             GUI=show_cameras_gui,
         )
-        # NOTE: CameraModality is a StrEnum, so tuple(CameraModality.RGB) yields
-        # ('R', 'G', 'B') rather than a one-element tuple of the enum member.
         self._cameras_modalities[name] = (CameraModality.RGB,)
 
     def _setup_attach_cameras(self):
@@ -506,14 +504,7 @@ class GenesisScene(BaseScene):
                 data[f"joint_states/{name}/velocity"] = float(vel.flatten()[0])
                 data[f"joint_states/{name}/effort"] = float(force.flatten()[0])
 
-        all_link_positions = robot.get_links_pos()
-        # all_link_quats = robot.get_links_quat()
-
-        link_positions = all_link_positions[0]
-        # link_quats = all_link_quats[0]
-
-        ee_idx = -1  # Last link = end effector
-        position = link_positions[ee_idx]
+        position = self.manipulator.get_tcp_position()[0]
 
         data["ee/position/x"] = float(position[0])
         data["ee/position/y"] = float(position[1])
