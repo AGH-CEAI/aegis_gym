@@ -259,7 +259,9 @@ class GenesisScene(BaseScene):
             fov=fov,
             GUI=show_cameras_gui,
         )
-        self._cameras_modalities[name] = tuple(CameraModality.RGB)
+        # NOTE: CameraModality is a StrEnum, so tuple(CameraModality.RGB) yields
+        # ('R', 'G', 'B') rather than a one-element tuple of the enum member.
+        self._cameras_modalities[name] = (CameraModality.RGB,)
 
     def _setup_attach_cameras(self):
         if self.cameras_setup != CamerasSetup.DEFAULT:
