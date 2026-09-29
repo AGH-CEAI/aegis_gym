@@ -103,7 +103,6 @@ class GenesisMesh(_GenesisPoseMixin, BaseMesh):
                 fixed=p.fixed,
                 collision=p.collision,
                 convexify=False,
-                decompose_nonconvex=True,
                 decimate=False,
             ),
             material=material,

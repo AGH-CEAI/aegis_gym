@@ -90,7 +90,13 @@ class GenesisScene(BaseScene):
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
-        self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
+
+        substeps = self.policy_dt / self.ctrl_dt
+        assert substeps.is_integer(), (
+            f"The policy time step ({self.policy_dt} s) must be an integer "
+            f"multiple of the control time step ({self.ctrl_dt} s), got {substeps}."
+        )
+        self.sim_substeps = int(substeps)
         self.max_episode_length = math.ceil(
             self._cfg_env.episode_length_s / self.policy_dt
         )
@@ -140,7 +146,7 @@ class GenesisScene(BaseScene):
                 substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.policy_dt,
+                dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -153,8 +159,8 @@ class GenesisScene(BaseScene):
                 plane_reflection=False,
             ),
             viewer_options=gs.options.ViewerOptions(
-                # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=60,
+                # refresh_rate=int(0.5 / self.ctrl_dt),
+                refresh_rate=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -259,7 +265,7 @@ class GenesisScene(BaseScene):
             fov=fov,
             GUI=show_cameras_gui,
         )
-        self._cameras_modalities[name] = tuple(CameraModality.RGB)
+        self._cameras_modalities[name] = (CameraModality.RGB,)
 
     def _setup_attach_cameras(self):
         if self.cameras_setup != CamerasSetup.DEFAULT:
@@ -504,14 +510,7 @@ class GenesisScene(BaseScene):
                 data[f"joint_states/{name}/velocity"] = float(vel.flatten()[0])
                 data[f"joint_states/{name}/effort"] = float(force.flatten()[0])
 
-        all_link_positions = robot.get_links_pos()
-        # all_link_quats = robot.get_links_quat()
-
-        link_positions = all_link_positions[0]
-        # link_quats = all_link_quats[0]
-
-        ee_idx = -1  # Last link = end effector
-        position = link_positions[ee_idx]
+        position = self.manipulator.get_tcp_position()[0]
 
         data["ee/position/x"] = float(position[0])
         data["ee/position/y"] = float(position[1])
