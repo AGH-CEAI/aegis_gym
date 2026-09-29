@@ -177,7 +177,44 @@ working on the host without a container.)
 toolbx supplies the GPU, X11, `$HOME` and device nodes itself, which is why the
 script passes no mount or `--device` flags.
 
-Two details that trip people up:
+### Dependency drift
+
+The editable install is `--no-deps`, and the image's dependencies were frozen
+when it was built — from the `uv.lock` of the branch cloned at build time
+(`scripts/install_simulation.sh`), not from your working tree. So a bump in
+your lock cannot reach an existing container on its own, and `require_base_image`
+deliberately refuses to rebuild the base image for you.
+
+That is why every create, recreate and **join** now checks:
+
+```
+>>> Verifying dependencies against /home/you/aegis_gym/uv.lock...
+>>> 9 package(s) differ from the lock:
+      numpy         lock=2.4.2      installed=2.2.6
+      protobuf      lock=7.34.0     installed=3.20.3
+      ...
+>>> Install the lock-pinned versions now? [Y]es / [n]o:
+```
+
+Saying yes installs just those pins with `--no-deps`, so nothing else moves.
+`torch`, `torchvision`, `triton`, the `nvidia-*` runtimes and `rsl-rl-lib` are
+never touched — they come from the CUDA wheel index and from git, and the lock
+pins the PyPI build of the same name, so reinstalling them from the lock is
+exactly the `+cu128` over `+cu129` mismatch the image is built to avoid.
+`--no-verify` skips the check; run it by hand with
+
+```bash
+bash container/scripts/verify_deps.sh ~/path/to/aegis_gym [--install]
+```
+
+It also runs `uv pip check`, which surfaces problems no lock comparison can
+see. One is already known and structural: `install_hardware_control.sh`
+apt-installs `python3-protobuf` and `python3-grpcio` in a **later layer** than
+the pip install, and Ubuntu 22.04's protobuf 3.20.3 shadows the lock's version,
+which `onnx` (requiring `>=4.25.1`) is unhappy about. Fixing that needs a
+change to the base image, not to the container you are in.
+
+Two more details that trip people up:
 
 **The editable install needs `sudo`.** toolbx runs as your host user, who
 cannot write to the image's root-owned `dist-packages`. The script handles it;
