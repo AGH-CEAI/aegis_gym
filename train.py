@@ -71,7 +71,7 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
 
     scene = None
     if control_type == Control.SIM:
-        gs.init(logging_level="info", precision="32")
+        gs.init(logging_level="info", precision="32", seed=cfg.rl_cfg.seed)
         scene = GenesisScene(cfg=cfg, device=cfg.get_device())
     if control_type == Control.ROS:
         if RosGrcpScene is None:
