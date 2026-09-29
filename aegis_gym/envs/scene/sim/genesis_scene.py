@@ -90,7 +90,13 @@ class GenesisScene(BaseScene):
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
-        self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
+
+        substeps = self.policy_dt / self.ctrl_dt
+        assert substeps.is_integer(), (
+            f"The policy time step ({self.policy_dt} s) must be an integer "
+            f"multiple of the control time step ({self.ctrl_dt} s), got {substeps}."
+        )
+        self.sim_substeps = int(substeps)
         self.max_episode_length = math.ceil(
             self._cfg_env.episode_length_s / self.policy_dt
         )
