@@ -136,6 +136,8 @@ class ConfigManager:
             cfg_dict["rl"]["experiment_name"] = args.experiment_name
         if args.max_iterations:
             cfg_dict["rl"]["max_iterations"] = args.max_iterations
+        if args.seed is not None:
+            cfg_dict["rl"]["seed"] = args.seed
         if args.num_envs:
             cfg_dict["env"]["num_envs"] = args.num_envs
         if args.env_name:

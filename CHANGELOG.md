@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed the `--seed` argument being ignored: it never reached the config, and the configured seed was never applied to any RNG.
+- [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed ClearML reusing the previous task of the same name, which overwrote its results.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Camera modalities were registered by expanding a string enum into single characters, so reading all camera images always raised.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - The PlotJuggler logger reported a camera frame instead of the TCP, because the end effector was resolved by link order.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Fixed the setter of `num_envs=1` for ROS control.
