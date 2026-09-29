@@ -5,7 +5,7 @@ import torch as th
 from clearml import Task
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy
+from aegis_gym.aux.utils import load_policy, resolve_checkpoint
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -161,6 +161,15 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             logger.info(">>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(env=env, cfg=cfg)
+            if args.resume:
+                ckpt = resolve_checkpoint(
+                    log_dir=cfg.logger_cfg.local_log_dir,
+                    clearml_task_id=args.load_rl_task_id,
+                    clearml_model_id=args.load_rl_model_id,
+                    local_checkpoint_pattern=r"model_\d+\.pt",
+                )
+                logger.info(f">>> (RL) Resuming training from checkpoint: {ckpt}")
+                runner.load(ckpt)
             logger.info(">>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=cfg.rl_cfg.max_iterations,

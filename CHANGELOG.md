@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added `--resume` launch arg for continuing the RL training from a checkpoint (ClearML task/model or local log dir).
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
