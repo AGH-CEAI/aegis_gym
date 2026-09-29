@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 import genesis as gs
 import torch as th
@@ -170,6 +171,11 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 )
                 logger.info(f">>> (RL) Resuming training from checkpoint: {ckpt}")
                 runner.load(ckpt)
+                mark_task_as_resumed(
+                    args=args,
+                    ckpt=ckpt,
+                    start_iteration=runner.runner.current_learning_iteration,
+                )
             logger.info(">>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=cfg.rl_cfg.max_iterations,
@@ -177,6 +183,32 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
+
+
+def mark_task_as_resumed(args: LaunchArgs, ckpt: Path, start_iteration: int) -> None:
+    """Note the resume source in the ClearML task description (INFO tab) and tags."""
+    task = Task.current_task()
+    if task is None:
+        return
+
+    if args.load_rl_model_id is not None:
+        source = f"ClearML model ID: {args.load_rl_model_id}"
+        source_tag = f"resumed_from:model/{args.load_rl_model_id}"
+    elif args.load_rl_task_id is not None:
+        source = f"ClearML task ID: {args.load_rl_task_id}"
+        source_tag = f"resumed_from:task/{args.load_rl_task_id}"
+    else:
+        source = "local log dir"
+        source_tag = "resumed_from:local"
+    note = (
+        f"Resumed RL training from {source}\n"
+        f"Checkpoint: {ckpt.name}\n"
+        f"Starting iteration: {start_iteration}"
+    )
+
+    comment = task.comment or ""
+    task.set_comment(f"{comment}\n\n{note}" if comment else note)
+    task.add_tags(["resumed", source_tag])
 
 
 if __name__ == "__main__":
