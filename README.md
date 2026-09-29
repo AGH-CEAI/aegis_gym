@@ -62,13 +62,16 @@ python3 train.py -a=bc --num-envs=2 --max-iterations=50 --load-rl-task=<CLEARML_
 python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN
 ```
 
-#### Resume RL training
-Add the `--resume` flag to continue the RL training from a checkpoint (model, optimizer state and iteration counter are restored). The `--max-iterations` value is the number of **additional** iterations.
+#### Resume training
+Add the `--resume` flag to continue the RL or BC training from a checkpoint (model, optimizer state and iteration counter are restored). The `--max-iterations` value is the number of **additional** iterations.
 ```bash
 # From the latest checkpoint of a ClearML task (or a specific model with `--load-rl-model-id`)
 python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume --load-rl-task-id=<CLEARML_TASK_ID>
 # From the latest local `model_<N>.pt` of the experiment with the same `-e` name
 python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume
+# BC: the student checkpoint comes from `--load-bc-task-id`/`--load-bc-model-id` (or the local `checkpoint_<N>.pt`),
+# the RL teacher is still given by `--load-rl-task-id`
+python3 train.py -a=bc --num-envs=2 --max-iterations=50 -e REACHER_TRAIN --resume --load-rl-task-id=<RL_TASK_ID> --load-bc-task-id=<BC_TASK_ID>
 ```
 
 > [!NOTE]
