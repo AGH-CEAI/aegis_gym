@@ -28,7 +28,7 @@ def init_clearml_task(
     return Task.init(
         project_name=f"{project_name}_{algorithm!s}-{control!s}",
         task_name=f"{exp_name}_{algorithm!s}",
-        reuse_last_task_id=True,
+        reuse_last_task_id=False,
     )
 
 
