@@ -58,13 +58,28 @@ uv build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-
 # Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 train.py -a=rl --num-envs=5 --max-iterations=10 -e REACHER_TRAIN
 python3 train.py -a=bc --num-envs=2 --max-iterations=50 --load-rl-task=<CLEARML_TASK_ID> -e REACHER_TRAIN
+# Select the environment by its short name with `--env` (e.g. `reacher`, `push_t`)
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN
 ```
+
+#### Resume RL training
+Add the `--resume` flag to continue the RL training from a checkpoint (model, optimizer state and iteration counter are restored). The `--max-iterations` value is the number of **additional** iterations.
+```bash
+# From the latest checkpoint of a ClearML task (or a specific model with `--load-rl-model-id`)
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume --load-rl-task-id=<CLEARML_TASK_ID>
+# From the latest local `model_<N>.pt` of the experiment with the same `-e` name
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume
+```
+
+> [!NOTE]
+> The environment configuration is taken from the current launch arguments, not from the checkpoint. Keep the same `--env` and `--env-dict` as in the resumed run.
 
 ### Evaluation
 ```bash
 # Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 eval.py -a=rl --num-envs=1 --load-rl-task=<CLEARML_TASK_ID> -e EVAL_REACHER
 python3 eval.py -a=bc --num-envs=10 --load-bc-task=<CLEARML_TASK_ID> -e EVAL_REACHER
+python3 eval.py -a=rl --env=push_t --num-envs=1 --load-rl-task-id=<CLEARML_TASK_ID> -e EVAL_PUSH_T
 ```
 
 ---
