@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added `--resume` launch arg for continuing the RL training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Added `--resume` launch arg for continuing the RL or BC training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.

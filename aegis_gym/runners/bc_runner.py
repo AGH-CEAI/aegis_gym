@@ -1,3 +1,4 @@
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -128,7 +129,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
     ) -> None:
         self._buffer.clear()
 
-        for it in range(num_learning_iterations):
+        start_iter = self._current_iter
+        for it in range(start_iter, start_iter + num_learning_iterations):
             # Collect experience
             start_time = time.time()
             self._collect_with_rl_teacher()
@@ -204,6 +206,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     forward_time=forward_time,
                     backward_time=backward_time,
                 )
+
+            self._current_iter = it + 1
 
             # Save checkpoints periodically
             if self.logger is not None and (it + 1) % self.cfg_train.save_freq == 0:
@@ -449,6 +453,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
             "model_state_dict": self._policy.state_dict(),
             "optimizer_state_dict": self._optimizer.state_dict(),
             "current_iter": self._current_iter,
+            "best_model_reward": self._best_model_reward,
+            "best_model_iter": self._best_model_iter,
             "config": self.cfg_train,
         }
         th.save(checkpoint, path)
@@ -459,8 +465,19 @@ class BehaviorCloningRunner(BasePolicyRunner):
         checkpoint = th.load(path, map_location=self.device, weights_only=False)
         self._policy.load_state_dict(checkpoint["model_state_dict"])
         self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.current_iter = checkpoint["current_iter"]
-        print(f"Model loaded from {path}")
+        self._current_iter = checkpoint["current_iter"]
+        if self._current_iter == 0:
+            # Checkpoints saved before the resume support always stored 0
+            m = re.search(r"_(\d+)\.pt$", Path(path).name)
+            if m:
+                self._current_iter = int(m.group(1))
+        self._best_model_reward = checkpoint.get("best_model_reward", float("-inf"))
+        self._best_model_iter = checkpoint.get("best_model_iter", -1)
+        print(f"Model loaded from {path} (iteration {self._current_iter})")
+
+    @property
+    def current_iter(self) -> int:
+        return self._current_iter
 
     def get_inference_policy(self, device: th.device) -> Any:
         return self._policy.to(device)

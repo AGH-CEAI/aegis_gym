@@ -134,10 +134,12 @@ def parse_arguments(
         action="store_true",
         default=False,
         help=(
-            "(RL training) Continue from a checkpoint: the model, optimizer state and "
-            "iteration counter are restored. The checkpoint is taken from "
+            "Continue the training from a checkpoint: the model, optimizer state and "
+            "iteration counter are restored. RL: the checkpoint is taken from "
             "`--load-rl-model-id`, `--load-rl-task-id` or, if neither is given, "
-            "the latest `model_<N>.pt` in the local log dir of the experiment."
+            "the latest `model_<N>.pt` in the local log dir of the experiment. "
+            "BC: the same with `--load-bc-model-id`, `--load-bc-task-id` or the latest "
+            "`checkpoint_<N>.pt` (the RL teacher is still set by `--load-rl-*`)."
         ),
     )
     p.add_argument(
