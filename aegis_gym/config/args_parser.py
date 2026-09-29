@@ -32,6 +32,7 @@ class LaunchArgs:
     load_rl_model_id: str | None
     load_bc_task_id: str | None
     load_bc_model_id: str | None
+    resume: bool | None
 
     enforce_current_config: bool | None
     control_type: Control | None
@@ -128,6 +129,17 @@ def parse_arguments(
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument("--load-bc-task-id", type=str, default=None)
     p.add_argument("--load-bc-model-id", type=str, default=None)
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help=(
+            "(RL training) Continue from a checkpoint: the model, optimizer state and "
+            "iteration counter are restored. The checkpoint is taken from "
+            "`--load-rl-model-id`, `--load-rl-task-id` or, if neither is given, "
+            "the latest `model_<N>.pt` in the local log dir of the experiment."
+        ),
+    )
     p.add_argument(
         "--enforce-current-config",
         action="store_true",
@@ -244,6 +256,7 @@ def parse_arguments(
         load_rl_model_id=args.load_rl_model_id,
         load_bc_task_id=args.load_bc_task_id,
         load_bc_model_id=args.load_bc_model_id,
+        resume=args.resume,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
         env_name=args.env,
