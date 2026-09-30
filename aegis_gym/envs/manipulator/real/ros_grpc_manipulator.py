@@ -194,13 +194,14 @@ class RosGrpcManipulator(BaseManipulator):
             },
             device=self.device,
         )
-        # Convert BGR into RGB and np.ndarray into th.Tensor
+        # The gRPC bridge sends uint8 BGR frames as (3, H, W).
+        # The policy is trained on simulator frames, which are float32 RGB in [0, 1].
         if not self._disable_cameras:
             self._vision = TensorDict(
                 {
                     k: th.from_numpy(v[[2, 1, 0], :, :])
-                    .to(self.device)
-                    .roll(1, dims=-1)
+                    .to(device=self.device, dtype=th.float32)
+                    .div_(255.0)
                     .unsqueeze(dim=0)
                     for k, v in states[ModalityGroup.VISION].items()
                 },
@@ -209,8 +210,8 @@ class RosGrpcManipulator(BaseManipulator):
         else:
             self._vision = None
         # In Genesis project, every quaterion is assumed to be in WXYZ, where in ROS it is XYZW
-        self._state[StateModality.POSE][3:] = self.pt.quat_xyzw_to_wxyz(
-            self._state[StateModality.POSE][3:]
+        self._state[StateModality.POSE][:, 3:] = self.pt.quat_xyzw_to_wxyz(
+            self._state[StateModality.POSE][:, 3:]
         )
 
     def set_joints_pd_gains(
@@ -307,17 +308,17 @@ class RosGrpcManipulator(BaseManipulator):
     def get_joints_positions(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 0]
+        return self._state[StateModality.JOINTS][:, :, 0]
 
     def get_joints_velocities(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 1]
+        return self._state[StateModality.JOINTS][:, :, 1]
 
     def get_joints_efforts(self) -> th.Tensor:
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
-        return self._state[StateModality.JOINTS][:, 2]
+        return self._state[StateModality.JOINTS][:, :, 2]
 
     def get_ft_wrench(self) -> th.Tensor:
         if self._state is None:
@@ -334,7 +335,7 @@ class RosGrpcManipulator(BaseManipulator):
 
     def get_gripper_width(self) -> th.Tensor:
         idx = AegisJointIndex.ROBOTIQ_HANDE_LEFT_FINGER_JOINT.value
-        result = self.get_joints_positions()[idx] * 2
+        result = self.get_joints_positions()[0, idx] * 2
         return result.unsqueeze(dim=0)
 
     def get_camera_image(
@@ -342,8 +343,7 @@ class RosGrpcManipulator(BaseManipulator):
     ) -> th.Tensor:
         """
         Returns image tensor for the given camera and modality:
-            - RGB:   [num_envs, H, W, 3], dtype uint8
-            - DEPTH: [num_envs, H, W, 1], dtype float32, values in meters
+            - RGB: [num_envs, 3, H, W], dtype float32, values in [0, 1]
         """
         if self._vision is None:
             raise ValueError("Vision disabled.")
