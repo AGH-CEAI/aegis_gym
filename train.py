@@ -1,11 +1,12 @@
 import sys
+from pathlib import Path
 
 import genesis as gs
 import torch as th
 from clearml import Task
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy
+from aegis_gym.aux.utils import load_policy, resolve_checkpoint
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -147,6 +148,22 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 cfg=cfg,
                 teacher=teacher_policy,
             )
+            if args.resume:
+                ckpt = resolve_checkpoint(
+                    log_dir=cfg.logger_cfg.local_log_dir,
+                    clearml_task_id=args.load_bc_task_id,
+                    clearml_model_id=args.load_bc_model_id,
+                    local_checkpoint_pattern=r"checkpoint_\d+\.pt",
+                )
+                logger.info(f">>> (BC) Resuming training from checkpoint: {ckpt}")
+                runner.load(ckpt)
+                mark_task_as_resumed(
+                    algorithm=Algorithm.BC,
+                    ckpt=ckpt,
+                    start_iteration=runner.current_iter,
+                    task_id=args.load_bc_task_id,
+                    model_id=args.load_bc_model_id,
+                )
             logger.info(">>> (BC) Starting runner")
             runner.learn(num_learning_iterations=args.max_iterations)
 
@@ -161,6 +178,22 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             logger.info(">>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(env=env, cfg=cfg)
+            if args.resume:
+                ckpt = resolve_checkpoint(
+                    log_dir=cfg.logger_cfg.local_log_dir,
+                    clearml_task_id=args.load_rl_task_id,
+                    clearml_model_id=args.load_rl_model_id,
+                    local_checkpoint_pattern=r"model_\d+\.pt",
+                )
+                logger.info(f">>> (RL) Resuming training from checkpoint: {ckpt}")
+                runner.load(ckpt)
+                mark_task_as_resumed(
+                    algorithm=Algorithm.RL,
+                    ckpt=ckpt,
+                    start_iteration=runner.runner.current_learning_iteration,
+                    task_id=args.load_rl_task_id,
+                    model_id=args.load_rl_model_id,
+                )
             logger.info(">>> (RL) Starting runner")
             runner.learn(
                 num_learning_iterations=cfg.rl_cfg.max_iterations,
@@ -168,6 +201,38 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
+
+
+def mark_task_as_resumed(
+    algorithm: Algorithm,
+    ckpt: Path,
+    start_iteration: int,
+    task_id: str | None,
+    model_id: str | None,
+) -> None:
+    """Note the resume source in the ClearML task description (INFO tab) and tags."""
+    task = Task.current_task()
+    if task is None:
+        return
+
+    if model_id is not None:
+        source = f"ClearML model ID: {model_id}"
+        source_tag = f"resumed_from:model/{model_id}"
+    elif task_id is not None:
+        source = f"ClearML task ID: {task_id}"
+        source_tag = f"resumed_from:task/{task_id}"
+    else:
+        source = "local log dir"
+        source_tag = "resumed_from:local"
+    note = (
+        f"Resumed {str(algorithm).upper()} training from {source}\n"
+        f"Checkpoint: {ckpt.name}\n"
+        f"Starting iteration: {start_iteration}"
+    )
+
+    comment = task.comment or ""
+    task.set_comment(f"{comment}\n\n{note}" if comment else note)
+    task.add_tags(["resumed", source_tag])
 
 
 if __name__ == "__main__":

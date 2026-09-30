@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Added `--resume` launch arg for continuing the RL or BC training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
@@ -56,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed the `--seed` argument being ignored: it never reached the config, and the configured seed was never applied to any RNG.
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed ClearML reusing the previous task of the same name, which overwrote its results.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Camera modalities were registered by expanding a string enum into single characters, so reading all camera images always raised.
