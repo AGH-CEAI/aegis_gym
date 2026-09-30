@@ -151,8 +151,11 @@ verify_dependencies() {
 
     # The checkout is visible inside at the very same path ($HOME is shared),
     # so the container runs the repo's own copy of the script.
+    # </dev/null: `toolbox run` would otherwise swallow the rest of stdin, and
+    # the reply to the prompt below along with it.
     toolbox run --container "${name}" \
-        bash "${SCRIPT_DIR}/../scripts/verify_deps.sh" "${repo}" || status=$?
+        bash "${SCRIPT_DIR}/../scripts/verify_deps.sh" "${repo}" \
+        < /dev/null || status=$?
 
     case "${status}" in
         0) return 0 ;;

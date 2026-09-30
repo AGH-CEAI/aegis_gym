@@ -119,6 +119,12 @@ import os
 import re
 import sys
 
+try:
+    from packaging.markers import Marker
+except ImportError:
+    # Ubuntu's python3-pip vendors it even when the standalone one is absent.
+    from pip._vendor.packaging.markers import Marker
+
 tmp = os.environ["TMP"]
 skip = re.compile(r"^(%s)$" % os.environ["OWNED_RE"])
 
@@ -129,12 +135,22 @@ def parse(path):
     Anything installed from source -- the rsl_rl fork, the aegis_grpc client,
     the editable checkout itself -- appears as a URL or `-e` line with no
     version to compare, so it is skipped rather than reported as missing.
+
+    uv.lock is universal, so the export can list one package several times
+    with a different pin per environment (`numpy==2.2.6 ; python < '3.11'`
+    and `numpy==2.4.2 ; python >= '3.11'`). Each marker is evaluated against
+    this interpreter -- the one the image installs into -- and pins that do
+    not apply here are dropped. Ignoring the markers would let the last line
+    win and ask for wheels this Python cannot install.
     """
     found = {}
     with open(path) as fh:
         for line in fh:
-            line = line.split(";")[0].strip()
+            line, _, marker = line.partition(";")
+            line = line.strip()
             if not line or line.startswith(("#", "-")):
+                continue
+            if marker.strip() and not Marker(marker.strip()).evaluate():
                 continue
             m = re.match(r"^([A-Za-z0-9._-]+)==([^\s]+)$", line)
             if m:
@@ -145,9 +161,26 @@ def parse(path):
 want = parse(os.path.join(tmp, "want.txt"))
 have = parse(os.path.join(tmp, "have.txt"))
 
-todo, rows = [], []
+# The hardware_control image installs aegis_ros's gRPC client after the lock,
+# and that client pins protobuf<3.21 and grpcio<1.51 to match the protoc its
+# stubs are generated with. Installing the lock's pins over it would break
+# every aegis_grpc import, so while the client is present those packages are
+# only reported, never installed. The client is installed from a path, so it
+# shows up in the freeze as `name @ file://...` rather than as a pin.
+with open(os.path.join(tmp, "have.txt")) as fh:
+    grpc_client = any(
+        re.match(r"^(proto|aegis)[-_]aegis[-_]grpc|^aegis[-_]grpc[-_]client", line)
+        for line in fh
+    )
+held = re.compile(r"^(protobuf|grpcio|grpcio-tools)$") if grpc_client else None
+
+todo, rows, kept = [], [], []
 for name in sorted(want):
     if skip.match(name):
+        continue
+    if held and held.match(name):
+        if have.get(name) != want[name]:
+            kept.append((name, want[name], have.get(name, "not installed")))
         continue
     if name not in have:
         rows.append((name, want[name], "not installed"))
@@ -158,6 +191,11 @@ for name in sorted(want):
 
 with open(os.path.join(tmp, "todo.txt"), "w") as fh:
     fh.write("\n".join(todo) + ("\n" if todo else ""))
+
+if kept:
+    print(">>> Held back for the aegis_grpc client (protobuf<3.21, grpcio<1.51):")
+    for name, wanted, installed in kept:
+        print(f"      {name:<14} lock={wanted:<14} installed={installed}")
 
 if not rows:
     print(">>> All lock-pinned packages match the installed versions.")
@@ -177,9 +215,9 @@ compare || status=$?
 [[ ${status} -eq 0 || ${status} -eq 3 ]] || exit "${status}"
 
 # Advisory: reports genuinely unsatisfiable requirements, including ones no
-# lock comparison can see -- the image apt-installs python3-protobuf and
-# python3-grpcio in a later layer than the pip install, and those shadow the
-# lock's versions. Never fatal; it describes the image, not this checkout.
+# lock comparison can see -- such as the protobuf/grpcio versions held back
+# above for the aegis_grpc client, which the lock's own packages (onnx) may
+# reject. Never fatal; it describes the image, not this checkout.
 if ! "${UV}" pip check --system > "${TMP}/check.txt" 2>&1; then
     echo ">>> WARNING: 'uv pip check' reports unsatisfied requirements:"
     grep -v '^Using Python' "${TMP}/check.txt" | sed 's/^/      /'
