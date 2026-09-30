@@ -158,9 +158,9 @@ class BaseManipulator(ABC):
     ) -> th.Tensor:
         """
         Returns image tensor for the given camera and modality:
-            - RGB:   [num_envs, H, W, 3], dtype uint8
-            - RGBD:  [num_envs, H, W, 4], dtype float32, depth in meters
-            - DEPTH: [num_envs, H, W, 1], dtype float32, values in meters
+            - RGB:   [num_envs, 3, H, W], dtype float32, values in [0, 1]
+            - RGBD:  [num_envs, 4, H, W], dtype float32, depth in meters
+            - DEPTH: [num_envs, 1, H, W], dtype float32, values in meters
         """
         ...
 
