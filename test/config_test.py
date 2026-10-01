@@ -1,4 +1,5 @@
 from dataclasses import fields
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ from aegis_gym.config.types import (
     Control,
     VisionEncoderCfg,
 )
+from aegis_gym.envs import PushTEnv
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):
@@ -146,6 +148,30 @@ def test_env_specific_dict_defaults_are_resolved():
     env_dict = cm.get_config().env_cfg.env_specific_dict
 
     assert env_dict == cm._resolve_env_specific_dict(env_name="reacher", given=None)
+
+
+def test_episode_length_defaults_to_the_selected_env():
+    cm.setup_config(argv=["", "--env", "push_t"])
+    env_cfg = cm.get_config().env_cfg
+
+    assert env_cfg.episode_length_s == PushTEnv.DEFAULT_EPISODE_LENGTH_S
+    assert env_cfg.max_steps == int(env_cfg.episode_length_s / env_cfg.policy_dt)
+
+
+def test_episode_length_launch_arg_overrides_env_default():
+    cm.setup_config(argv=["", "--env", "push_t", "--episode-length-s", "12.0"])
+
+    assert cm.get_config().env_cfg.episode_length_s == 12.0
+
+
+def test_push_t_preset_config_is_applied():
+    preset = Path(__file__).parent.parent / "aegis_gym/config/presets/push_t.yaml"
+    cm.setup_config(argv=["", "--env", "push_t", "-c", str(preset)])
+    rl_cfg = cm.get_config().rl_cfg
+
+    assert rl_cfg.algorithm.gamma == 0.995
+    assert rl_cfg.policy.actor_obs_normalization is True
+    assert rl_cfg.policy.noise_std_type == "log"
 
 
 def test_env_specific_dict_override_is_applied():
