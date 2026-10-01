@@ -1,6 +1,6 @@
 import ast
 import sys
-from argparse import ArgumentParser, ArgumentTypeError
+from argparse import ArgumentParser, ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -191,8 +191,13 @@ def parse_arguments(
 
     p.add_argument(
         "--record",
-        action="store_true",
-        help="Record stereo images as video during evaluation",
+        action=BooleanOptionalAction,
+        default=True,
+        help=(
+            "Record the policy preview video on the fixed POLICY_PREVIEW_SEEDS and report it "
+            "to the ClearML Debug Samples (simulation only; at the end of the training, or of "
+            "the evaluation). Enabled by default, disable with `--no-record`."
+        ),
     )
     p.add_argument(
         "--video-path",

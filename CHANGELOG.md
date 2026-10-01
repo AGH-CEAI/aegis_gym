@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the policy preview (`train.py` and `eval.py`, simulation only, enabled by default, `--no-record` to disable): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
+- Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher.
+- Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
 - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
 - The Push-T episode terminates when the T-block leaves the table top.
 - The Push-T episode terminates on success (`terminate_on_success`), with a one-off `success_bonus`.
