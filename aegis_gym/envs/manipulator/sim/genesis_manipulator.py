@@ -17,6 +17,10 @@ RigidLink = TypeVar
 
 
 class GenesisManipulator(BaseManipulator):
+    # Fraction of the policy step the position target leads the joints; larger values overshoot
+    # the calibrated speed on the action changes (0.3 measured at ~96% of the per-step limit)
+    _SERVO_TARGET_LEAD = 0.3
+
     def __init__(
         self,
         num_envs: int,
@@ -25,6 +29,9 @@ class GenesisManipulator(BaseManipulator):
         available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
         show_cell: bool,
+        policy_dt: float,
+        max_linear_speed: float,
+        max_angular_speed: float,
         device: th.device | None = None,
     ):
         super().__init__(device=device)
@@ -35,6 +42,7 @@ class GenesisManipulator(BaseManipulator):
         self._observe_camera_fn = cameras_obs_getter
         self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
+        self._policy_dt = policy_dt
 
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
@@ -66,8 +74,9 @@ class GenesisManipulator(BaseManipulator):
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
-        self.max_linear_speed = 1.0
-        self.max_angular_speed = 1.0
+        # calibrated on the real robot, may be scaled by the domain randomization
+        self.max_linear_speed = max_linear_speed
+        self.max_angular_speed = max_angular_speed
 
         self._ik_method = cfg_robot.ik_method
 
@@ -199,22 +208,28 @@ class GenesisManipulator(BaseManipulator):
             case _:
                 raise ValueError(f"Invalid IK method: {self._ik_method}")
 
-        # Set gripper position if specified
-        if open_gripper is not None:
-            q_pos = self._robot_entity.get_qpos()
-            if open_gripper:
-                q_pos[:, self._fingers_dof] = self._gripper_open_dof
-            else:
-                q_pos[:, self._fingers_dof] = self._gripper_close_dof
-            # Control gripper with position control
-            if q_vel is not None:
-                self._robot_entity.control_dofs_position(
-                    position=q_pos[:, self._fingers_dof],
-                    dofs_idx_local=self._fingers_dof,
-                )
-            self._robot_entity.control_dofs_position(position=q_pos)
+        # Emulates the real servo, which streams joint positions: the stiff PD tracks the commanded
+        # velocity with a position target slightly ahead of the current joints, so the contacts can't
+        # deflect the arm. Anchoring at the current joints (not the last target) avoids a windup.
+        q_pos = self._robot_entity.get_qpos()
+        arm_q_vel = q_vel[:, self._arm_dof_idx]
+        self._robot_entity.control_dofs_position_velocity(
+            position=q_pos[:, self._arm_dof_idx]
+            + arm_q_vel * self._policy_dt * self._SERVO_TARGET_LEAD,
+            velocity=arm_q_vel,
+            dofs_idx_local=self._arm_dof_idx,
+        )
 
-        self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        if open_gripper is None:
+            return
+        if open_gripper:
+            q_pos[:, self._fingers_dof] = self._gripper_open_dof
+        else:
+            q_pos[:, self._fingers_dof] = self._gripper_close_dof
+        self._robot_entity.control_dofs_position(
+            position=q_pos[:, self._fingers_dof],
+            dofs_idx_local=self._fingers_dof,
+        )
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -307,6 +322,34 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
+
+    def ctrl_reset_to_pose(
+        self,
+        pose: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        # IK is seeded with the current joints, so reset to home beforehand to keep the arm configuration
+        q_pos = self._robot_entity.inverse_kinematics(
+            link=self._ee_link,
+            pos=pose[:, :3],
+            quat=pose[:, 3:7],
+            dofs_idx_local=self._arm_dof_idx,
+            envs_idx=idx,
+        )
+        if open_gripper is not None:
+            if open_gripper:
+                q_pos[:, self._fingers_dof] = self._gripper_open_dof
+            else:
+                q_pos[:, self._fingers_dof] = self._gripper_close_dof
+
+        self._robot_entity.set_qpos(q_pos, envs_idx=idx)
+        self._robot_entity.control_dofs_position(position=q_pos, envs_idx=idx)
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (

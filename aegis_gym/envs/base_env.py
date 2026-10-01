@@ -38,7 +38,7 @@ class BaseEnv(VecEnv):
     """
     Base class for implementing an environment compatible with rsl_rl's VecEnv.
     See https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/env/vec_env.py
-    You need to define the `DEFAULT_MODALITIES` and `_observation_fns` manually.
+    You need to define the `DEFAULT_MODALITIES`, `DEFAULT_EPISODE_LENGTH_S` and `_observation_fns` manually.
     """
 
     DEFAULT_MODALITIES: frozenset[Modality]

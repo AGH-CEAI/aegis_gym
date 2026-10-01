@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
+- The Push-T episode terminates when the T-block leaves the table top.
+- The Push-T episode terminates on success (`terminate_on_success`), with a one-off `success_bonus`.
+- Added the `aegis_gym/config/presets/push_t.yaml` PPO configuration for the Push-T task (more samples per update, `gamma=0.995`, observations normalization, larger networks).
+- The Push-T logs the `success_rate` and `tee_off_table_rate` of the finished episodes.
+- The Push-T warns when the goal or the T-block spawn box are outside of the TCP workspace (virtual fence).
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, disabled by default, enabled with `enable_policy_preview` in the logger config, overridden by the `--record`/`--no-record` launch arg): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set (each with the `model_<iteration>.pt` checkpoint of its policy; the episodes interrupted by the preview are left out of the training statistics). Runs with the visual observations record the network's camera inputs instead of the overview camera.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher. The seeded values, a counter-based hash computed on the env device and bit-identical on the CPU and the GPU.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
@@ -34,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Push-T task uses planar XY TCP velocity actions (`num_actions=2`), with the TCP held above the table at `tcp_height_ratio` of the T-block height, in a fixed downward orientation and within the `tcp_workspace_x/y` limits.
+- The Genesis manipulator tracks the velocity action with a stiff joint position-velocity PD (like the real servo), instead of the pure velocity control, so contacts don't deflect the TCP.
+- The Push-T task pushes the T-block with a closed gripper.
+- The Push-T `rotation_alignment` and `position_alignment` rewards are replaced by a single pose distance of the T-block to the goal (RMS distance of the corresponding footprint points, combining the centroid and yaw errors in meters), used by the `pose_progress` (decrease of the distance, default) and `pose_alignment` (squashed distance, disabled by default) rewards.
+- The Push-T `tcp_proximity` reward is replaced by the `tcp_approach` progress reward (decrease of the TCP distance to the closest point of the T-block footprint, instead of the proximity to its origin lying inside the crossbar).
+- The Push-T observations are planar: TCP position, TCP-to-T and T-to-goal centroid offsets, sin/cos of the yaw error and yaw, T velocity and the previous action.
+- The `episode_length_s` defaults to the selected environment's `DEFAULT_EPISODE_LENGTH_S` (reacher: 5 s, push_t: 30 s) unless given in the config or with `--episode-length-s`.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The config file given with `-c` is now deep merged with the defaults, so it may hold only the overridden entries (previously each of its sections replaced the default section as a whole).
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The Push-T rewards and `extras["success"]` are computed before the reset of the terminated environments (as for the Reacher in PR-165).
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
@@ -71,11 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - [PR-166](https://github.com/AGH-CEAI/aegis_gym/pull/166) - With the ClearML logger, rsl_rl's `*/time` scalars (logged with the elapsed seconds as the step, which ClearML takes as the iteration) are dropped, so they no longer move the task's last iteration; ClearML plots the scalars against the wall time itself.
-- With the ClearML logger, rsl_rl's `*/time` scalars (logged with the elapsed seconds as the step, which ClearML takes as the iteration) are dropped, so they no longer move the task's last iteration; ClearML plots the scalars against the wall time itself.
-- The `Modality.CAMERA_TOOL_LEFT_RGB`/`CAMERA_TOOL_RIGHT_RGB` values pointed at the scene cameras names (`cam_scene_left`/`right`) instead of the tool ones (`cam_tool_left`/`right`); the observations themselves were already taken from the tool cameras.
-- The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
-- Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
-- The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).
 - [PR-175](https://github.com/AGH-CEAI/aegis_gym/pull/175) - Fixed `RosGrpcManipulator.ctrl_go_to_goal()` overwriting the caller's goal tensor with an XYZW quaternion, and silently ignoring a goal rejected by the planner; it now raises `RuntimeError`.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Fixed the circular import `aegis_gym.envs` -> `aegis_gym.config` -> `args_parser` -> `aegis_gym.envs`.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
