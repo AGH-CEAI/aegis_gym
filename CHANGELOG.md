@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the policy preview (`train.py` and `eval.py`, simulation only, enabled by default, `--no-record` to disable): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
+- Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher.
+- Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
+- Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
+- The Push-T episode terminates when the T-block leaves the table top.
+- The Push-T episode terminates on success (`terminate_on_success`), with a one-off `success_bonus`.
+- Added the `aegis_gym/config/presets/push_t.yaml` PPO configuration for the Push-T task (more samples per update, `gamma=0.995`, observations normalization, larger networks).
+- The Push-T logs the `success_rate` and `tee_off_table_rate` of the finished episodes.
+- The Push-T warns when the goal or the T-block spawn box are outside of the TCP workspace (virtual fence).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Added `--resume` launch arg for continuing the RL or BC training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The evaluation loads the `env`, `rl`, `bc` and `robot` config from the ClearML task of the evaluated policy (`--load-rl/bc-task-id`, or the task of `--load-rl/bc-model-id`), so the policy is built and evaluated as it was trained. The config file and launch args still apply on top, `num_envs`, `max_steps` and the visualization flags are kept from the current run, and `--enforce-current-config` disables it.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The BC training loads the `env`, `rl` and `robot` config from the ClearML task of the RL teacher (`--load-rl-task-id` or the task of `--load-rl-model-id`), keeping the current `bc` config.

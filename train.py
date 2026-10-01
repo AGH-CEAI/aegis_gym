@@ -16,7 +16,12 @@ from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
-from aegis_gym.runners import BasePolicyRunner, BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners import (
+    BehaviorCloningRunner,
+    OnPolicyRunner,
+    PolicyPreviewRecorder,
+    make_visual_bc_policy,
+)
 
 
 def init_clearml_task(
@@ -75,6 +80,29 @@ def main():
 
     logger.info("Proceeding training")
     train_runner(env=env, cfg=cfg)
+
+
+def create_policy_preview_recorder(
+    env: BaseEnv, cfg: ExpConfig
+) -> PolicyPreviewRecorder | None:
+    """The policy preview recorder, if enabled (`--record`, default) and supported by the env."""
+    if not cfg.args.enable_recording:
+        return None
+    if cfg.args.control_type != Control.SIM:
+        # the preview resets the envs into its seeded initial states, never do it on the robot
+        get_logger("Train").info(
+            "The policy preview is recorded only in the simulation."
+        )
+        return None
+    recorder = PolicyPreviewRecorder(
+        env=env, out_dir=Path(cfg.logger_cfg.local_log_dir) / "policy_preview"
+    )
+    if not recorder.is_available():
+        get_logger("Train").warning(
+            "The policy preview isn't available for this environment; skipping the recording."
+        )
+        return None
+    return recorder
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -172,6 +200,15 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.info(">>> (BC) Starting runner")
             runner.learn(num_learning_iterations=args.max_iterations)
 
+            preview = create_policy_preview_recorder(env=env, cfg=cfg)
+            if preview is not None:
+                logger.info(">>> (BC) Recording the final policy preview")
+                student = runner.get_inference_policy(device=cfg.get_device()).eval()
+                preview.record(
+                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    iteration=max(args.max_iterations - 1, 0),
+                )
+
         case Algorithm.RL:
             logger.info(">>> Starting training: Reinforcement Learning (RL)")
 
@@ -192,11 +229,34 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                     model_id=args.load_rl_model_id,
                     local_checkpoint_pattern=r"model_\d+\.pt",
                 )
+            preview = create_policy_preview_recorder(env=env, cfg=cfg)
+            preview_interval = cfg.logger_cfg.policy_preview_interval
+
             logger.info(">>> (RL) Starting runner")
-            runner.learn(
-                num_learning_iterations=cfg.rl_cfg.max_iterations,
-                init_at_random_ep_len=True,
-            )
+            if preview is not None and preview_interval > 0:
+
+                def record_preview(iteration: int) -> None:
+                    policy = runner.get_inference_policy(device=cfg.get_device())
+                    preview.record(policy=policy, iteration=iteration)
+
+                runner.learn_in_chunks(
+                    num_learning_iterations=cfg.rl_cfg.max_iterations,
+                    chunk_iterations=preview_interval,
+                    on_chunk_end=record_preview,
+                    # re-desynchronize the episodes after every preview reset
+                    init_at_random_ep_len=True,
+                )
+            else:
+                runner.learn(
+                    num_learning_iterations=cfg.rl_cfg.max_iterations,
+                    init_at_random_ep_len=True,
+                )
+            if preview is not None:
+                logger.info(">>> (RL) Recording the final policy preview")
+                preview.record(
+                    policy=runner.get_inference_policy(device=cfg.get_device()),
+                    iteration=runner.current_iteration,
+                )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
 

@@ -60,6 +60,7 @@ def test_default_arguments():
         "algorithm",
         "debug_record_dir",
         "project_name",
+        "enable_recording",
     }
     for f in fields(args):
         if f.name not in excluded:
@@ -70,6 +71,11 @@ def test_default_arguments():
     assert args.control_type == Control.SIM
     assert args.algorithm == Algorithm.RL
     assert str(args.debug_record_dir).startswith("/tmp/")
+    assert args.enable_recording is True
+
+
+def test_record_can_be_disabled():
+    assert parse_arguments(argv=["", "--no-record"]).enable_recording is False
 
 
 def test_get_config_before_setup_raises():
