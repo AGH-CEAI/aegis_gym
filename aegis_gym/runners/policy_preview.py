@@ -253,7 +253,7 @@ class PolicyPreviewRecorder:
 
 
 def _camera_label(modality: Modality) -> str:
-    """Short camera name; from the member name, as the tool cameras' values read "cam_scene_*"."""
+    """Short camera name, e.g. `tool_left`."""
     return modality.name.lower().removeprefix("camera_").removesuffix("_rgb")
 
 
