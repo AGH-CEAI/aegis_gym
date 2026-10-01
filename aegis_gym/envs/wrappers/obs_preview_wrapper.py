@@ -13,6 +13,27 @@ from ..base_env import BaseEnv, ResetReturn, StepReturn
 from .base_wrapper import BaseEnvWrapper
 
 
+def camera_obs_to_image(
+    img: th.Tensor,
+    max_side: int,
+    normalized: bool = True,
+    interpolation: int = cv2.INTER_AREA,
+) -> np.ndarray:
+    """
+    Converts a [3, H, W] camera observation (values in [0, 1] if `normalized`) into an RGB
+    [H', W', 3] uint8 image, scaled to fit in `max_side`.
+    """
+    img_np = img.permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
+    img_np = (img_np * 255).astype(np.uint8) if normalized else img_np.astype(np.uint8)
+    height, width = img_np.shape[:2]
+    scale = min(max_side / width, max_side / height)
+    return cv2.resize(
+        img_np,
+        (int(width * scale), int(height * scale)),
+        interpolation=interpolation,
+    )
+
+
 class ObsPreviewEnvWrapper(BaseEnvWrapper):
     """
     The debug wrapper to preview observations (e.g. visual) from the environment.
@@ -94,22 +115,12 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         for env_idx in range(num_envs):
             row_images: list[np.ndarray] = []
             for col_idx, modality in enumerate(ordered_modalities):
-                img = (
-                    mm_obs[modality.value][env_idx].permute(1, 2, 0).cpu().numpy()
-                )  # CHW -> HWC
-                if normalize and np.issubdtype(img.dtype, np.floating):
-                    img = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
-                else:
-                    img = img.astype(np.uint8)
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-                height, width = img.shape[:2]
-                scale = min(max_side / width, max_side / height)
-                img = cv2.resize(
-                    img,
-                    (int(width * scale), int(height * scale)),
-                    interpolation=cv2.INTER_AREA,
+                img = camera_obs_to_image(
+                    mm_obs[modality.value][env_idx],
+                    max_side=max_side,
+                    normalized=normalize,
                 )
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 if env_idx == 0:
                     cv2.putText(
                         img,
