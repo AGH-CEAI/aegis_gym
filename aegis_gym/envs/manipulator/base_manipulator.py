@@ -90,6 +90,24 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
+    def ctrl_reset_to_pose(
+        self,
+        pose: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> None:
+        """
+        Place the end-effector at the `pose` as a part of the episode reset.
+        In simulation the joints are set instantly (IK solution), a real robot executes a blocking motion.
+
+        Args:
+            pose:   [len(envs_idx), 7] tensor containing target end-effector pose
+                    [x, y, z, qw, qx, qy, qz].
+            open_gripper: Optional bool to control gripper state
+        """
+        ...
+
+    @abstractmethod
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         """Move to the home joint configuration."""
         ...
