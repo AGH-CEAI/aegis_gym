@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With the ClearML logger, rsl_rl's `*/time` scalars (logged with the elapsed seconds as the step, which ClearML takes as the iteration) are dropped, so they no longer move the task's last iteration; ClearML plots the scalars against the wall time itself.
 - The `Modality.CAMERA_TOOL_LEFT_RGB`/`CAMERA_TOOL_RIGHT_RGB` values pointed at the scene cameras names (`cam_scene_left`/`right`) instead of the tool ones (`cam_tool_left`/`right`); the observations themselves were already taken from the tool cameras.
 - The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
 - Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
