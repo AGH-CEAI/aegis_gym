@@ -154,10 +154,12 @@ class PushTEnv(BaseEnv):
             "friction": 0.4,
             "goal_offset": [0.47, 0.0],
             "goal_z_rot_deg": 0.0,
-            "spawnbox_xlength": 0.08,
-            "spawnbox_ylength": 0.2,
-            "spawnbox_xoffset": -0.04,
-            "spawnbox_yoffset": -0.1,
+            # tee origin spawn box w.r.t. the goal; with any yaw the tee stays within the TCP
+            # workspace sideways and >= 4 cm away from the TCP start pose
+            "spawnbox_xlength": 0.14,
+            "spawnbox_ylength": 0.34,
+            "spawnbox_xoffset": -0.05,
+            "spawnbox_yoffset": -0.17,
             "mask_resolution": 64,
             "mask_half_width": 0.15,
             # TCP height above the table as a fraction of the tee height
