@@ -244,17 +244,18 @@ class ReacherEnv(BaseEnv):
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
         self._scene.step()
 
-        # check env termination (Sets the self.reset_buf)
-        env_reset_idx = self._is_episode_complete()
-        if len(env_reset_idx) > 0:
-            self.reset_idx(env_reset_idx)
-
-        # compute reward based on task
-        reward = th.zeros_like(self.reset_buf, device=self.device, dtype=th.float32)
+        # compute reward based on task, before the reset replaces the terminal state
+        reward = th.zeros(self.num_envs, device=self.device, dtype=th.float32)
         for name, reward_func in self.reward_functions.items():
             rew = reward_func() * self.reward_scales[name]
             reward += rew
             self.episode_sums[name] += rew
+
+        # check env termination (Sets the self.reset_buf)
+        env_reset_idx = self._is_episode_complete()
+        if len(env_reset_idx) > 0:
+            self.reset_idx(env_reset_idx)
+            self._obs_cache_clear()
 
         obs = self.get_observations()
         dones = self.reset_buf
