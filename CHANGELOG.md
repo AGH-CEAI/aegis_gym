@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With the ClearML logger, rsl_rl's `*/time` scalars (logged with the elapsed seconds as the step, which ClearML takes as the iteration) are dropped, so they no longer move the task's last iteration; ClearML plots the scalars against the wall time itself.
+- The `Modality.CAMERA_TOOL_LEFT_RGB`/`CAMERA_TOOL_RIGHT_RGB` values pointed at the scene cameras names (`cam_scene_left`/`right`) instead of the tool ones (`cam_tool_left`/`right`); the observations themselves were already taken from the tool cameras.
+- The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
+- Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
+- The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.
