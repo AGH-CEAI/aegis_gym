@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Enlarged the Push-T T-block spawn box ~3x (x: 0.42-0.56 m, y: -0.17-0.17 m), keeping the T-block within the TCP workspace sideways and away from the TCP start pose. The policy previews of the same seeds start from different poses than before this change.
 - The Push-T task uses planar XY TCP velocity actions (`num_actions=2`), with the TCP held above the table at `tcp_height_ratio` of the T-block height, in a fixed downward orientation and within the `tcp_workspace_x/y` limits.
 - The Genesis manipulator tracks the velocity action with a stiff joint position-velocity PD (like the real servo), instead of the pure velocity control, so contacts don't deflect the TCP.
 - The Push-T task pushes the T-block with a closed gripper.
