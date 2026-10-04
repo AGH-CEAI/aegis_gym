@@ -3,6 +3,8 @@ gripper_link_names: ["robotiq_hande_left_finger", "robotiq_hande_right_finger"]
 default_arm_dof: [0.0, -2.09, 2.09, -1.57, -1.57, 0.0]
 default_gripper_dof: [0.025, 0.025]
 ik_method: "dls_ikv"
-urdf_id_cell: "c44c56e7671d4004b120b0341fb727a4"
-urdf_id_cell_collision: "0424f220ddc54091ae3b56b29854532f"
-urdf_id_no_cell: "718ea536c68c4aaba79d1515ced27eeb"
+urdf_id_cell: "467c913ca8154e97b20f4af2f5d610b0"
+urdf_id_cell_collision: "f6af140504884a8999fc486c2388d80e"
+urdf_id_cell_no_leds: "fb3689c5d7614944afd594d24ccc4959"
+urdf_id_cell_no_leds_collision: "01b800b6990f48fa963faaa8ddad9145"
+urdf_id_no_cell: "621ea36225b943d48f51f151645ca2c5"
