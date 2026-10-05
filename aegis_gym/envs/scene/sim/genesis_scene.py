@@ -84,11 +84,16 @@ class GenesisScene(BaseScene):
         self.cameras_setup = self._cfg_env.cameras_setup
         self.table_size = self._cfg_env.table_size
         self.workbench_size = self._cfg_env.workbench_size
-        self.box_size = self._cfg_env.box_size_default
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
-        self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
+
+        substeps = self.policy_dt / self.ctrl_dt
+        assert substeps.is_integer(), (
+            f"The policy time step ({self.policy_dt} s) must be an integer "
+            f"multiple of the control time step ({self.ctrl_dt} s), got {substeps}."
+        )
+        self.sim_substeps = int(substeps)
         self.max_episode_length = math.ceil(
             self._cfg_env.episode_length_s / self.policy_dt
         )
@@ -120,7 +125,7 @@ class GenesisScene(BaseScene):
                 substeps=self.sim_substeps,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.policy_dt,
+                dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -133,8 +138,8 @@ class GenesisScene(BaseScene):
                 plane_reflection=False,
             ),
             viewer_options=gs.options.ViewerOptions(
-                # max_FPS=int(0.5 / self.ctrl_dt),
-                max_FPS=60,
+                # refresh_rate=int(0.5 / self.ctrl_dt),
+                refresh_rate=60,
                 camera_pos=(2.0, 0.0, 2.5),
                 camera_lookat=(0.0, 0.0, 0.5),
                 camera_fov=40,
@@ -239,7 +244,7 @@ class GenesisScene(BaseScene):
             fov=fov,
             GUI=show_cameras_gui,
         )
-        self._cameras_modalities[name] = tuple(CameraModality.RGB)
+        self._cameras_modalities[name] = (CameraModality.RGB,)
 
     def _setup_attach_cameras(self):
         if self.cameras_setup != CamerasSetup.DEFAULT:

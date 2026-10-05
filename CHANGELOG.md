@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
+- [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added a `--env` flag and an environment registry to select between the environments by name.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added `MESH` and `URDF` object types to the scene abstraction.
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, it is now possible to log data from the real world and genesis scenes.
+- [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Bumped `genesis-world` to `>=1.4.1,<1.5.0` and adapted the simulator options to the new API.
+- [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Moved env specific config to a dict.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Restructured `container/` to the `aegis_docker` architecture: a two-tier base image, a production image and a development toolbx image, installed as the `aegis_gym_build_image`, `aegis_gym_run`, `aegis_gym_toolbx` and `aegis_gym_clean` commands via `container/install_links.sh`. See [container/CHANGELOG.md](container/CHANGELOG.md).
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Grouped environment config fields into shared and task-specific sections for clarity.
 - [PR-153](https://github.com/AGH-CEAI/aegis_gym/pull/153) - Moved Reacher's hardcoded spawn box ranges into config fields.
@@ -52,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
 
 ### Fixed
+
+- [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed the `--seed` argument being ignored: it never reached the config, and the configured seed was never applied to any RNG.
+- [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed ClearML reusing the previous task of the same name, which overwrote its results.
+- [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Camera modalities were registered by expanding a string enum into single characters, so reading all camera images always raised.
+- [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - The PlotJuggler logger reported a camera frame instead of the TCP, because the end effector was resolved by link order.
+- [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Fixed the setter of `num_envs=1` for ROS control.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Fixed simulation-only runs crashing on startup because of an unconditional import of the real-hardware gRPC manipulator client, which fails in containers with an incompatible `protobuf` version. The import is now optional.
 - [PR-150](https://github.com/AGH-CEAI/aegis_gym/pull/150) - Fixed RL training crashing on GPU resource limits at high environment counts by conditionally skipping camera and renderer setup.
 - [PR-149](https://github.com/AGH-CEAI/aegis_gym/pull/149) - Fixed spawning the box with a hardcoded size instead of reading it from the config in Reacher task.
