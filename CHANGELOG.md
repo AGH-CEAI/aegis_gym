@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the evaluation script crashing on startup when the observation preview was enabled.
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed the `--seed` argument being ignored: it never reached the config, and the configured seed was never applied to any RNG.
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed ClearML reusing the previous task of the same name, which overwrote its results.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Camera modalities were registered by expanding a string enum into single characters, so reading all camera images always raised.

@@ -97,9 +97,10 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
                 img = (
                     mm_obs[modality.value][env_idx].permute(1, 2, 0).cpu().numpy()
                 )  # CHW -> HWC
-                img = (
-                    (img * 255).astype(np.uint8) if normalize else img.astype(np.uint8)
-                )
+                if normalize and np.issubdtype(img.dtype, np.floating):
+                    img = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
+                else:
+                    img = img.astype(np.uint8)
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 height, width = img.shape[:2]
