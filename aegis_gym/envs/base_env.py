@@ -42,9 +42,7 @@ class BaseEnv(VecEnv):
     """
 
     DEFAULT_MODALITIES: frozenset[Modality]
-    # used when `env_cfg.episode_length_s` is not given
     DEFAULT_EPISODE_LENGTH_S: float
-    # (pos, lookat) of the policy preview camera, looking at the workspace of a single env
     PREVIEW_CAMERA_POSE: tuple[
         tuple[float, float, float], tuple[float, float, float]
     ] = (

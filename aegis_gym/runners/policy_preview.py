@@ -29,7 +29,6 @@ class PolicyPreviewRecorder:
     augmented), otherwise the scene's overview preview camera.
     """
 
-    # no spaces: they end up in the media URL
     TITLE = "policy_preview"
     _CAMERA_SIDE = 160
     _GRID_COLS = 5
@@ -41,7 +40,6 @@ class PolicyPreviewRecorder:
     _OUTCOME_COLOR_OTHER = (220, 50, 50)
 
     def __init__(self, env: BaseEnv, out_dir: Path):
-        # without the wrappers: no image augmentation and debug previews in the recording
         self._env = env.unwrapped
         self._out_dir = Path(out_dir)
         self._logger = get_logger("PolicyPreview")
@@ -70,9 +68,7 @@ class PolicyPreviewRecorder:
         with th.inference_mode():
             with self._env.nominal_domain():
                 metrics = self._run_episodes(policy=policy, video_path=video_path)
-            # leave every env in a fresh (randomized) episode, e.g. for the training to continue
             self._env.reset()
-        # the preview episodes are not a part of the training statistics
         getattr(self._env, "extras", {}).pop("episode", None)
 
         self._report(video_path=video_path, metrics=metrics, iteration=iteration)
@@ -98,7 +94,6 @@ class PolicyPreviewRecorder:
         lengths = np.zeros(n, dtype=int)
         frames = self._render_frames()
 
-        # the seeds run in parallel, the bar follows the steps until all their episodes end
         progress = tqdm(
             total=max_steps, desc=f"Policy preview ({n} seeds)", unit="step"
         )
@@ -115,7 +110,6 @@ class PolicyPreviewRecorder:
                 returns[active] += rewards_np[active]
                 lengths[active] += 1
 
-                # a done env is already reset: freeze its tile at the last frame before the reset
                 new_frames = self._render_frames()
                 for i in np.flatnonzero(active & dones_np):
                     outcomes[i] = self._classify_outcome(extras, i)
@@ -154,7 +148,6 @@ class PolicyPreviewRecorder:
         for i in range(self._num_envs):
             images = []
             for modality in self._camera_modalities:
-                # nearest neighbour: the pixels the network gets
                 img = camera_obs_to_image(
                     obs[modality.value][i],
                     max_side=self._CAMERA_SIDE,
@@ -180,7 +173,6 @@ class PolicyPreviewRecorder:
         for key in ("success", "time_outs"):
             if is_set(key):
                 return key
-        # env specific terminations, e.g. `tee_off_table`
         for key, value in extras.items():
             if isinstance(value, th.Tensor) and value.dtype == th.bool and is_set(key):
                 return key
