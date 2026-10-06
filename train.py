@@ -77,7 +77,6 @@ def create_policy_preview_recorder(
     if not cfg.args.enable_recording:
         return None
     if cfg.args.control_type != Control.SIM:
-        # the preview resets the envs into its seeded initial states, never do it on the robot
         get_logger("Train").info(
             "The policy preview is recorded only in the simulation."
         )

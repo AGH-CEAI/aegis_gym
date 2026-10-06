@@ -21,7 +21,6 @@ from .scene import BaseScene
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
     DEFAULT_EPISODE_LENGTH_S = 30.0
-    # steep front view, so the arm occludes the tee the least
     PREVIEW_CAMERA_POSE = ((0.95, 0.0, 1.25), (0.47, 0.0, 0.0))
 
     _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
