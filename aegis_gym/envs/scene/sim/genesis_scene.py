@@ -165,7 +165,6 @@ class GenesisScene(BaseScene):
                 batch_links_info=True,  # Enables (n_envs, n_links, ...) shapes
             ),
             vis_options=gs.options.VisOptions(
-                # the preview renders only its envs, each in its own image
                 rendered_envs_idx=(
                     self._preview_envs_idx
                     if self._preview_enabled
