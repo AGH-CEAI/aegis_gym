@@ -648,7 +648,6 @@ class PushTEnv(BaseEnv):
             tee_centroid - tcp_xy,  # TCP-to-tee position difference
             goal_centroid - tee_centroid,  # tee-to-goal position difference
             th.stack([th.sin(yaw_err), th.cos(yaw_err)], dim=-1),  # tee-to-goal yaw
-            th.stack([th.sin(tee_yaw), th.cos(tee_yaw)], dim=-1),  # tee yaw
         ]
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
