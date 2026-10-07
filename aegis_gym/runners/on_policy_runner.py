@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -53,31 +52,6 @@ class OnPolicyRunner(BasePolicyRunner):
             add_scalar(tag, *args, **kwargs)
 
         writer.add_scalar = add_scalar_per_iteration
-
-    def learn_in_chunks(
-        self,
-        num_learning_iterations: int,
-        chunk_iterations: int,
-        on_chunk_end: Callable[[int], None],
-        init_at_random_ep_len: bool = False,
-    ) -> None:
-        """
-        Runs `learn()` in chunks of `chunk_iterations`, calling `on_chunk_end(iteration)` between
-        them (not after the last one). `learn()` fetches fresh observations on every call, so the
-        callback may step and reset the env.
-        """
-        remaining = num_learning_iterations
-        while remaining > 0:
-            chunk = min(chunk_iterations, remaining)
-            self.learn(
-                num_learning_iterations=chunk,
-                init_at_random_ep_len=init_at_random_ep_len,
-            )
-            remaining -= chunk
-            if remaining > 0:
-                on_chunk_end(self.current_iteration)
-                # `learn()` leaves the counter at its last iteration, continue with the next one
-                self.runner.current_learning_iteration += 1
 
     @property
     def current_iteration(self) -> int:
