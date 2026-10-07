@@ -1,11 +1,5 @@
 # PPO configuration for the push_t environment, based on the ManiSkill3 PushT-v1
 # and IsaacLab rsl_rl manipulation baselines.
-# The `-c` file replaces whole top-level sections, so the `rl` section is complete.
-#
-# Usage (needs thousands of parallel envs, e.g. on a large GPU):
-#   python3 train.py -a=rl --env=push_t -c aegis_gym/config/presets/push_t.yaml \
-#       --num-envs=2048 -e PUSH_T_TRAIN
-# With 2048 envs: 2048 * 48 steps = ~98k samples per update, ~295M in 3000 iterations.
 rl:
   class_name: "OnPolicyRunner" # Number of steps per environment per iteration
   num_steps_per_env: 48  # Number of policy updates
