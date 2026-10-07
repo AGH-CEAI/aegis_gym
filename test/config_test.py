@@ -174,6 +174,16 @@ def test_push_t_preset_config_is_applied():
     assert rl_cfg.policy.noise_std_type == "log"
 
 
+def test_reacher_preset_config_is_applied():
+    preset = Path(__file__).parent.parent / "aegis_gym/config/presets/reacher.yaml"
+    cm.setup_config(argv=["", "--env", "reacher", "-c", str(preset)])
+    rl_cfg = cm.get_config().rl_cfg
+
+    assert rl_cfg.algorithm.gamma == 0.99
+    assert rl_cfg.num_steps_per_env == 24
+    assert rl_cfg.policy.actor_hidden_dims == [128, 128, 64]
+
+
 def test_env_specific_dict_override_is_applied():
     cm.setup_config(argv=["", "--env-dict", '{"box_fixed": False}'])
     env_dict = cm.get_config().env_cfg.env_specific_dict
