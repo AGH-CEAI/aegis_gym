@@ -355,9 +355,7 @@ class PushTEnv(BaseEnv):
         self.last_tcp_dist = th.zeros_like(self.pose_dist)
         self.success_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.tee_off_table_buf = th.zeros_like(self.success_buf)
-        self.last_actions = th.zeros(
-            self.num_envs, self._ACTION_DIM, device=self.device, dtype=th.float32
-        )
+
         # tee [x, y, yaw] at the previous step, for its velocity observation
         self.last_tee_xy_yaw = th.zeros(self.num_envs, 3, device=self.device)
         self.extras = {}
@@ -385,7 +383,6 @@ class PushTEnv(BaseEnv):
         self.last_pose_dist[envs_idx] = self._tee_to_goal_pose_distance()[envs_idx]
         self.last_tcp_dist[envs_idx] = self._tcp_to_tee_footprint_distance()[envs_idx]
         self.last_tee_xy_yaw[envs_idx] = self._get_tee_xy_yaw()[envs_idx]
-        self.last_actions[envs_idx] = 0.0
 
         # fill extras
         self.extras["episode"] = {
@@ -465,7 +462,6 @@ class PushTEnv(BaseEnv):
             self.episode_sums[name] += rew
         self.last_pose_dist = self.pose_dist.clone()
         self.last_tcp_dist = self.tcp_dist.clone()
-        self.last_actions = actions.clone()
 
         # check env termination (Sets the self.reset_buf)
         env_reset_idx = self._is_episode_complete()
@@ -604,16 +600,12 @@ class PushTEnv(BaseEnv):
         tee_delta = tee_xy_yaw - self.last_tee_xy_yaw
         # the yaw wraps around in [0, 2pi)
         tee_delta[:, 2] = th.remainder(tee_delta[:, 2] + math.pi, 2 * math.pi) - math.pi
-        tee_vel = tee_delta / self.policy_dt
 
         obs_components = [
-            tcp_xy,  # absolute TCP position, w.r.t. the workspace limits
             tee_centroid - tcp_xy,  # TCP-to-tee position difference
             goal_centroid - tee_centroid,  # tee-to-goal position difference
             th.stack([th.sin(yaw_err), th.cos(yaw_err)], dim=-1),  # tee-to-goal yaw
             th.stack([th.sin(tee_yaw), th.cos(tee_yaw)], dim=-1),  # tee yaw
-            tee_vel,  # tee [vx, vy, yaw rate]
-            self.last_actions,  # previous action
         ]
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
