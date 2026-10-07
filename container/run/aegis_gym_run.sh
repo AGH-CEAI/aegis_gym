@@ -16,7 +16,7 @@ AEGIS_REPO_URL="https://github.com/AGH-CEAI/aegis_gym.git"
 AEGIS_REPO_NAME="aegis_gym"
 DEFAULT_REGISTRY="geonosis:5000"
 
-IMAGE_VERSION="v0.1.0"
+IMAGE_VERSION="v0.2.0"
 CONTAINER_NAME="aegis_gym_prod"
 AEGIS_GYM_TAG=""
 CLEARML_CONF="${HOME}/clearml.conf"
@@ -41,7 +41,7 @@ Usage: aegis_gym_run [options] [command [arguments]]
 Options:
   -b, --build            Build the production image before running
   -B, --rebuild          Build ignoring the layer cache
-  -v, --version VER      Image version (default: v0.1.0)
+  -v, --version VER      Image version (default: v0.2.0)
   -r, --ref REF          aegis_gym branch/tag/commit (default: detected, else devel)
   -n, --name NAME        Container name (default: aegis_gym_prod)
   -p, --push[=HOST]      Push the image (default registry: geonosis:5000)
