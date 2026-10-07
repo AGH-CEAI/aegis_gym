@@ -473,7 +473,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 self._current_iter = int(m.group(1))
         self._best_model_reward = checkpoint.get("best_model_reward", float("-inf"))
         self._best_model_iter = checkpoint.get("best_model_iter", -1)
-        print(f"Model loaded from {path} (iteration {self._current_iter})")
+        logger.info(f"Model loaded from {path} (iteration {self._current_iter})")
 
     @property
     def current_iter(self) -> int:
