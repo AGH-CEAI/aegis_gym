@@ -12,7 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, enabled by default, `--no-record` to disable): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
-- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
@@ -62,10 +61,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The `Modality.CAMERA_TOOL_LEFT_RGB`/`CAMERA_TOOL_RIGHT_RGB` values pointed at the scene cameras names (`cam_scene_left`/`right`) instead of the tool ones (`cam_tool_left`/`right`); the observations themselves were already taken from the tool cameras.
-- The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
-- Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
-- The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.
