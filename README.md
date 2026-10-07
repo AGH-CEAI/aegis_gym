@@ -26,10 +26,10 @@ Featuring real-time control of the physical robot via a <a href="https://github.
 ---
 ## Environments catalogue
 
-|     |     |     |
-| --- | --- | --- |
-| [**Reacher**](./aegis_gym/envs/reacher_env.py) | **T-Pusher**     | **Peg-in-Hole**     |
-| <img src="./docs/aegis_reacher.png" height="120"> | W.I.P.     | W.I.P.     |
+|                                                                                                 |                                                                                               |                 |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------- |
+| [**Reacher**](./aegis_gym/envs/reacher_env.py)                                                  | [**T-Pusher**](./aegis_gym/envs/push_t_env.py)                                                | **Peg-in-Hole** |
+| <a href="./aegis_gym/envs/reacher_env.py"><img src="./docs/aegis_reacher.png" height="128"></a> | <a href="./aegis_gym/envs/push_t_env.py"><img src="./docs/aegis_push_t.png" height="128"></a> | W.I.P.          |
 
 
 ---
