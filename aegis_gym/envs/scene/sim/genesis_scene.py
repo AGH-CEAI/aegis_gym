@@ -361,6 +361,9 @@ class GenesisScene(BaseScene):
             available_cameras=self._cameras_modalities,
             cfg_robot=cfg,
             show_cell=self.show_cell,
+            policy_dt=self.policy_dt,
+            max_linear_speed=self._max_linear_speed,
+            max_angular_speed=self._max_angular_speed,
             device=self.device,
         )
 

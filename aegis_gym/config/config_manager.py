@@ -151,6 +151,11 @@ class ConfigManager:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
             cfg_dict["env"]["episode_length_s"] = args.episode_length_s
+        if not cfg_dict["env"]["episode_length_s"]:
+            from ..envs import get_env_class
+
+            env_cls = get_env_class(cfg_dict["env"]["env_name"])
+            cfg_dict["env"]["episode_length_s"] = env_cls.DEFAULT_EPISODE_LENGTH_S
 
         # You can control only 1 real instance
         if args.control_type == Control.ROS:

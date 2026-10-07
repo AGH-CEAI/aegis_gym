@@ -16,6 +16,7 @@ from .scene import BaseScene
 @register_env("reacher")
 class ReacherEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+    DEFAULT_EPISODE_LENGTH_S = 5.0
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
