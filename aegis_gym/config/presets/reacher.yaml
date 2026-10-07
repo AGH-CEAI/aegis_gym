@@ -1,10 +1,4 @@
 # PPO configuration for the reacher environment.
-# The `-c` file replaces whole top-level sections, so the `rl` section is complete.
-#
-# Usage:
-#   python3 train.py -a=rl --env=reacher -c aegis_gym/config/presets/reacher.yaml \
-#       --num-envs=10 -e REACHER_TRAIN
-# With 10 envs: 10 * 24 steps = 240 samples per update, ~120k in 500 iterations.
 rl:
   class_name: "OnPolicyRunner" # Number of steps per environment per iteration
   num_steps_per_env: 24  # Number of policy updates

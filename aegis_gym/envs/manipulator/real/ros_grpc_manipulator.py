@@ -286,7 +286,6 @@ class RosGrpcManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> None:
-        # `ctrl_go_to_goal()` converts the quaternion in-place
         self.ctrl_go_to_goal(goal_pose=pose.clone(), open_gripper=open_gripper)
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:

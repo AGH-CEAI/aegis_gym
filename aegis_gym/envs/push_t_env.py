@@ -279,7 +279,10 @@ class PushTEnv(BaseEnv):
         self._homo_uv = th.tensor(homo, dtype=th.float32, device=self.device)
 
     def _build_tee_footprint_moments(self) -> None:
-        """Centroid (in the tee frame) and squared radius of gyration of the tee footprint."""
+        """
+        Helper function for calculating rewards.
+        Centroid (in the tee frame) and squared radius of gyration of the tee footprint.
+        """
         areas, centers, polar = [], [], []
         for (cx, cy), (hx, hy) in self._TEE_FOOTPRINT_BOXES:
             area = 4 * hx * hy
@@ -371,7 +374,6 @@ class PushTEnv(BaseEnv):
             return
         self.episode_length_buf[envs_idx] = 0
 
-        # closed gripper forms a stick for pushing the tee
         self.manipulator.ctrl_gripper_close(envs_idx)
         self.manipulator.ctrl_go_to_home(envs_idx)
         self.manipulator.ctrl_reset_to_pose(

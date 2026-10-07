@@ -41,7 +41,6 @@ class BaseEnv(VecEnv):
     """
 
     DEFAULT_MODALITIES: frozenset[Modality]
-    # used when `env_cfg.episode_length_s` is not given
     DEFAULT_EPISODE_LENGTH_S: float
     _observation_fns: dict[Modality, Callable[[], th.Tensor]]
 
