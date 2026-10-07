@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-165](https://github.com/AGH-CEAI/aegis_gym/pull/165) - The Reacher rewards are computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset, and the logged `Episode/rew_*` sums cover exactly their episode.
 - [PR-163](https://github.com/AGH-CEAI/aegis_gym/pull/163) - Updated URDF datasets IDs to v3 (inertias fixes & LED lighting supports).
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Bumped `genesis-world` to `>=1.4.1,<1.5.0` and adapted the simulator options to the new API.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Moved env specific config to a dict.
