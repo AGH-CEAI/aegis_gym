@@ -17,7 +17,7 @@ from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
-from aegis_gym.envs.objects import BaseURDF, ObjectProperties, ObjectType
+from aegis_gym.envs.objects import BaseMesh, BaseURDF, ObjectProperties, ObjectType
 
 from .registry import register_env
 from .scene import BaseScene
@@ -65,10 +65,10 @@ class PushTEnv(BaseEnv):
         self._build_tee_canonical_mask(mesh_path=str(self._TEE_STL_PATH))
         self._build_tee_footprint_moments()
         self._validate_tcp_workspace()
-        self._build_goal_transform()
 
         self._init_reward_functions()
         self._init_buffers()
+        self._build_goal_transform()
         self.reset()
 
     def _extract_config(self) -> None:
@@ -117,6 +117,11 @@ class PushTEnv(BaseEnv):
         self.tee_friction = env_dict["friction"]
         self.goal_offset_xy = list(env_dict["goal_offset"])
         self.goal_z_rot = math.radians(env_dict["goal_z_rot_deg"])
+        goal_rand = env_dict["goal_randomization"]
+        self.goal_rand_enabled = goal_rand["enabled"]
+        self.goal_rand_x = list(goal_rand["x_range"])
+        self.goal_rand_y = list(goal_rand["y_range"])
+        self.goal_rand_z_rot = [math.radians(a) for a in goal_rand["z_rot_range_deg"]]
         self.spawnbox_xlength = env_dict["spawnbox_xlength"]
         self.spawnbox_ylength = env_dict["spawnbox_ylength"]
         self.spawnbox_xoffset = env_dict["spawnbox_xoffset"]
@@ -154,6 +159,14 @@ class PushTEnv(BaseEnv):
             "friction": 0.4,
             "goal_offset": [0.47, 0.0],
             "goal_z_rot_deg": 0.0,
+            # per episode goal pose, sampled as [min, max] offsets from `goal_offset` and
+            # `goal_z_rot_deg`; the tee spawn box stays w.r.t. the nominal goal
+            "goal_randomization": {
+                "enabled": False,
+                "x_range": [-0.05, 0.05],
+                "y_range": [-0.1, 0.1],
+                "z_rot_range_deg": [-180.0, 180.0],
+            },
             # tee origin spawn box w.r.t. the goal; with any yaw the tee stays within the TCP
             # workspace sideways and >= 4 cm away from the TCP start pose
             "spawnbox_xlength": 0.14,
@@ -236,13 +249,22 @@ class PushTEnv(BaseEnv):
         )
         self._scene.add_entity(entity=ObjectType.MESH, properties=p_goal_marker)
         self._scene.add_preview_camera(*self.PREVIEW_CAMERA_POSE)
+        self.goal_marker: BaseMesh = self._scene.add_entity(
+            entity=ObjectType.MESH, properties=p_goal_marker
+        )
 
     def _validate_tcp_workspace(self) -> None:
         """Warns if the goal or the tee spawn box are outside the TCP workspace (virtual fence)."""
         x0 = self.goal_offset_xy[0] + self.spawnbox_xoffset
         y0 = self.goal_offset_xy[1] + self.spawnbox_yoffset
+        gx, gy = self.goal_offset_xy
+        goals = [(gx, gy)]
+        if self.goal_rand_enabled:
+            goals = [
+                (gx + dx, gy + dy) for dx in self.goal_rand_x for dy in self.goal_rand_y
+            ]
         points = {
-            "goal": [tuple(self.goal_offset_xy)],
+            "goal": goals,
             "tee spawn box": [
                 (x0, y0),
                 (x0 + self.spawnbox_xlength, y0 + self.spawnbox_ylength),
@@ -304,25 +326,17 @@ class PushTEnv(BaseEnv):
         self._tee_centroid = th.tensor(centroid, device=self.device)
         self._tee_gyration_sq = polar_centroid / total_area
 
-    def _build_goal_transform(self) -> None:
-        goal_quat = th.tensor(
-            [
-                [
-                    math.cos(self.goal_z_rot / 2),
-                    0.0,
-                    0.0,
-                    math.sin(self.goal_z_rot / 2),
-                ]
-            ],
-            device=self.device,
-        )
-        goal_zrot = quat_to_zrot(goal_quat, device=self.device)[0]
-        goal_trans = th.eye(3, device=self.device)
-        goal_trans[:2, :2] = goal_zrot[:2, :2]
-        goal_trans[0:2, 2] = th.tensor(
-            self.goal_offset_xy, device=self.device, dtype=th.float32
-        )
-        self._world_to_goal_trans = th.linalg.inv(goal_trans)
+    def _build_goal_transform(self, envs_idx: th.Tensor | None = None) -> None:
+        """Updates the per env world -> goal frame transforms from `goal_pose`."""
+        if envs_idx is None:
+            self._world_to_goal_trans = th.zeros(
+                self.num_envs, 3, 3, device=self.device
+            )
+            envs_idx = th.arange(self.num_envs, device=self.device)
+        goal_pose = self.goal_pose[envs_idx]
+        goal_trans = quat_to_zrot(goal_pose[:, 3:], device=self.device)
+        goal_trans[:, 0:2, 2] = goal_pose[:, 0:2]
+        self._world_to_goal_trans[envs_idx] = th.linalg.inv(goal_trans)
 
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
@@ -342,6 +356,9 @@ class PushTEnv(BaseEnv):
         self.goal_pose = th.tensor(
             self.goal_pose_tuple, device=self.device, dtype=th.float32
         ).repeat(self.num_envs, 1)
+        self.goal_yaw = th.full(
+            (self.num_envs,), self.goal_z_rot, device=self.device, dtype=th.float32
+        )
         self.tcp_start_pose = th.tensor(
             [*self.tcp_start_xy, self.tcp_height, *self.tcp_quat],
             device=self.device,
@@ -397,6 +414,10 @@ class PushTEnv(BaseEnv):
         randomize_domain = self._is_domain_randomized() and tee_pose is None
         if tee_pose is None:
             tee_pose = self._get_random_tee_pose(num_reset=len(envs_idx))
+        if self.goal_rand_enabled:
+            self._randomize_goal(envs_idx=envs_idx)
+
+        tee_pose = self._get_random_tee_pose(envs_idx=envs_idx)
         self.object.set_pose(pose=tee_pose, envs_idx=envs_idx)
         self.last_pose_dist[envs_idx] = self._tee_to_goal_pose_distance()[envs_idx]
         self.last_tcp_dist[envs_idx] = self._tcp_to_tee_footprint_distance()[envs_idx]
@@ -425,9 +446,34 @@ class PushTEnv(BaseEnv):
         for rt in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
+    def _randomize_goal(self, envs_idx: th.Tensor) -> None:
+        num_reset = len(envs_idx)
+
+        def uniform(low_high: list[float]) -> th.Tensor:
+            low, high = low_high
+            return th.rand(num_reset, device=self.device) * (high - low) + low
+
+        goal_x = self.goal_offset_xy[0] + uniform(self.goal_rand_x)
+        goal_y = self.goal_offset_xy[1] + uniform(self.goal_rand_y)
+        goal_yaw = th.remainder(
+            self.goal_z_rot + uniform(self.goal_rand_z_rot), 2 * math.pi
+        )
+
+        self.goal_yaw[envs_idx] = goal_yaw
+        self.goal_pose[envs_idx, 0] = goal_x
+        self.goal_pose[envs_idx, 1] = goal_y
+        self.goal_pose[envs_idx, 3] = th.cos(goal_yaw / 2)
+        self.goal_pose[envs_idx, 6] = th.sin(goal_yaw / 2)
+        self._build_goal_transform(envs_idx=envs_idx)
+
+        marker_pose = self.goal_pose[envs_idx].clone()
+        marker_pose[:, 2] += self._GOAL_MARKER_LIFT
+        self.goal_marker.set_pose(pose=marker_pose, envs_idx=envs_idx)
+
     def _get_random_tee_pose(
         self, num_reset: int, generator: th.Generator | None = None
     ) -> th.Tensor:
+
         def rand() -> th.Tensor:
             if generator is None:
                 return th.rand(num_reset, device=self.device)
@@ -543,7 +589,7 @@ class PushTEnv(BaseEnv):
         tee_to_world[:, 0:2, 2] = obj_pose[:, 0:2]
 
         # tee-local -> world -> goal-local, in one transform
-        tee_to_goal = th.matmul(self._world_to_goal_trans.unsqueeze(0), tee_to_world)
+        tee_to_goal = th.matmul(self._world_to_goal_trans, tee_to_world)
         # warp every canonical mask grid point through it
         tees_in_goal = th.matmul(tee_to_goal, self._homo_uv.unsqueeze(0))
         tees_in_goal_xy = tees_in_goal[:, :2, :] / tees_in_goal[:, 2:3, :]
@@ -614,7 +660,7 @@ class PushTEnv(BaseEnv):
         obj_pose = obs[Modality.OBJECT_POSE]
         tee_yaw = quat_to_z_euler(obj_pose[:, 3:])
         tee_centroid = obj_pose[:, :2] + self._rotate_xy(self._tee_centroid, tee_yaw)
-        goal_yaw = th.full_like(tee_yaw, self.goal_z_rot)
+        goal_yaw = self.goal_yaw
         goal_centroid = self.goal_pose[:, :2] + self._rotate_xy(
             self._tee_centroid, goal_yaw
         )
@@ -650,7 +696,7 @@ class PushTEnv(BaseEnv):
         tee_pose = self.object.get_pose()
         yaw = quat_to_z_euler(tee_pose[:, 3:])
         tee_centroid = tee_pose[:, :2] + self._rotate_xy(self._tee_centroid, yaw)
-        goal_yaw = th.full_like(yaw, self.goal_z_rot)
+        goal_yaw = self.goal_yaw
         goal_centroid = self.goal_pose[:, :2] + self._rotate_xy(
             self._tee_centroid, goal_yaw
         )
