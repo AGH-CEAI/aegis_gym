@@ -1,3 +1,4 @@
+import math
 import time
 import warnings
 from collections.abc import Callable
@@ -9,11 +10,17 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
+from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, RobotCfg
 from aegis_gym.envs.manipulator.base_manipulator import BaseManipulator, CameraModality
 
 RigidLink = TypeVar
+
+# The ATI Axia80 output frame is `tool_mount_link` rotated by this angle about its Z.
+# Measured by matching a simulated and a real 90 deg sweep (direction cosine 0.9998).
+# Re-measure if the sensor or its adapter is remounted.
+_FTS_OUTPUT_YAW_DEG = 90.0
 
 
 class GenesisManipulator(BaseManipulator):
@@ -60,9 +67,22 @@ class GenesisManipulator(BaseManipulator):
                 "cam_tool_right",
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
+                "tool_mount_link",
+                # Kept so their mass isn't merged into `tool_mount_link`: the F/T
+                # gravity model needs the links past the sensor.
+                "adapter_from_sensor",
+                "robotiq_hande_coupler",
+                "robotiq_hande_link",
             ],
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
+
+        half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
+        self._fts_output_offset = th.tensor(
+            [[math.cos(half), 0.0, 0.0, math.sin(half)]],
+            dtype=th.float32,
+            device=self.device,
+        )
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
@@ -72,6 +92,7 @@ class GenesisManipulator(BaseManipulator):
         self._ik_method = cfg_robot.ik_method
 
         self._setup_config()
+        self._add_joint_torque_sensor()
         self._init_pd_tensors()
 
     def _resolve_aegis_urdf(self) -> Path:
@@ -124,11 +145,44 @@ class GenesisManipulator(BaseManipulator):
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
+        self._fts_link = self._robot_entity.get_link("tool_mount_link")
+        self._gravity_links = self._get_downstream_links(self._fts_link)
+        # Global link indices past the sensor, for matching contacts against.
+        self._gravity_link_idx = th.tensor(
+            [link.idx for link in self._gravity_links],
+            dtype=th.int32,
+            device=self.device,
+        )
+        # Filled on first use: mass and COM need a built scene.
+        self._gravity_link_masses: th.Tensor | None = None
+        self._gravity_link_local_coms: th.Tensor | None = None
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
         self._default_joint_angles = self._cfg_robot.default_arm_dof
         if self._cfg_robot.default_gripper_dof is not None:
             self._default_joint_angles += self._cfg_robot.default_gripper_dof
+
+    def _get_downstream_links(self, root_link: RigidLink) -> list[RigidLink]:
+        """Links mounted past `root_link` in the kinematic chain (its descendants)."""
+        links = self._robot_entity.links
+        link_start = self._robot_entity.link_start
+        downstream = []
+        for link in links:
+            parent_idx = link.parent_idx
+            while parent_idx != -1:
+                if parent_idx == root_link.idx:
+                    downstream.append(link)
+                    break
+                parent_idx = links[parent_idx - link_start].parent_idx
+        return downstream
+
+    def _add_joint_torque_sensor(self) -> None:
+        self._joint_torque_sensor = self._gs_scene.add_sensor(
+            gs.sensors.JointTorque(
+                entity_idx=self._robot_entity.idx,
+                dofs_idx_local=tuple(range(self._arm_dof_dim)),
+            )
+        )
 
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
@@ -355,12 +409,86 @@ class GenesisManipulator(BaseManipulator):
         return self._robot_entity.get_dofs_velocity()
 
     def get_joints_efforts(self) -> th.Tensor:
-        # TODO(issue#126) get the joints eff from genesis
-        raise NotImplementedError()
+        return self._joint_torque_sensor.read()
+
+    def _gravity_wrench_world(self) -> th.Tensor:
+        """Wrench at the sensor (world frame) from the weight of the links past it.
+        The robot uses `gravity_compensation=1.0`, so the simulation itself never
+        applies this weight and it is added here.
+        """
+        if self._gravity_link_masses is None:
+            # Per env ([num_envs, n_links] and [num_envs, n_links, 3]), as
+            # `batch_links_info` is on.
+            links_idx = [link.idx for link in self._gravity_links]
+            solver = self._fts_link.solver
+            self._gravity_link_masses = solver.get_links_mass(links_idx=links_idx).to(
+                dtype=th.float32, device=self.device
+            )
+            self._gravity_link_local_coms = solver.get_links_COM(
+                links_idx=links_idx
+            ).to(dtype=th.float32, device=self.device)
+
+        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        gravity = self._fts_link.solver.get_gravity().expand_as(
+            sensor_pos
+        )  # [num_envs, 3]
+
+        force = th.zeros_like(sensor_pos)
+        torque = th.zeros_like(sensor_pos)
+        for i, link in enumerate(self._gravity_links):
+            local_com = self._gravity_link_local_coms[:, i]  # [num_envs, 3]
+            mass = self._gravity_link_masses[:, i, None]  # [num_envs, 1]
+            com_world = link.get_pos() + transform_by_quat(local_com, link.get_quat())
+            weight = mass * gravity  # [num_envs, 3]
+            force = force + weight
+            torque = torque + th.linalg.cross(com_world - sensor_pos, weight)
+
+        return th.cat([force, torque], dim=-1)
 
     def get_ft_wrench(self) -> th.Tensor:
-        # TODO(issue#126) get the F\T sensing from genesis
-        raise NotImplementedError()
+        """Simulated F/T reading (untared): the contact forces and the weight of the
+        links past the sensor, in the sensor's output frame."""
+        wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
+
+        quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
+        quat_conj = quat * th.tensor(
+            [1.0, -1.0, -1.0, -1.0], device=quat.device, dtype=quat.dtype
+        )
+        force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
+        torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
+
+        return th.cat([force_local, torque_local], dim=-1)
+
+    def _contact_wrench_world(self) -> th.Tensor:
+        """Wrench at the sensor (world frame) from the contacts on the links past it."""
+        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        contacts = self._robot_entity.get_contacts(
+            exclude_self_contact=True, is_padded=True
+        )
+
+        valid = contacts["valid_mask"]  # [num_envs, n_contacts]
+        if valid.numel() == 0:
+            return th.zeros((sensor_pos.shape[0], 6), device=self.device)
+
+        # `force_b` is the force on `link_b` and `force_a` the force on `link_a`; take
+        # whichever side of the pair is ours, and drop contacts upstream of the sensor.
+        is_a = th.isin(contacts["link_a"], self._gravity_link_idx)
+        is_b = th.isin(contacts["link_b"], self._gravity_link_idx)
+        force = th.where(is_b.unsqueeze(-1), contacts["force_b"], contacts["force_a"])
+        keep = (valid & (is_a | is_b)).unsqueeze(-1)
+        force = th.where(keep, force, th.zeros_like(force))
+
+        lever = contacts["position"] - sensor_pos.unsqueeze(1)
+        return th.cat(
+            [force.sum(dim=1), th.linalg.cross(lever, force, dim=-1).sum(dim=1)],
+            dim=-1,
+        )
+
+    def get_ft_frame_quat(self) -> th.Tensor:
+        """World orientation [num_envs, 4] (WXYZ) of the frame `get_ft_wrench()` reports
+        in: `tool_mount_link` rotated by `_FTS_OUTPUT_YAW_DEG` about its Z."""
+        quat = self._fts_link.get_quat()
+        return transform_quat_by_quat(quat, self._fts_output_offset.expand_as(quat))
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()
