@@ -1,11 +1,13 @@
 import ast
 import sys
+import time
 from argparse import ArgumentParser, ArgumentTypeError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
@@ -243,6 +245,15 @@ def parse_arguments(
         extra_argparser(p)
 
     args = p.parse_args(argv[1:])
+
+    if args.algorithm == Algorithm.RL and (
+        args.load_bc_task_id is not None or args.load_bc_model_id is not None
+    ):
+        get_logger("ArgsParser").warning(
+            "`--load-bc-task-id` and `--load-bc-model-id` are ignored with "
+            "`--algorithm rl`. Continuing in 5 s..."
+        )
+        time.sleep(5)
 
     return LaunchArgs(
         config_path=args.config,

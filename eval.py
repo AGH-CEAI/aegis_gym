@@ -30,6 +30,11 @@ def main():
     th.set_default_dtype(th.float32)
 
     args: LaunchArgs = parse_arguments()
+    if args.resume:
+        logger.warning(
+            "`--resume` has no effect in the evaluation script. Continuing in 5 s..."
+        )
+        time.sleep(5)
     # The ClearML task must exists for connecting configuration
     task = init_clearml_task(
         project_name=args.project_name,
