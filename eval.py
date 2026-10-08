@@ -46,7 +46,7 @@ def main():
     if cfg.debug_cfg.enabled and (
         cfg.debug_cfg.enable_vis_preview or cfg.debug_cfg.enable_record_obs
     ):
-        logger.ingo(">>> Wrapping env with ObsPreviewEnvWrapper")
+        logger.info(">>> Wrapping env with ObsPreviewEnvWrapper")
         env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
 
     logger.info(

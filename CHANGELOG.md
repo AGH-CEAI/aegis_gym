@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
+- [PR-165](https://github.com/AGH-CEAI/aegis_gym/pull/165) - The Reacher rewards are computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset, and the logged `Episode/rew_*` sums cover exactly their episode.
+- [PR-163](https://github.com/AGH-CEAI/aegis_gym/pull/163) - Updated URDF datasets IDs to v3 (inertias fixes & LED lighting supports).
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Bumped `genesis-world` to `>=1.4.1,<1.5.0` and adapted the simulator options to the new API.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Moved env specific config to a dict.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Restructured `container/` to the `aegis_docker` architecture: a two-tier base image, a production image and a development toolbx image, installed as the `aegis_gym_build_image`, `aegis_gym_run`, `aegis_gym_toolbx` and `aegis_gym_clean` commands via `container/install_links.sh`. See [container/CHANGELOG.md](container/CHANGELOG.md).
@@ -57,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.
+- [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the evaluation script crashing on startup when the observation preview was enabled.
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed the `--seed` argument being ignored: it never reached the config, and the configured seed was never applied to any RNG.
 - [PR-159](https://github.com/AGH-CEAI/aegis_gym/pull/159) - Fixed ClearML reusing the previous task of the same name, which overwrote its results.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Camera modalities were registered by expanding a string enum into single characters, so reading all camera images always raised.

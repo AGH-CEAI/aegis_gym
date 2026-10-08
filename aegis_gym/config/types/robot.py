@@ -13,4 +13,6 @@ class RobotCfg(BaseCfg):
     ik_method: Literal["gs_ikv", "dls_ikv"]
     urdf_id_cell: str
     urdf_id_cell_collision: str
+    urdf_id_cell_no_leds: str
+    urdf_id_cell_no_leds_collision: str
     urdf_id_no_cell: str
