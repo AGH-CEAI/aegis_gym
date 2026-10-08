@@ -222,10 +222,17 @@ def mark_task_as_resumed(
     task_id: str | None,
     model_id: str | None,
 ) -> None:
-    """Note the resume source in the ClearML task description (INFO tab) and tags."""
+    """Note the resume source in the ClearML task description (INFO tab) and tags,
+    and link the source task as the parent (lineage in the ClearML UI)."""
     task = Task.current_task()
     if task is None:
         return
+
+    parent_task_id = ConfigManager.resolve_source_task_id(
+        task_id=task_id, model_id=model_id
+    )
+    if parent_task_id is not None:
+        task.set_parent(parent_task_id)
 
     if model_id is not None:
         source = f"ClearML model ID: {model_id}"
