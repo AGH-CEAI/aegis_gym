@@ -147,27 +147,15 @@ class BaseScene(ABC):
         n = len(self.PJ_JOINT_NAMES)
         pos = manip.get_joints_positions()[0, :n].tolist()
         vel = manip.get_joints_velocities()[0, :n].tolist()
-        eff = manip.get_joints_efforts()[0, :n].tolist()
 
         data: dict[str, float] = {}
         for i, name in enumerate(self.PJ_JOINT_NAMES):
             data[f"joint_states/{name}/position"] = pos[i]
             data[f"joint_states/{name}/velocity"] = vel[i]
-            data[f"joint_states/{name}/effort"] = eff[i]
 
         for axis, v in zip("xyz", manip.get_tcp_position()[0].tolist()):
             data[f"ee/position/{axis}"] = v
         # TODO(issue#55) Enable orientation logging
-
-        wrench = manip.get_ft_wrench()[0].tolist()
-        # Gravity removed, so it is comparable with a tared sensor on the robot rather
-        # than carrying the tool's own 13.3 N.
-        comp = manip.get_ft_wrench_compensated()[0].tolist()
-        for i, axis in enumerate("xyz"):
-            data[f"ft_sensor/force/{axis}"] = wrench[i]
-            data[f"ft_sensor/torque/{axis}"] = wrench[i + 3]
-            data[f"ft_sensor/compensated/force/{axis}"] = comp[i]
-            data[f"ft_sensor/compensated/torque/{axis}"] = comp[i + 3]
         return data
 
     def _collect_pj_extra_data(self) -> dict[str, float]:

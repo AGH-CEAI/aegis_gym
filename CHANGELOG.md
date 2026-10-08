@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, it is now possible to log data from the real world and genesis scenes.
+- [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
 - [PR-157](https://github.com/AGH-CEAI/aegis_gym/pull/157) - Bumped `genesis-world` to `>=1.4.1,<1.5.0` and adapted the simulator options to the new API.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Moved env specific config to a dict.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Restructured `container/` to the `aegis_docker` architecture: a two-tier base image, a production image and a development toolbx image, installed as the `aegis_gym_build_image`, `aegis_gym_run`, `aegis_gym_toolbx` and `aegis_gym_clean` commands via `container/install_links.sh`. See [container/CHANGELOG.md](container/CHANGELOG.md).
