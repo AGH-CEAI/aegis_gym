@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Added `--resume` launch arg for continuing the RL or BC training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The evaluation loads the `env`, `rl`, `bc` and `robot` config from the ClearML task of the evaluated policy (`--load-rl/bc-task-id`, or the task of `--load-rl/bc-model-id`), so the policy is built and evaluated as it was trained. The config file and launch args still apply on top, `num_envs`, `max_steps` and the visualization flags are kept from the current run, and `--enforce-current-config` disables it.
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The BC training loads the `env`, `rl` and `robot` config from the ClearML task of the RL teacher (`--load-rl-task-id` or the task of `--load-rl-model-id`), keeping the current `bc` config.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
@@ -54,12 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Removed the non-functional ClearML config lookup (`load_cfg_from_clearml`) from `load_rl_policy()` and `load_bc_policy()`, replaced by the `ConfigManager` loading the config of the source ClearML task.
 - [PR-146](https://github.com/AGH-CEAI/aegis_gym/pull/146) - Moved `utils` ClearML scripts to [clearml_utils](https://github.com/AGH-CEAI/clearml_utils).
 - [PR-117](https://github.com/AGH-CEAI/aegis_gym/pull/113) - AegisGrasp cleanup p.4: Removed flag `--debug-swap-tool-cameras` for swapping RGB tool cameras sides (left <-> right). The new `Modality` module ensures the correct order of the cameras.
 
 ### Fixed
 
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - Fixed the evaluation and the BC teacher loading failing with `state_dict` size mismatches for the policies trained with a non-default environment or network config (e.g. Push-T with its preset).
+- [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Fixed RL checkpoints saved on a GPU failing to load on a CPU-only machine: the checkpoint is mapped onto the runner's device.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed camera frames from the real robot reaching the policy as raw bytes instead of the normalized range used during training, so evaluation on hardware ran on observations scaled moff. The frames were also shifted by one pixel column.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the tool pose rotation never being converted to the convention used by the simulator, and the joint readings returning three measurements of the first joint instead of one value per joint, which also made reading the gripper width raise.
 - [PR-162](https://github.com/AGH-CEAI/aegis_gym/pull/162) - Fixed the debug observation preview rendering real camera frames as a photographic negative, and labelling the tool cameras as scene cameras.

@@ -36,7 +36,7 @@ class OnPolicyRunner(BasePolicyRunner):
         self.runner.save(path=str(path), infos=infos)
 
     def load(self, path: Path) -> None:
-        self.runner.load(path=str(path))
+        self.runner.load(path=str(path), map_location=str(self.runner.device))
 
     def get_inference_policy(self, device: th.device | None = None) -> Any:
         device = device or th.device("cpu")

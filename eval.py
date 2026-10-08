@@ -38,7 +38,9 @@ def main():
         exp_name=args.experiment_name,
     )
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    ConfigManager.setup_config(argv=args, device=device, task=task)
+    ConfigManager.setup_config(
+        argv=args, device=device, task=task, source_task_id=get_source_task_id(args)
+    )
     cfg: ExpConfig = ConfigManager.get_config()
 
     env: BaseEnv = create_env(cfg)
@@ -61,6 +63,17 @@ def main():
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
 
     logger.info("Finished evaluation script")
+
+
+def get_source_task_id(args: LaunchArgs) -> str | None:
+    """ClearML task the evaluated policy was trained in."""
+    if args.algorithm == Algorithm.RL:
+        return ConfigManager.resolve_source_task_id(
+            task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
+        )
+    return ConfigManager.resolve_source_task_id(
+        task_id=args.load_bc_task_id, model_id=args.load_bc_model_id
+    )
 
 
 def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:

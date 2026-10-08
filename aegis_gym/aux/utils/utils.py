@@ -3,7 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from clearml import InputModel, Model, Task
+from clearml import Model, Task
 from natsort import natsorted
 from torch import nn
 
@@ -24,12 +24,10 @@ def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> C
     policy_args = {
         "env": env,
         "cfg": cfg,
-        "load_cfg_from_clearml": not args.enforce_current_config,
         "exp_name": args.experiment_name,
         "clearml_artifact_name": "model",
     }
 
-    # TODO(issue#120) generalize loading config from ClearML
     if algorithm == Algorithm.RL:
         policy_args["clearml_task_id"] = args.load_rl_task_id
         policy_args["clearml_model_id"] = args.load_rl_model_id
@@ -46,7 +44,6 @@ def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> C
 def load_rl_policy(
     env: Any,
     cfg: ExpConfig,
-    load_cfg_from_clearml: bool = True,
     exp_name: str | None = None,
     clearml_task_id: str | None = None,
     clearml_model_id: str | None = None,
@@ -64,30 +61,6 @@ def load_rl_policy(
         local_checkpoint_pattern=r"model_\d+\.pt",
     )
     logger.info(f"Resolved RL checkpoint path: {last_ckpt}")
-    if load_cfg_from_clearml:
-        if clearml_task_id is None and clearml_model_id is not None:
-            clearml_task_id = InputModel(model_id=clearml_model_id).task
-        if clearml_task_id is None:
-            raise ValueError(
-                "Cannot load RL config from ClearML: provide either clearml_task_id or clearml_model_id"
-            )
-        task = Task.get_task(task_id=clearml_task_id)
-
-        # TODO(issue#120) somehow migrate this feature to the ConfigManager
-        cfg_from_clearml = task.get_configuration_object_as_dict("rl_cfg")
-        if cfg_from_clearml:
-            # TODO(issue#120) this is wrong: we can not apply patches from ConfigManager
-            # if ANY kind of extra modificiation is performed, the ConfigManager should be involved
-            # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
-            logger.warning(
-                f"There is no current option to overwrite the RL config by the configuration from task: {clearml_task_id}."
-            )
-        else:
-            logger.info(
-                f"Failed to obtain the RL config from task {clearml_task_id}. Proceeding with the current one"
-            )
-    else:
-        logger.info("Keeping the current RL config")
 
     runner = OnPolicyRunner(
         env=env,
@@ -101,7 +74,6 @@ def load_rl_policy(
 def load_bc_policy(
     env: Any,
     cfg: ExpConfig,
-    load_cfg_from_clearml: bool = True,
     exp_name: str | None = None,
     log_dir: Path | None = None,
     clearml_task_id: str | None = None,
@@ -119,26 +91,6 @@ def load_bc_policy(
         local_checkpoint_pattern=r"checkpoint_\d+\.pt",
     )
     logger.info(f"Resolved BC checkpoint path: {last_ckpt}")
-    if load_cfg_from_clearml:
-        if clearml_task_id is None and clearml_model_id is not None:
-            clearml_task_id = InputModel(model_id=clearml_model_id).task
-        if clearml_task_id is None:
-            raise ValueError(
-                "Cannot load BC config from ClearML: provide either clearml_task_id or clearml_model_id"
-            )
-        task = Task.get_task(task_id=clearml_task_id)
-        cfg_from_clearml = task.get_configuration_object_as_dict("bc_cfg")
-        if cfg_from_clearml:
-            # TODO(issu#120) For the loaded policy models, get config from the ClearML task/model.
-            logger.warning(
-                f"There is no current option to overwrite the BC config by the configuration from task: {clearml_task_id}."
-            )
-        else:
-            logger.info(
-                f"Failed to obtain the BC config from task {clearml_task_id}. Proceeding with the current one"
-            )
-    else:
-        logger.info("Keeping the current BC config")
 
     bc_runner = BehaviorCloningRunner(
         env=env,

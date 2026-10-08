@@ -50,7 +50,19 @@ def main():
         exp_name=args.experiment_name,
     )
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    ConfigManager.setup_config(argv=args, device=device, task=task)
+    source_task_id = None
+    if args.algorithm == Algorithm.BC:
+        # the RL teacher must match the config it was trained with
+        source_task_id = ConfigManager.resolve_source_task_id(
+            task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
+        )
+    ConfigManager.setup_config(
+        argv=args,
+        device=device,
+        task=task,
+        source_task_id=source_task_id,
+        source_sections=ConfigManager.SOURCE_TASK_TEACHER_SECTIONS,
+    )
     cfg: ExpConfig = ConfigManager.get_config()
 
     env = create_env(cfg)
