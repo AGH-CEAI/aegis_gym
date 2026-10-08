@@ -16,7 +16,7 @@ from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
-from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners import BasePolicyRunner, BehaviorCloningRunner, OnPolicyRunner
 
 
 def init_clearml_task(
@@ -161,20 +161,13 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 teacher=teacher_policy,
             )
             if args.resume:
-                ckpt = resolve_checkpoint(
-                    log_dir=cfg.logger_cfg.local_log_dir,
-                    clearml_task_id=args.load_bc_task_id,
-                    clearml_model_id=args.load_bc_model_id,
-                    local_checkpoint_pattern=r"checkpoint_\d+\.pt",
-                )
-                logger.info(f">>> (BC) Resuming training from checkpoint: {ckpt}")
-                runner.load(ckpt)
-                mark_task_as_resumed(
+                resume_runner(
+                    runner=runner,
+                    cfg=cfg,
                     algorithm=Algorithm.BC,
-                    ckpt=ckpt,
-                    start_iteration=runner.current_iter,
                     task_id=args.load_bc_task_id,
                     model_id=args.load_bc_model_id,
+                    local_checkpoint_pattern=r"checkpoint_\d+\.pt",
                 )
             logger.info(">>> (BC) Starting runner")
             runner.learn(num_learning_iterations=args.max_iterations)
@@ -191,20 +184,13 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.info(">>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(env=env, cfg=cfg)
             if args.resume:
-                ckpt = resolve_checkpoint(
-                    log_dir=cfg.logger_cfg.local_log_dir,
-                    clearml_task_id=args.load_rl_task_id,
-                    clearml_model_id=args.load_rl_model_id,
-                    local_checkpoint_pattern=r"model_\d+\.pt",
-                )
-                logger.info(f">>> (RL) Resuming training from checkpoint: {ckpt}")
-                runner.load(ckpt)
-                mark_task_as_resumed(
+                resume_runner(
+                    runner=runner,
+                    cfg=cfg,
                     algorithm=Algorithm.RL,
-                    ckpt=ckpt,
-                    start_iteration=runner.runner.current_learning_iteration,
                     task_id=args.load_rl_task_id,
                     model_id=args.load_rl_model_id,
+                    local_checkpoint_pattern=r"model_\d+\.pt",
                 )
             logger.info(">>> (RL) Starting runner")
             runner.learn(
@@ -213,6 +199,34 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
+
+
+def resume_runner(
+    runner: BasePolicyRunner,
+    cfg: ExpConfig,
+    algorithm: Algorithm,
+    task_id: str | None,
+    model_id: str | None,
+    local_checkpoint_pattern: str,
+) -> None:
+    """Restore the runner from a checkpoint and mark the ClearML task as resumed."""
+    logger = get_logger("Train")
+    ckpt = resolve_checkpoint(
+        log_dir=cfg.logger_cfg.local_log_dir,
+        clearml_task_id=task_id,
+        clearml_model_id=model_id,
+        local_checkpoint_pattern=local_checkpoint_pattern,
+    )
+    alg_name = str(algorithm).upper()
+    logger.info(f">>> ({alg_name}) Resuming training from checkpoint: {ckpt}")
+    runner.load(ckpt)
+    mark_task_as_resumed(
+        algorithm=algorithm,
+        ckpt=ckpt,
+        start_iteration=runner.current_iter,
+        task_id=task_id,
+        model_id=model_id,
+    )
 
 
 def mark_task_as_resumed(

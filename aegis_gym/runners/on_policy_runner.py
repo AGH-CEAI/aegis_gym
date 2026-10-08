@@ -38,6 +38,10 @@ class OnPolicyRunner(BasePolicyRunner):
     def load(self, path: Path) -> None:
         self.runner.load(path=str(path), map_location=str(self.runner.device))
 
+    @property
+    def current_iter(self) -> int:
+        return self.runner.current_learning_iteration
+
     def get_inference_policy(self, device: th.device | None = None) -> Any:
         device = device or th.device("cpu")
         return self.runner.get_inference_policy(device=str(device))

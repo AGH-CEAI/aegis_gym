@@ -11,6 +11,7 @@ import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 from torch import nn
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config import ConfigManager
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
@@ -473,7 +474,9 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 self._current_iter = int(m.group(1))
         self._best_model_reward = checkpoint.get("best_model_reward", float("-inf"))
         self._best_model_iter = checkpoint.get("best_model_iter", -1)
-        logger.info(f"Model loaded from {path} (iteration {self._current_iter})")
+        get_logger("BCRunner").info(
+            f"Model loaded from {path} (iteration {self._current_iter})"
+        )
 
     @property
     def current_iter(self) -> int:
