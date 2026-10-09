@@ -2,6 +2,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from clearml import Model, Task
 from natsort import natsorted
@@ -115,8 +116,7 @@ def resolve_checkpoint(
 
     if clearml_model_id is not None:
         logger.info(f"Loading from ClearML model {clearml_model_id}")
-        clearml_model = Model(model_id=clearml_model_id)
-        ckpt = Path(clearml_model.get_weights(raise_on_error=True))
+        ckpt = get_clearml_model_weights(clearml_model_id)
         logger.info(f"Resolved ClearML model {clearml_model_id} to {ckpt}")
         return ckpt
 
@@ -138,6 +138,42 @@ def resolve_checkpoint(
     ckpt = resolve_latest_local_checkpoint(resolved_log_dir, local_checkpoint_pattern)
     logger.info(f"Resolved local checkpoint → {ckpt}")
     return ckpt
+
+
+def get_clearml_model_weights(clearml_model_id: str) -> Path:
+    """
+    Return the local path of the ClearML model weights.
+
+    The models auto-logged on `torch.save()` keep the `file://` URL of the training
+    machine (e.g. in `/tmp`), only the task artifacts are uploaded. If that local file
+    no longer exists, the source task's artifact with the same file name is downloaded.
+    """
+    logger = get_logger(_LOGGER_NAME)
+    clearml_model = Model(model_id=clearml_model_id)
+    url = clearml_model.url or ""
+    if not url.startswith("file://"):
+        return Path(clearml_model.get_weights(raise_on_error=True))
+
+    local_path = Path(urlparse(url).path)
+    if local_path.exists():
+        return local_path
+
+    logger.info(
+        f"Model {clearml_model_id} file {local_path} doesn't exist, looking for "
+        f"the artifact '{local_path.name}' in the source task {clearml_model.task}"
+    )
+    task = Task.get_task(task_id=clearml_model.task)
+    for name, artifact in task.artifacts.items():
+        if artifact.url and Path(urlparse(artifact.url).path).name == local_path.name:
+            artifact_path = artifact.get_local_copy()
+            if artifact_path is None:
+                raise FileNotFoundError(f"Failed to download artifact '{name}'")
+            return Path(artifact_path)
+
+    raise FileNotFoundError(
+        f"Model {clearml_model_id} points to the missing local file {local_path} "
+        f"and the task {clearml_model.task} has no artifact '{local_path.name}'"
+    )
 
 
 def get_latest_clearml_checkpoint(
@@ -210,8 +246,7 @@ def get_bc_checkpoints(
     logger = get_logger(_LOGGER_NAME)
     if clearml_model_id is not None:
         logger.info(f"Loading from ClearML model {clearml_model_id}")
-        clearml_model = Model(model_id=clearml_model_id)
-        ckpt = Path(clearml_model.get_weights(raise_on_error=True))
+        ckpt = get_clearml_model_weights(clearml_model_id)
         logger.info(f"Resolved ClearML model {clearml_model_id} to {ckpt}")
         return [Checkpoint(0, ckpt)]
 

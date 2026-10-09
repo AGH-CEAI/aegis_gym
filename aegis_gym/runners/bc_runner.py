@@ -15,6 +15,7 @@ from aegis_gym.aux.logging import get_logger
 from aegis_gym.config import ConfigManager
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
+    BaseCfg,
     BCCfg,
     CamerasSetup,
     ExpConfig,
@@ -477,6 +478,38 @@ class BehaviorCloningRunner(BasePolicyRunner):
         get_logger("BCRunner").info(
             f"Model loaded from {path} (iteration {self._current_iter})"
         )
+        self._warn_on_config_mismatch(checkpoint.get("config"))
+
+    def _warn_on_config_mismatch(self, ckpt_cfg: Any) -> None:
+        """Warn if the BC config stored in the checkpoint differs from the current one."""
+        logger = get_logger("BCRunner")
+        if ckpt_cfg is None:
+            logger.info("Checkpoint has no stored config, skipping the comparison")
+            return
+        try:
+            ckpt_dict = (
+                ckpt_cfg.as_dict() if isinstance(ckpt_cfg, BaseCfg) else ckpt_cfg
+            )
+            ckpt_flat = _flatten_dict(ckpt_dict)
+        except (AttributeError, TypeError) as e:
+            # e.g. a config pickled by an older version of `BCCfg`
+            logger.warning(f"Couldn't read the checkpoint config ({e}), skipping")
+            return
+
+        current_flat = _flatten_dict(self.cfg_train.as_dict())
+        diffs = [
+            f"  {key}: {ckpt_flat.get(key, '<missing>')} -> "
+            f"{current_flat.get(key, '<missing>')}"
+            for key in sorted(ckpt_flat.keys() | current_flat.keys())
+            if ckpt_flat.get(key, "<missing>") != current_flat.get(key, "<missing>")
+        ]
+        if diffs:
+            logger.warning(
+                "The current BC config differs from the checkpoint one "
+                "(checkpoint -> current). The current config is used, except the "
+                "optimizer state (incl. the learning rate), which is restored from "
+                "the checkpoint:\n" + "\n".join(diffs)
+            )
 
     @property
     def current_iter(self) -> int:
@@ -487,3 +520,14 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
         raise NotImplementedError()
+
+
+def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:
+    flat = {}
+    for key, value in d.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flat.update(_flatten_dict(value, name))
+        else:
+            flat[name] = value
+    return flat
