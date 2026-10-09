@@ -96,6 +96,29 @@ class GenesisManipulator(BaseManipulator):
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
 
+        # Software tare offset, [num_envs, 6]; None until `set_ft_bias()`. The real
+        # robot has no counterpart -- its sensor tares itself.
+        self._ft_bias: th.Tensor | None = None
+
+        self._fts_payload_mass: th.Tensor | None = None
+        self._fts_payload_com: th.Tensor | None = None
+        if cfg_robot.fts_payload_mass is not None:
+            if cfg_robot.fts_payload_com is None:
+                raise ValueError(
+                    "fts_payload_mass is set but fts_payload_com is not; both are "
+                    "needed to place the measured payload."
+                )
+            self._fts_payload_mass = th.tensor(
+                cfg_robot.fts_payload_mass, dtype=th.float32, device=self.device
+            )
+            self._fts_payload_com = th.tensor(
+                [cfg_robot.fts_payload_com], dtype=th.float32, device=self.device
+            )
+            logger.info(
+                f"F/T payload calibration: {cfg_robot.fts_payload_mass:.4f} kg at "
+                f"{cfg_robot.fts_payload_com} m (sensor frame)"
+            )
+
         half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
         self._fts_output_offset = th.tensor(
             [[math.cos(half), 0.0, 0.0, math.sin(half)]],
@@ -107,6 +130,8 @@ class GenesisManipulator(BaseManipulator):
         self._gripper_close_dof = 0.0
         self.max_linear_speed = 1.0
         self.max_angular_speed = 1.0
+
+        self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
 
         self._ik_method = cfg_robot.ik_method
 
@@ -396,6 +421,27 @@ class GenesisManipulator(BaseManipulator):
             position=default_joint_angles, envs_idx=idx
         )
 
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+
+        joints = joints.reshape(-1, self._arm_dof_dim).to(
+            dtype=th.float32, device=self.device
+        )
+        if joints.shape[0] == 1:
+            joints = joints.expand(len(idx), self._arm_dof_dim)
+
+        # Only the arm DOFs are driven; the fingers keep whatever target they hold, so
+        # this cannot disturb the gripper mid-test.
+        self._robot_entity.control_dofs_position(
+            position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
+        )
+
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx
@@ -452,6 +498,13 @@ class GenesisManipulator(BaseManipulator):
             sensor_pos
         )  # [num_envs, 3]
 
+        if self._fts_payload_mass is not None:
+            weight = self._fts_payload_mass * gravity  # [num_envs, 3]
+            lever = transform_by_quat(
+                self._fts_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
+            )
+            return th.cat([weight, th.linalg.cross(lever, weight)], dim=-1)
+
         force = th.zeros_like(sensor_pos)
         torque = th.zeros_like(sensor_pos)
         for i, link in enumerate(self._gravity_links):
@@ -465,9 +518,39 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([force, torque], dim=-1)
 
     def get_ft_wrench(self) -> th.Tensor:
-        """Simulated F/T reading (untared): the contact forces and the weight of the
-        links past the sensor, in the sensor's output frame, plus the randomized
-        measurement noise and residual bias."""
+        """The simulated F/T measurement, tared when `set_ft_bias()` has been called.
+
+        Counterpart of the real sensor's reading. Unlike the real robot, which tares in
+        hardware, the offset is subtracted here.
+        """
+        wrench = self.get_ft_wrench_raw()
+        if self._ft_bias is not None:
+            wrench = wrench - self._ft_bias
+        return wrench + self._ft_residual_bias
+
+    def set_ft_bias(self) -> None:
+        self._ft_bias = self.get_ft_wrench_raw().detach().clone()
+        self.note_ft_bias_pose()
+
+    def clear_ft_bias(self) -> None:
+        self._ft_bias = None
+        self._ft_gravity_at_bias = None
+
+    def is_ft_biased(self) -> bool:
+        return self._ft_bias is not None
+
+    def get_ft_bias(self) -> th.Tensor | None:
+        """Simulation only: the stored offset, [num_envs, 6], or None when untared.
+        The real robot keeps its tare inside the sensor and cannot answer this."""
+        return None if self._ft_bias is None else self._ft_bias.clone()
+
+    def get_ft_wrench_raw(self) -> th.Tensor:
+        """Simulation only: the modelled wrench before the software tare.
+
+        There is no real-robot counterpart -- the hardware reports one measurement and
+        the tare is applied inside it. This exists to check the simulated model against
+        real data, where the untared term is what a sign or frame error shows up in.
+        """
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
@@ -477,8 +560,7 @@ class GenesisManipulator(BaseManipulator):
         force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
-        wrench = self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
-        return wrench + self._ft_residual_bias
+        return self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
 
     def set_ft_residual_bias(
         self, bias: th.Tensor, envs_idx: th.Tensor | None = None

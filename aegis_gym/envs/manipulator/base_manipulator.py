@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.geom import transform_by_quat
 from aegis_gym.config.types import CameraModality, CameraName
 
 
@@ -15,8 +16,13 @@ class BaseManipulator(ABC):
         ignore it or assert it is None.
     """
 
+    GRAVITY_WORLD = (0.0, 0.0, -9.81)
+
     def __init__(self, device: th.device | None = None):
         self.device: th.device = device or th.device("cpu")
+        self._ft_payload_mass: th.Tensor | None = None
+        self._ft_payload_com: th.Tensor | None = None
+        self._ft_gravity_at_bias: th.Tensor | None = None
 
     @abstractmethod
     def shutdown(self) -> None:
@@ -95,6 +101,22 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """Move to an absolute arm joint configuration.
+
+        Args:
+            joints: [num_envs, 6] or [6] target joint positions in radians, ordered
+                    [shoulder_pan, shoulder_lift, elbow, wrist_1, wrist_2, wrist_3].
+
+        Unlike `ctrl_go_to_goal` this asks for nothing to be solved: the configuration
+        is stated outright, so there is no IK or planning that can pick a different
+        branch in simulation than on the robot. The gripper is left as it is.
+        """
+        ...
+
+    @abstractmethod
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         """Open the gripper to its maximum width."""
         ...
@@ -126,8 +148,80 @@ class BaseManipulator(ABC):
 
     @abstractmethod
     def get_ft_wrench(self) -> th.Tensor:
-        """Returns [num_envs, 6] wrench in the F/T sensor link as [fx, fy, fz, tx, ty, tz] in Newtons and Newton-metre."""
+        """Returns [num_envs, 6] wrench in the F/T sensor link as [fx, fy, fz, tx, ty, tz]
+        in Newtons and Newton-metre.
+
+        This is the measurement, with the bias already applied when one is set. On the
+        real robot it is exactly what the sensor reports over the bridge -- nothing is
+        modelled or corrected on this side. Simulation has to synthesise the same
+        quantity, and whatever it needs to do so stays private to that backend.
+        """
         ...
+
+    @abstractmethod
+    def set_ft_bias(self) -> None:
+        """Tares the sensor, so `get_ft_wrench()` reports change from this moment on.
+        Call it in a known, settled pose -- normally the home configuration with no
+        payload -- so the bias absorbs the tool's own weight.
+
+        The real robot tares in hardware; simulation subtracts the offset itself. Neither
+        reports the offset back through this interface: ask the backend if it has one.
+        """
+        ...
+
+    @abstractmethod
+    def clear_ft_bias(self) -> None:
+        """Drops the bias, so `get_ft_wrench()` reports untared measurements again."""
+        ...
+
+    @abstractmethod
+    def is_ft_biased(self) -> bool:
+        """Whether a tare is currently applied."""
+        ...
+
+    def set_ft_payload(self, mass: float | None, com: list[float] | None) -> None:
+        """Registers the payload hanging past the sensor, as measured by
+        `ft_calibration.py` (kg, and metres in the sensor frame).
+
+        Passing None for the mass clears it, which disables `get_ft_wrench_gravity()`.
+        """
+        if mass is None:
+            self._ft_payload_mass = None
+            self._ft_payload_com = None
+            return
+        if com is None:
+            raise ValueError("A payload mass needs a centre of mass to go with it.")
+        self._ft_payload_mass = th.tensor(mass, dtype=th.float32, device=self.device)
+        self._ft_payload_com = th.tensor([com], dtype=th.float32, device=self.device)
+
+    def get_ft_wrench_gravity(self) -> th.Tensor | None:
+        if self._ft_payload_mass is None:
+            return None
+
+        quat = self.get_tcp_orientation()  # the sensor's output frame; see the docs
+        gravity = th.tensor(
+            self.GRAVITY_WORLD, dtype=th.float32, device=self.device
+        ).expand(quat.shape[0], 3)
+        quat_conj = quat * th.tensor(
+            [1.0, -1.0, -1.0, -1.0], device=quat.device, dtype=quat.dtype
+        )
+        force = transform_by_quat(self._ft_payload_mass * gravity, quat_conj)
+        com = self._ft_payload_com.expand_as(force)
+        return th.cat([force, th.linalg.cross(com, force, dim=-1)], dim=-1)
+
+    def note_ft_bias_pose(self) -> None:
+        """Records the payload's weight at the moment of taring."""
+        self._ft_gravity_at_bias = self.get_ft_wrench_gravity()
+
+    def get_ft_wrench_compensated(self) -> th.Tensor:
+        """The measurement with the payload's weight modelled out, [num_envs, 6]."""
+        wrench = self.get_ft_wrench()
+        gravity = self.get_ft_wrench_gravity()
+        if gravity is None:
+            return wrench
+        if self._ft_gravity_at_bias is not None:
+            gravity = gravity - self._ft_gravity_at_bias
+        return wrench - gravity
 
     @abstractmethod
     def get_tcp_pose(self) -> th.Tensor:
