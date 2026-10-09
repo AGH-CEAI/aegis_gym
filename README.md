@@ -77,6 +77,9 @@ python3 train.py -a=bc --num-envs=2 --max-iterations=50 -e REACHER_TRAIN --resum
 > [!NOTE]
 > The environment configuration is taken from the current launch arguments, not from the checkpoint. Keep the same `--env` and `--env-dict` as in the resumed run.
 
+> [!WARNING]
+> The local resume reads the checkpoints from `local_log_dir` of the logger config, which defaults to `/tmp/aegis_gym_logs_<user>/<exp_name>_<rl|bc>`. The `/tmp` content is removed when the `aegis_gym_run` container exits (`podman run --rm`) and usually on a host reboot (also for the toolbx container, which shares the host's `/tmp`). Use `--load-*-task-id`/`--load-*-model-id` for a resume that doesn't depend on the local files, or set `local_log_dir` to a persistent directory.
+
 ### Evaluation
 ```bash
 # Add flag `--control=ros` for real robot control (needs the ROS stack in other container)

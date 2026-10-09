@@ -211,13 +211,25 @@ def resume_runner(
 ) -> None:
     """Restore the runner from a checkpoint and mark the ClearML task as resumed."""
     logger = get_logger("Train")
-    ckpt = resolve_checkpoint(
-        log_dir=cfg.logger_cfg.local_log_dir,
-        clearml_task_id=task_id,
-        clearml_model_id=model_id,
-        local_checkpoint_pattern=local_checkpoint_pattern,
-    )
     alg_name = str(algorithm).upper()
+    try:
+        ckpt = resolve_checkpoint(
+            log_dir=cfg.logger_cfg.local_log_dir,
+            clearml_task_id=task_id,
+            clearml_model_id=model_id,
+            local_checkpoint_pattern=local_checkpoint_pattern,
+        )
+    except FileNotFoundError as e:
+        if task_id is not None or model_id is not None:
+            raise
+        alg = str(algorithm)
+        raise FileNotFoundError(
+            f"{e}\nCannot resume locally from {cfg.logger_cfg.local_log_dir}. "
+            "The default local log dir lives in `/tmp`, which is cleared when the "
+            "`aegis_gym_run` container exits and usually on a host reboot. "
+            f"Resume from ClearML with `--load-{alg}-task-id` or "
+            f"`--load-{alg}-model-id` instead, or set a persistent `local_log_dir`."
+        ) from e
     logger.info(f">>> ({alg_name}) Resuming training from checkpoint: {ckpt}")
     runner.load(ckpt)
     mark_task_as_resumed(

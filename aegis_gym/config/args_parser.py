@@ -141,7 +141,10 @@ def parse_arguments(
             "`--load-rl-model-id`, `--load-rl-task-id` or, if neither is given, "
             "the latest `model_<N>.pt` in the local log dir of the experiment. "
             "BC: the same with `--load-bc-model-id`, `--load-bc-task-id` or the latest "
-            "`checkpoint_<N>.pt` (the RL teacher is still set by `--load-rl-*`)."
+            "`checkpoint_<N>.pt` (the RL teacher is still set by `--load-rl-*`). "
+            "NOTE: the local log dir defaults to `/tmp/aegis_gym_logs_<user>/`, which "
+            "doesn't survive a container exit (`aegis_gym_run`) or a host reboot; "
+            "prefer the ClearML IDs for a durable resume."
         ),
     )
     p.add_argument(
