@@ -10,7 +10,7 @@ CONTAINERFILE="${SCRIPT_DIR}/Containerfile.toolbx"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 DEFAULT_IMAGE="ceai/aegis_gym"
-DEFAULT_VERSION="v0.1.0"
+DEFAULT_VERSION="v0.2.0"
 FALLBACK_BRANCH="devel"
 AEGIS_REPO_URL="https://github.com/AGH-CEAI/aegis_gym.git"
 AEGIS_REPO_NAME="aegis_gym"
