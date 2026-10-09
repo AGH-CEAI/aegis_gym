@@ -1,4 +1,5 @@
 import math
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,8 @@ from .scene import BaseScene
 @register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+    DEFAULT_EPISODE_LENGTH_S = 30.0
+    PREVIEW_CAMERA_POSE = ((0.95, 0.0, 1.25), (0.47, 0.0, 0.0))
 
     _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
     _TEE_STL_PATH = _ASSETS_DIR / "T_shape.stl"
@@ -171,6 +174,7 @@ class PushTEnv(BaseEnv):
             scale=(1.0, 1.0, self._GOAL_MARKER_Z_SCALE),
         )
         self._scene.add_entity(entity=ObjectType.MESH, properties=p_goal_marker)
+        self._scene.add_preview_camera(*self.PREVIEW_CAMERA_POSE)
 
     def _build_tee_canonical_mask(self, mesh_path: str) -> None:
         mesh = trimesh.load(mesh_path)
@@ -248,7 +252,19 @@ class PushTEnv(BaseEnv):
         self._scene.update_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def reset_idx(self, envs_idx: th.Tensor) -> None:
+    def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
+        tee_pose = th.cat(
+            [
+                self._get_random_tee_pose(
+                    num_reset=1, generator=self._make_seeded_generator(seed)
+                )
+                for seed in seeds
+            ]
+        )
+        self.reset_idx(envs_idx=envs_idx, tee_pose=tee_pose)
+
+    def reset_idx(self, envs_idx: th.Tensor, tee_pose: th.Tensor | None = None) -> None:
+        """Resets the `envs_idx`, with a random tee pose unless given (then without the DR)."""
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -256,7 +272,9 @@ class PushTEnv(BaseEnv):
         self.manipulator.ctrl_gripper_open(envs_idx)
         self.manipulator.ctrl_go_to_home(envs_idx)
 
-        tee_pose = self._get_random_tee_pose(envs_idx=envs_idx)
+        randomize_domain = self._is_domain_randomized() and tee_pose is None
+        if tee_pose is None:
+            tee_pose = self._get_random_tee_pose(num_reset=len(envs_idx))
         self.object.set_pose(pose=tee_pose, envs_idx=envs_idx)
 
         # fill extras
@@ -268,21 +286,26 @@ class PushTEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if not self._cfg_dr.enabled:
+        if not randomize_domain:
             return
         for rt in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
-    def _get_random_tee_pose(self, envs_idx: th.Tensor) -> th.Tensor:
-        num_reset = len(envs_idx)
+    def _get_random_tee_pose(
+        self, num_reset: int, generator: th.Generator | None = None
+    ) -> th.Tensor:
+        def rand() -> th.Tensor:
+            if generator is None:
+                return th.rand(num_reset, device=self.device)
+            return th.rand(num_reset, generator=generator, device="cpu").to(self.device)
 
         random_x = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_xlength
+            rand() * self.spawnbox_xlength
             + self.goal_offset_xy[0]
             + self.spawnbox_xoffset
         )
         random_y = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_ylength
+            rand() * self.spawnbox_ylength
             + self.goal_offset_xy[1]
             + self.spawnbox_yoffset
         )
@@ -291,7 +314,7 @@ class PushTEnv(BaseEnv):
         )
         random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
-        random_yaw = th.rand(num_reset, device=self.device) * 2 * math.pi
+        random_yaw = rand() * 2 * math.pi
         random_quat = th.stack(
             [
                 th.cos(random_yaw / 2),

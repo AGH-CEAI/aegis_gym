@@ -107,3 +107,33 @@ class BaseScene(ABC):
     def step(self) -> None:
         """Process the scene step."""
         ...
+
+    def set_nominal_domain(self) -> None:
+        """
+        Restore the nominal (not randomized) parameters of the scene. No-op by default, for the
+        scenes without the domain randomization.
+        """
+        return
+
+    def add_preview_camera(
+        self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
+    ) -> None:
+        """
+        Add the camera for the policy preview recording, if enabled. Must be called before `build()`.
+        No-op by default, for the scenes without the recording support.
+        """
+        return
+
+    def is_preview_available(self) -> bool:
+        """Whether `render_preview()` can be used."""
+        return False
+
+    def has_observation_cameras(self) -> bool:
+        """Whether the cameras of the visual observations are rendered."""
+        return False
+
+    def render_preview(self) -> th.Tensor:
+        """Returns [num_preview_envs, H, W, 3] uint8 RGB images of the preview environments."""
+        raise NotImplementedError(
+            f"The `{type(self).__name__}` scene doesn't support the policy preview."
+        )

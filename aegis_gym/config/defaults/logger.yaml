@@ -4,3 +4,5 @@ wandb_project: "TEST_PLAYGROUND/aegis_grasp"
 clearml_project: "TEST_PLAYGROUND/aegis_grasp"
 clearml_log_cfg_as_hyperparams: False
 local_log_dir: ""
+policy_preview_interval: 0
+policy_preview_resolution: [320, 240]

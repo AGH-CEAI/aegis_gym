@@ -9,6 +9,7 @@ from genesis.vis.camera import Camera
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
+    POLICY_PREVIEW_SEEDS,
     Algorithm,
     CameraLink,
     CameraModality,
@@ -58,6 +59,7 @@ class GenesisScene(BaseScene):
                 self.use_cameras = cfg.rl_cfg.use_cameras
             case Algorithm.BC:
                 self.use_cameras = cfg.bc_cfg.use_cameras
+        self._setup_preview_config(cfg=cfg)
 
         logger.info(
             f"f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
@@ -103,6 +105,15 @@ class GenesisScene(BaseScene):
 
         self._max_linear_speed = self._cfg_env.action_max_linear_speed
         self._max_angular_speed = self._cfg_env.action_max_angular_speed
+
+    def _setup_preview_config(self, cfg: ExpConfig) -> None:
+        self._preview_cam: Camera | None = None
+        self._preview_resolution = tuple(cfg.logger_cfg.policy_preview_resolution)
+        # With the visual observations, the preview records the observation cameras instead, as the
+        # batch renderer would render an extra preview camera at every policy step, for all envs
+        self._preview_enabled = bool(cfg.args.enable_recording) and not self.use_cameras
+        num_preview_envs = min(self.num_envs, len(POLICY_PREVIEW_SEEDS))
+        self._preview_envs_idx = list(range(num_preview_envs))
 
     def _setup_pj_server(self) -> None:
         logger = get_logger("GraspEnv")
@@ -154,7 +165,12 @@ class GenesisScene(BaseScene):
                 batch_links_info=True,  # Enables (n_envs, n_links, ...) shapes
             ),
             vis_options=gs.options.VisOptions(
-                rendered_envs_idx=list(range(self.num_envs)),
+                rendered_envs_idx=(
+                    self._preview_envs_idx
+                    if self._preview_enabled
+                    else list(range(self.num_envs))
+                ),
+                split_envs=self._preview_enabled,
                 shadow=True,
                 plane_reflection=False,
             ),
@@ -326,6 +342,40 @@ class GenesisScene(BaseScene):
 
     def get_policy_dt(self) -> float:
         return self.policy_dt
+
+    def set_nominal_domain(self) -> None:
+        self.manipulator.max_linear_speed = self._max_linear_speed
+        self.manipulator.max_angular_speed = self._max_angular_speed
+        self.manipulator.set_joints_pd_gains()
+
+    def add_preview_camera(
+        self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
+    ) -> None:
+        if not self._preview_enabled:
+            return
+        self._preview_cam = self.gs_scene.add_camera(
+            res=self._preview_resolution, pos=pos, lookat=lookat, fov=45, GUI=False
+        )
+
+    def is_preview_available(self) -> bool:
+        return self._preview_cam is not None
+
+    def has_observation_cameras(self) -> bool:
+        return bool(self._cameras)
+
+    def render_preview(self) -> th.Tensor:
+        if self._preview_cam is None:
+            raise RuntimeError(
+                "The preview camera is missing: enable it with `--record`, and add it "
+                "with `add_preview_camera()` before building the scene."
+            )
+        rgb, _, _, _ = self._preview_cam.render(
+            rgb=True, depth=False, segmentation=False, normal=False
+        )
+        rgb = th.as_tensor(rgb)
+        if rgb.dim() == 3:  # single rendered env
+            rgb = rgb.unsqueeze(0)
+        return rgb[..., :3].to(dtype=th.uint8)
 
     def observe_camera(self, camera: CameraName, modality: CameraModality) -> th.Tensor:
         if not modality == CameraModality.RGB:

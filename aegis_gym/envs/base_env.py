@@ -1,5 +1,6 @@
 from abc import abstractmethod
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator, Sequence
+from contextlib import contextmanager
 from typing import NamedTuple
 
 import torch as th
@@ -41,6 +42,13 @@ class BaseEnv(VecEnv):
     """
 
     DEFAULT_MODALITIES: frozenset[Modality]
+    DEFAULT_EPISODE_LENGTH_S: float
+    PREVIEW_CAMERA_POSE: tuple[
+        tuple[float, float, float], tuple[float, float, float]
+    ] = (
+        (0.95, 0.0, 1.25),
+        (0.47, 0.0, 0.0),
+    )
     _observation_fns: dict[Modality, Callable[[], th.Tensor]]
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
@@ -51,6 +59,7 @@ class BaseEnv(VecEnv):
         self.num_envs = cfg.env_cfg.num_envs
         self.device = cfg.get_device()
         self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
+        self._nominal_domain = False
 
     def __del__(self):
         if self._scene:
@@ -184,6 +193,59 @@ class BaseEnv(VecEnv):
     def _reset(self) -> ResetReturn:
         """Resets the environment."""
         ...
+
+    def reset_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> TensorDict:
+        """
+        Resets the `envs_idx` environments into the reproducible initial states defined by `seeds`
+        (one per environment, without the domain randomization). Returns the observations.
+        Needs the `_reset_idx_seeded()` implementation.
+        """
+        if len(envs_idx) != len(seeds):
+            raise ValueError(f"Got {len(seeds)} seeds for {len(envs_idx)} envs.")
+        self._obs_cache_clear()
+        self._reset_idx_seeded(envs_idx=envs_idx, seeds=seeds)
+        return self.get_observations()
+
+    def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
+        raise NotImplementedError(
+            f"The `{type(self).__name__}` environment doesn't support the seeded reset."
+        )
+
+    @contextmanager
+    def nominal_domain(self) -> Iterator[None]:
+        """
+        Within the context the domain randomization is suspended and the scene runs with its
+        nominal (calibrated) parameters, e.g. for reproducible evaluation episodes. The domain
+        randomization applies to all the envs at once, so even an unrelated env reset would
+        change the dynamics of the others.
+        """
+        self._nominal_domain = True
+        self._scene.set_nominal_domain()
+        try:
+            yield
+        finally:
+            self._nominal_domain = False
+
+    def _is_domain_randomized(self) -> bool:
+        """Whether the resets should apply the domain randomization."""
+        return self._cfg_dr.enabled and not self._nominal_domain
+
+    def is_preview_available(self) -> bool:
+        """Whether the policy preview can be rendered (`render_preview()`)."""
+        return self._scene.is_preview_available()
+
+    def has_camera_observations(self) -> bool:
+        """Whether the visual observations (cameras) are available."""
+        return self._scene.has_observation_cameras()
+
+    def render_preview(self) -> th.Tensor:
+        """Returns [num_preview_envs, H, W, 3] uint8 RGB images of the first environments."""
+        return self._scene.render_preview()
+
+    @staticmethod
+    def _make_seeded_generator(seed: int) -> th.Generator:
+        """CPU generator, so a seed defines the same initial state on any device."""
+        return th.Generator(device="cpu").manual_seed(seed)
 
     def step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv. Needs the `_step()` implementation."""

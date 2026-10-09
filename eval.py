@@ -21,7 +21,8 @@ from aegis_gym.config.types import (
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
-from train import create_env, init_clearml_task
+from aegis_gym.runners import make_visual_bc_policy
+from train import create_env, create_policy_preview_recorder, init_clearml_task
 
 
 def main():
@@ -101,6 +102,13 @@ def eval_policy_single(
         debug_cfg=cfg.debug_cfg,
     )
     log_metrics(clearml_task, metrics)
+
+    preview = create_policy_preview_recorder(env=env, cfg=cfg)
+    if preview is None:
+        return
+    if args.algorithm == Algorithm.BC:
+        policy = make_visual_bc_policy(env=env, bc_policy=policy)
+    preview.record(policy=policy, iteration=0)
 
 
 # TODO(issue#100): Unify policy model types under a common base class or type alias

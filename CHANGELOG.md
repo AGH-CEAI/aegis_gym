@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, enabled by default, `--no-record` to disable): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
