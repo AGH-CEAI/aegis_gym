@@ -50,6 +50,14 @@ class BasePolicyRunner(ABC):
         """
         ...
 
+    @property
+    @abstractmethod
+    def current_iter(self) -> int:
+        """
+        The current learning iteration (restored by `load()` when resuming).
+        """
+        ...
+
     @abstractmethod
     def get_inference_policy(self, device: th.device) -> Any:
         """

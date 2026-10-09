@@ -36,7 +36,13 @@ class OnPolicyRunner(BasePolicyRunner):
         self.runner.save(path=str(path), infos=infos)
 
     def load(self, path: Path) -> None:
-        self.runner.load(path=str(path))
+        self.runner.load(path=str(path), map_location=str(self.runner.device))
+        alg = self.runner.alg
+        alg.learning_rate = alg.optimizer.param_groups[0]["lr"]
+
+    @property
+    def current_iter(self) -> int:
+        return self.runner.current_learning_iteration
 
     def get_inference_policy(self, device: th.device | None = None) -> Any:
         device = device or th.device("cpu")

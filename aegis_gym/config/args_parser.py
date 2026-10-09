@@ -1,11 +1,13 @@
 import ast
 import sys
+import time
 from argparse import ArgumentParser, ArgumentTypeError
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
@@ -32,6 +34,7 @@ class LaunchArgs:
     load_rl_model_id: str | None
     load_bc_task_id: str | None
     load_bc_model_id: str | None
+    resume: bool | None
 
     enforce_current_config: bool | None
     control_type: Control | None
@@ -128,6 +131,22 @@ def parse_arguments(
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument("--load-bc-task-id", type=str, default=None)
     p.add_argument("--load-bc-model-id", type=str, default=None)
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help=(
+            "Continue the training from a checkpoint: the model, optimizer state and "
+            "iteration counter are restored. RL: the checkpoint is taken from "
+            "`--load-rl-model-id`, `--load-rl-task-id` or, if neither is given, "
+            "the latest `model_<N>.pt` in the local log dir of the experiment. "
+            "BC: the same with `--load-bc-model-id`, `--load-bc-task-id` or the latest "
+            "`checkpoint_<N>.pt` (the RL teacher is still set by `--load-rl-*`). "
+            "NOTE: the local log dir defaults to `/tmp/aegis_gym_logs_<user>/`, which "
+            "doesn't survive a container exit (`aegis_gym_run`) or a host reboot; "
+            "prefer the ClearML IDs for a durable resume."
+        ),
+    )
     p.add_argument(
         "--enforce-current-config",
         action="store_true",
@@ -230,6 +249,15 @@ def parse_arguments(
 
     args = p.parse_args(argv[1:])
 
+    if args.algorithm == Algorithm.RL and (
+        args.load_bc_task_id is not None or args.load_bc_model_id is not None
+    ):
+        get_logger("ArgsParser").warning(
+            "`--load-bc-task-id` and `--load-bc-model-id` are ignored with "
+            "`--algorithm rl`. Continuing in 5 s..."
+        )
+        time.sleep(5)
+
     return LaunchArgs(
         config_path=args.config,
         experiment_name=args.exp_name,
@@ -244,6 +272,7 @@ def parse_arguments(
         load_rl_model_id=args.load_rl_model_id,
         load_bc_task_id=args.load_bc_task_id,
         load_bc_model_id=args.load_bc_model_id,
+        resume=args.resume,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
         env_name=args.env,

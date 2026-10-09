@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch as th
 import yaml
-from clearml import Task
+from clearml import InputModel, Task
 
 from ..aux.logging import get_logger
 from .args_parser import LaunchArgs, parse_arguments
@@ -23,6 +23,17 @@ from .types import (
 
 class ConfigManager:
     _global_cfg: ExpConfig | None = None
+    # sections defining the trained policy and its environment
+    SOURCE_TASK_SECTIONS = ("env", "rl", "bc", "robot")
+    # sections of the RL teacher, the BC section belongs to the current run
+    SOURCE_TASK_TEACHER_SECTIONS = ("env", "rl", "robot")
+    # env entries of the current run, kept over the ones of the source task
+    _SOURCE_TASK_ENV_RUNTIME_KEYS = (
+        "num_envs",
+        "max_steps",
+        "visualize_camera",
+        "visualize_cell",
+    )
 
     @classmethod
     def get_config(cls) -> ExpConfig:
@@ -37,18 +48,34 @@ class ConfigManager:
         extra_argparser: Callable | None = None,
         device: th.device | None = None,
         task: Task | None = None,
+        source_task_id: str | None = None,
+        source_sections: tuple[str, ...] = SOURCE_TASK_SECTIONS,
     ) -> None:
         """
         Initializes the global config based on the launch arguments.
         Launch arguments can be parsed by providing raw `argv` with optional `extra_argparser` options.
         Allows to setup the global `device` argument.
         Allows to connect config to the ClearML `task`.
+        Allows to base the `source_sections` of the config on the ClearML `source_task_id`
+        the loaded policy was trained in; the config file and the launch arguments still apply.
         """
         if cls._global_cfg is not None:
             raise AttributeError("Tried to reinitialize global config!")
         cls._global_cfg = cls._initalize_config(
-            argv=argv, extra_argparser=extra_argparser, device=device, task=task
+            argv=argv,
+            extra_argparser=extra_argparser,
+            device=device,
+            task=task,
+            source_task_id=source_task_id,
+            source_sections=source_sections,
         )
+
+    @staticmethod
+    def resolve_source_task_id(task_id: str | None, model_id: str | None) -> str | None:
+        """ClearML task the policy was trained in, given either its `task_id` or `model_id`."""
+        if task_id is None and model_id is not None:
+            return InputModel(model_id=model_id).task
+        return task_id
 
     @classmethod
     def _initalize_config(
@@ -57,6 +84,8 @@ class ConfigManager:
         extra_argparser: Callable | None,
         device: th.device | None,
         task: Task | None,
+        source_task_id: str | None = None,
+        source_sections: tuple[str, ...] = SOURCE_TASK_SECTIONS,
     ) -> ExpConfig:
         logger = get_logger("InitializeConfig")
         if not isinstance(argv, LaunchArgs):
@@ -67,6 +96,10 @@ class ConfigManager:
             args = argv
 
         cfg_dict = cls._get_default_config_dict()
+        if source_task_id is not None and not args.enforce_current_config:
+            cls._apply_source_task_config(
+                task_id=source_task_id, cfg_dict=cfg_dict, sections=source_sections
+            )
         if args.config_path is not None:
             logger.info(f"Patching default config with file: {args.config_path}")
             cfg_file_dict = cls._load_yaml(args.config_path)
@@ -95,6 +128,31 @@ class ConfigManager:
         device = device or th.device("cpu")
         cfg.set_device(device=device)
         return cfg
+
+    @classmethod
+    def _apply_source_task_config(
+        cls, task_id: str, cfg_dict: dict, sections: tuple[str, ...]
+    ) -> None:
+        """
+        Replaces the `sections` of `cfg_dict` with the ones connected to
+        the ClearML task `task_id`, so the loaded policy matches the config.
+        """
+        logger = get_logger("InitializeConfig")
+        source_task = Task.get_task(task_id=task_id)
+        for name in sections:
+            section = source_task.get_configuration_object_as_dict(name)
+            if not section:
+                logger.warning(
+                    f"No `{name}` config in the ClearML task {task_id}, keeping the current one"
+                )
+                continue
+            if name == "env":
+                for key in cls._SOURCE_TASK_ENV_RUNTIME_KEYS:
+                    section[key] = cfg_dict[name][key]
+            cfg_dict[name] = section
+        logger.info(
+            f"Loaded the {list(sections)} config from the ClearML task {task_id}"
+        )
 
     @classmethod
     def _get_default_config_dict(cls) -> dict:
