@@ -11,7 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `ft_calibration.py` script for the simulation and the real robot.
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode.
+- [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode, with the `scripts/ft_sensor/dr_test.py` check.
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
+- [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler, with the `scripts/ft_sensor/touch_test.py` sanity check.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added validation of the `env_specific_dict` keys against the selected environment defaults, with an `--ignore-env-dict-validation` launch arg to skip it.
 - [PR-154](https://github.com/AGH-CEAI/aegis_gym/pull/154) - Added `--env-dict` launch arg for injection of custom environment specific configuration.
 - [PR-148](https://github.com/AGH-CEAI/aegis_gym/pull/148) - Added the Push-T task.
