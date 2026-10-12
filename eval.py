@@ -1,12 +1,18 @@
 import time
 from collections.abc import Callable
+from pathlib import Path
 
+import cv2  # noqa: F401
 import torch as th
 from clearml import Task
 from tqdm import tqdm
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy
+from aegis_gym.aux.utils import (
+    list_clearml_checkpoint_artifacts,
+    load_policy,
+    without_clearml_load_binding,
+)
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -14,6 +20,7 @@ from aegis_gym.config import (
 )
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
+    POLICY_PREVIEW_SEEDS,
     Algorithm,
     DebugCfg,
     ExpConfig,
@@ -21,7 +28,15 @@ from aegis_gym.config.types import (
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
-from train import create_env, init_clearml_task
+from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners.policy_preview import (
+    InferencePolicy,
+    PolicyPreviewRecorder,
+    get_preview_target_task,
+    make_visual_bc_policy,
+    preview_iteration,
+)
+from train import create_env, create_policy_preview_recorder, init_clearml_task
 
 
 def main():
@@ -30,6 +45,13 @@ def main():
     th.set_default_dtype(th.float32)
 
     args: LaunchArgs = parse_arguments()
+    if args.resume:
+        logger.warning(
+            "`--resume` has no effect in the evaluation script. Continuing in 5 s..."
+        )
+        time.sleep(5)
+    # checked before creating the evaluation task
+    preview_target = get_preview_target_task(args) if args.preview_checkpoints else None
     # The ClearML task must exists for connecting configuration
     task = init_clearml_task(
         project_name=args.project_name,
@@ -38,7 +60,9 @@ def main():
         exp_name=args.experiment_name,
     )
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    ConfigManager.setup_config(argv=args, device=device, task=task)
+    ConfigManager.setup_config(
+        argv=args, device=device, task=task, source_task_id=get_source_task_id(args)
+    )
     cfg: ExpConfig = ConfigManager.get_config()
 
     env: BaseEnv = create_env(cfg)
@@ -54,8 +78,15 @@ def main():
     )
     logger.info("Setup done")
 
+    if preview_target is not None:
+        preview_checkpoints(env=env, cfg=cfg, target=preview_target)
+        logger.info("Finished evaluation script")
+        return
+
     with th.no_grad():
-        if is_checkpoints_sweep_required(args):
+        if is_checkpoints_sweep_required(
+            args, record=cfg.logger_cfg.enable_policy_preview
+        ):
             raise NotImplementedError("[Eval] Deprecated feature")
 
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
@@ -63,7 +94,87 @@ def main():
     logger.info("Finished evaluation script")
 
 
-def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
+def get_source_task_id(args: LaunchArgs) -> str | None:
+    """ClearML task the evaluated policy was trained in."""
+    if args.algorithm == Algorithm.RL:
+        return ConfigManager.resolve_source_task_id(
+            task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
+        )
+    return ConfigManager.resolve_source_task_id(
+        task_id=args.load_bc_task_id, model_id=args.load_bc_model_id
+    )
+
+
+def preview_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
+    """
+    Records the policy preview of each `model_<N>` checkpoint of the `target` training task and
+    reports it to its Debug Samples (and the `policy_preview/*` scalars), at the iteration the
+    training would have reported it at (see `preview_iteration()`).
+    """
+    logger = get_logger("Eval")
+    algorithm = cfg.args.algorithm
+    if env.num_envs < len(POLICY_PREVIEW_SEEDS):
+        logger.warning(
+            f"Only {env.num_envs} envs, the preview shows the first {env.num_envs} of the "
+            f"{len(POLICY_PREVIEW_SEEDS)} seeds (set `-B {len(POLICY_PREVIEW_SEEDS)}`)."
+        )
+    recorder = PolicyPreviewRecorder(
+        env=env,
+        out_dir=Path(cfg.logger_cfg.local_log_dir) / "policy_preview",
+        report_task=target,
+    )
+    if not recorder.is_available():
+        raise RuntimeError("The policy preview isn't available for this environment.")
+
+    load_checkpoint = make_checkpoint_loader(env=env, cfg=cfg)
+    checkpoints = list_clearml_checkpoint_artifacts(target)
+    logger.info(
+        f"Previewing {len(checkpoints)} checkpoints of the task {target.id}: "
+        + ", ".join(name for _, name in checkpoints)
+    )
+    for checkpoint_iter, name in checkpoints:
+        local_path = target.artifacts[name].get_local_copy()
+        if local_path is None:
+            raise FileNotFoundError(f"Failed to download the artifact '{name}'")
+        policy = load_checkpoint(Path(local_path))
+        recorder.record(
+            policy=policy, iteration=preview_iteration(algorithm, checkpoint_iter)
+        )
+        # sent per checkpoint, the previews reported so far are kept if interrupted
+        target.flush(wait_for_uploads=True)
+    logger.info(f"Previews reported to: {target.get_output_log_web_page()}")
+
+
+def make_checkpoint_loader(
+    env: BaseEnv, cfg: ExpConfig
+) -> Callable[[Path], InferencePolicy]:
+    """
+    Loads the checkpoints into a single runner, as the preview's policy. They aren't connected to
+    the evaluation task as its input models, these are the target task's own checkpoints.
+    """
+    device = cfg.get_device()
+    if cfg.args.algorithm == Algorithm.RL:
+        rl_runner = OnPolicyRunner(env=env, cfg=cfg)
+
+        def load_rl(path: Path) -> InferencePolicy:
+            with without_clearml_load_binding():
+                rl_runner.load(path)
+            return rl_runner.get_inference_policy(device=device)
+
+        return load_rl
+
+    bc_runner = BehaviorCloningRunner(env=env, cfg=cfg, teacher=None)
+
+    def load_bc(path: Path) -> InferencePolicy:
+        with without_clearml_load_binding():
+            bc_runner.load(path)
+        student = bc_runner.get_inference_policy(device=device).eval()
+        return make_visual_bc_policy(env=env, bc_policy=student)
+
+    return load_bc
+
+
+def is_checkpoints_sweep_required(args: LaunchArgs, record: bool) -> bool:
     logger = get_logger("Eval")
     sweep = (args.algorithm == Algorithm.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
@@ -74,7 +185,7 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
         logger.warning(
             "WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
-    if sweep and args.enable_recording:
+    if sweep and record:
         logger.warning("WARNING: record is ignored during multi-checkpoint sweep")
     return sweep
 
@@ -101,6 +212,13 @@ def eval_policy_single(
         debug_cfg=cfg.debug_cfg,
     )
     log_metrics(clearml_task, metrics)
+
+    preview = create_policy_preview_recorder(env=env, cfg=cfg)
+    if preview is None:
+        return
+    if args.algorithm == Algorithm.BC:
+        policy = make_visual_bc_policy(env=env, bc_policy=policy)
+    preview.record(policy=policy, iteration=0)
 
 
 # TODO(issue#100): Unify policy model types under a common base class or type alias
