@@ -8,8 +8,8 @@ Servo stiffness probes: compare simulated and real contact dynamics.
 
 Run on both backends and compare:
 
-    python ft_stiffness_probe.py --env reacher -B 1 --vis            # simulation
-    python ft_stiffness_probe.py --env reacher --control ros         # real robot
+    python -m scripts.ft_sensor.stiffness_probe --env reacher -B 1 --vis      # simulation
+    python -m scripts.ft_sensor.stiffness_probe --env reacher --control ros   # real robot
 
 SAFETY: both tests drive the arm into a surface. Run them in simulation first.
 """
@@ -25,13 +25,13 @@ from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
-from ft_calibration import (
-    _fmt_wrench,
-    _is_modelled,
-    _log_frame,
-    _rotation_since,
-    _sensor_quat,
-    _step,
+from scripts.ft_sensor.common import (
+    fmt_wrench,
+    is_modelled,
+    log_frame,
+    rotation_since,
+    sensor_quat,
+    step,
 )
 from train import create_env, init_clearml_task
 
@@ -42,7 +42,7 @@ TEST = "torque_probe"
 def _log_contacts(manipulator: BaseManipulator, label: str) -> None:
     """Simulation only: logs the solver's contacts and compares its contact force
     with the F/T model's (sensor frame)."""
-    if not _is_modelled(manipulator):
+    if not is_modelled(manipulator):
         return
     logger = get_logger("ft_stiffness_probe")
     entity = manipulator._robot_entity
@@ -185,8 +185,8 @@ def _prepare_over_table(
 
     manipulator.ctrl_go_to_home()
     for _ in range(settle_steps):
-        _step(scene)
-    _log_frame(manipulator, "home")
+        step(scene)
+    log_frame(manipulator, "home")
 
     obj = getattr(env, "object", None)
     if obj is not None:
@@ -195,7 +195,7 @@ def _prepare_over_table(
         ).repeat(env.num_envs, 1)
         obj.set_pose(pose=parked)
         for _ in range(settle_steps):
-            _step(scene)
+            step(scene)
         logger.info(f"  parked the task object at {OBJECT_PARK_POS} to clear the path")
 
     # Planned move, so the planner checks collisions with the cage.
@@ -204,7 +204,7 @@ def _prepare_over_table(
         "the cage and sit over the table"
     )
     pose = manipulator.get_tcp_pose().clone()
-    quat = _sensor_quat(manipulator)
+    quat = sensor_quat(manipulator)
     offset = th.tensor(START_OFFSET_TCP, dtype=th.float32, device=device).unsqueeze(0)
     offset = offset / th.linalg.norm(offset)
     offset_world = transform_by_quat(offset, quat.unsqueeze(0))
@@ -218,7 +218,7 @@ def _prepare_over_table(
         open_gripper=None,
     )
     for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
-        _step(scene)
+        step(scene)
     moved = _travelled(manipulator, origin)
     logger.info(f"  moved {moved * 1000:.1f} mm of {START_OFFSET_M * 1000:.0f} mm")
     if abs(moved - START_OFFSET_M) > 0.005:
@@ -234,10 +234,10 @@ def _prepare_over_table(
     else:
         manipulator.ctrl_gripper_open()
     for _ in range(settle_steps):
-        _step(scene)
+        step(scene)
     logger.info(
         f"  gripper {'closed' if close_gripper else 'open'}, wrench now "
-        f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+        f"{fmt_wrench(manipulator.get_ft_wrench()[0])}"
     )
 
 
@@ -254,7 +254,7 @@ def _tcp_velocity(
     Normalised by `env.max_linear_speed`; warns when clipped above 1 or below the
     servo deadband (no motion).
     """
-    quat = _sensor_quat(manipulator)
+    quat = sensor_quat(manipulator)
     vec = th.tensor(direction_tcp, dtype=th.float32, device=device).unsqueeze(0)
     vec = vec / th.linalg.norm(vec)
     world = transform_by_quat(vec, quat.unsqueeze(0))
@@ -267,7 +267,7 @@ def _tcp_velocity(
         )
         scale = math.copysign(1.0, scale)
     elif (
-        not _is_modelled(manipulator)
+        not is_modelled(manipulator)
         and 0.0 < abs(scale) < MIN_ACTION_FRACTION
         and round(speed * 1e6) not in _ACTION_WARNED
     ):
@@ -375,7 +375,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
     _prepare_over_table(env, cfg, settle_steps)
 
     # Sanity check of the approach direction before moving.
-    quat = _sensor_quat(manipulator)
+    quat = sensor_quat(manipulator)
     world_dir = transform_by_quat(axis.unsqueeze(0), quat.unsqueeze(0))[0]
     logger.info(
         f"  approach axis TCP{APPROACH_AXIS_TCP} points along world "
@@ -401,14 +401,14 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 ),
                 open_gripper=None,
             )
-            _step(scene)
+            step(scene)
 
             moved = _travelled(manipulator, origin)
             f_n = force_along(axis)
             if i % log_every == 0:
                 logger.info(
                     f"  [{moved * 1000:6.1f} mm] "
-                    f"Fz={f_n:+7.3f} N  {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+                    f"Fz={f_n:+7.3f} N  {fmt_wrench(manipulator.get_ft_wrench()[0])}"
                 )
             if abs(f_n) >= ABORT_FORCE_N:
                 raise RuntimeError(
@@ -443,14 +443,14 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 ),
                 open_gripper=None,
             )
-            _step(scene)
+            step(scene)
             if i % log_every == 0:
                 logger.info(
                     f"    Fz={force_along(axis):+7.3f} N  "
-                    f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+                    f"{fmt_wrench(manipulator.get_ft_wrench()[0])}"
                 )
         settled = manipulator.get_ft_wrench()[0].clone()
-        logger.info(f"  settled on the surface: {_fmt_wrench(settled)}")
+        logger.info(f"  settled on the surface: {fmt_wrench(settled)}")
         _log_contacts(manipulator, "settled")
         if abs(force_along(axis)) < 0.5 * CONTACT_FORCE_N:
             logger.warning(
@@ -466,7 +466,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
         )
         origin = manipulator.get_tcp_position()[0].clone()
         # Tilt drift leaks payload weight into the tangential force (~0.23 N/deg).
-        quat_contact = _sensor_quat(manipulator).clone()
+        quat_contact = sensor_quat(manipulator).clone()
         peak_tangential = 0.0
         tilt = 0.0
         for i in range(drag_steps):
@@ -478,7 +478,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 ),
                 open_gripper=None,
             )
-            _step(scene)
+            step(scene)
 
             moved = _travelled(manipulator, origin)
             wrench = manipulator.get_ft_wrench()[0]
@@ -492,11 +492,11 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 )
             if i % log_every == 0:
                 mu = abs(f_t / f_n) if abs(f_n) > 1e-6 else float("nan")
-                tilt = _rotation_since(quat_contact, _sensor_quat(manipulator))[0]
+                tilt = rotation_since(quat_contact, sensor_quat(manipulator))[0]
                 logger.info(
                     f"  [{moved * 1000:6.1f} mm] "
                     f"Fnormal={f_n:+7.3f} N  Ftangential={f_t:+7.3f} N  "
-                    f"ratio={mu:5.2f}  tilt={tilt:4.2f} deg  {_fmt_wrench(wrench)}"
+                    f"ratio={mu:5.2f}  tilt={tilt:4.2f} deg  {fmt_wrench(wrench)}"
                 )
             if i % (8 * log_every) == 0:
                 _log_contacts(manipulator, "dragging")
@@ -505,13 +505,13 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 break
         _stop(env, manipulator, device)
         for _ in range(settle_steps):
-            _step(scene)
+            step(scene)
 
         logger.info("=" * 78)
         logger.info("Contact and drag summary")
-        logger.info(f"  on contact, settled   {_fmt_wrench(settled)}")
+        logger.info(f"  on contact, settled   {fmt_wrench(settled)}")
         logger.info(
-            f"  after the drag        {_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+            f"  after the drag        {fmt_wrench(manipulator.get_ft_wrench()[0])}"
         )
         logger.info(f"  peak tangential force {peak_tangential:.3f} N")
         logger.info(
@@ -530,7 +530,7 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
         logger.info(f"Retracting {RETRACT_M * 100:.0f} cm")
         try:
             pose = manipulator.get_tcp_pose().clone()
-            quat = _sensor_quat(manipulator)
+            quat = sensor_quat(manipulator)
             back = transform_by_quat(
                 _unit(tuple(-v for v in APPROACH_AXIS_TCP)).unsqueeze(0),
                 quat.unsqueeze(0),
@@ -541,11 +541,11 @@ def ft_sensor_contact_drag_test(env: BaseEnv, cfg: ExpConfig) -> None:
                 open_gripper=None,
             )
             for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
-                _step(scene)
+                step(scene)
             logger.info(
                 f"  retracted {_travelled(manipulator, origin) * 1000:.1f} mm, "
                 f"clear of the surface: "
-                f"{_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+                f"{fmt_wrench(manipulator.get_ft_wrench()[0])}"
             )
         except Exception as exc:  # noqa: BLE001 - must not mask the real failure
             logger.error(
@@ -597,7 +597,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
     UNLOAD_TARGET_N_PER_STEP = 0.10  # sweep resolution
     # Above the servo deadband.
     UNLOAD_MIN_SPEED_MPS = float(env.max_linear_speed) * (
-        MIN_ACTION_FRACTION_SIM if _is_modelled(manipulator) else MIN_ACTION_FRACTION
+        MIN_ACTION_FRACTION_SIM if is_modelled(manipulator) else MIN_ACTION_FRACTION
     )
     UNLOAD_MAX_SPEED_MPS = 5.0e-3
     UNLOAD_ADAPT_EVERY = 25  # steps between speed corrections
@@ -670,7 +670,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                 _tcp_velocity(env, manipulator, APPROACH_AXIS_TCP, speed, device),
                 open_gripper=None,
             )
-            _step(scene)
+            step(scene)
             cmd_travel += speed * dt
             f_n, _, _, _ = reading()
             moved = _travelled(manipulator, origin)
@@ -771,7 +771,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         hold_trace: list[float] = []
         for i in range(max(1, round(HOLD_SECONDS / dt))):
             _stop(env, manipulator, device)
-            _step(scene)
+            step(scene)
             f_n, _, _, _ = reading()
             hold_trace.append(f_n)
             stream.send(
@@ -790,7 +790,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         )
         _log_contacts(manipulator, "at hold end")
         logger.info(
-            f"  at hold end: wrench {_fmt_wrench(manipulator.get_ft_wrench_compensated()[0])}"
+            f"  at hold end: wrench {fmt_wrench(manipulator.get_ft_wrench_compensated()[0])}"
         )
 
         # Time to peak force = command latency (1.04 s measured on the robot).
@@ -811,7 +811,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                 _tcp_velocity(env, manipulator, back, speed, device),
                 open_gripper=None,
             )
-            _step(scene)
+            step(scene)
             cmd_travel -= speed * dt
             stream.send(
                 manipulator,
@@ -925,7 +925,7 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
         logger.info(f"Retracting {RETRACT_M * 100:.0f} cm")
         try:
             pose = manipulator.get_tcp_pose().clone()
-            quat = _sensor_quat(manipulator)
+            quat = sensor_quat(manipulator)
             back = transform_by_quat(
                 (-_unit(APPROACH_AXIS_TCP)).unsqueeze(0), quat.unsqueeze(0)
             )
@@ -934,8 +934,8 @@ def ft_sensor_torque_probe(env: BaseEnv, cfg: ExpConfig) -> None:
                 open_gripper=None,
             )
             for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
-                _step(scene)
-            logger.info(f"  clear: {_fmt_wrench(manipulator.get_ft_wrench()[0])}")
+                step(scene)
+            logger.info(f"  clear: {fmt_wrench(manipulator.get_ft_wrench()[0])}")
         except Exception as exc:  # noqa: BLE001 - must not mask the real failure
             logger.error(f"  RETRACT FAILED ({exc}) -- clear the tool by hand.")
 
@@ -954,7 +954,7 @@ def _estimate_stiffness(probe: list[tuple[float, float]]) -> float:
 def _contact_lever(manipulator: BaseManipulator) -> th.Tensor | None:
     """Simulation only: force-weighted contact centroid relative to the sensor,
     in the sensor frame [m]. The true moment arm."""
-    if not _is_modelled(manipulator):
+    if not is_modelled(manipulator):
         return None
     entity = manipulator._robot_entity
     contacts = entity.get_contacts(exclude_self_contact=True, is_padded=True)
@@ -976,7 +976,7 @@ def _contact_lever(manipulator: BaseManipulator) -> th.Tensor | None:
     lever = contacts["position"][0] - manipulator._fts_link.get_pos()[0]
     centroid_world = (lever * weight.unsqueeze(-1)).sum(dim=0) / total
 
-    quat = _sensor_quat(manipulator)
+    quat = sensor_quat(manipulator)
     quat_conj = quat * th.tensor([1.0, -1.0, -1.0, -1.0], device=quat.device)
     return transform_by_quat(centroid_world.unsqueeze(0), quat_conj.unsqueeze(0))[0]
 
