@@ -58,6 +58,31 @@ def transform_quat_by_quat(u: th.Tensor, v: th.Tensor) -> th.Tensor:
     return out
 
 
+def quat_to_rotvec_error(q_target: th.Tensor, q_current: th.Tensor) -> th.Tensor:
+    """
+    Orientation error between two [N, 4] (w, x, y, z) quaternions, expressed as
+    an [N, 3] rotation vector (axis * angle) in the world frame, i.e. the rotation
+    that brings `q_current` onto `q_target` along the shortest path.
+    """
+    tw, tx, ty, tz = q_target.unbind(dim=-1)
+    # conjugate of the current orientation
+    cw, cx, cy, cz = (q_current * q_current.new_tensor([1, -1, -1, -1])).unbind(-1)
+    # Hamilton product: q_err = q_target * conj(q_current)
+    ew = tw * cw - tx * cx - ty * cy - tz * cz
+    ex = tw * cx + tx * cw + ty * cz - tz * cy
+    ey = tw * cy - tx * cz + ty * cw + tz * cx
+    ez = tw * cz + tx * cy - ty * cx + tz * cw
+    vec = th.stack([ex, ey, ez], dim=-1)
+
+    # resolve the double-cover to take the shortest rotation
+    sign = th.where(ew < 0, -1.0, 1.0).unsqueeze(-1)
+    ew, vec = ew * sign.squeeze(-1), vec * sign
+
+    vec_norm = th.linalg.vector_norm(vec, dim=-1)
+    angle = 2 * th.atan2(vec_norm, ew)
+    return vec * (angle / th.clamp(vec_norm, min=1e-8)).unsqueeze(-1)
+
+
 def quat_to_z_euler(quats: th.Tensor) -> th.Tensor:
     """
     Recovers the yaw angle from a quaternion representing a pure Z-axis rotation,

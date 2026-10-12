@@ -129,7 +129,7 @@ that actually point into this repo. Every command takes `-h`.
 
 ## Build the base images
 
-The default image version is **`v0.1.0`**; pass `-v` for another.
+The default image version is **`v0.2.0`**; pass `-v` for another.
 
 ```bash
 aegis_gym_build_image           # interactive, prompts for refs
@@ -306,7 +306,7 @@ agent never sees it.
 Publish an image for a queue with:
 
 ```bash
-aegis_gym_run -b --no-run --push-as ghcr.io/agh-ceai/aegis_gym:v0.1.0
+aegis_gym_run -b --no-run --push-as ghcr.io/agh-ceai/aegis_gym:v0.2.0
 ```
 
 `--push` without `--push-as` uses the default registry
@@ -329,7 +329,7 @@ aegis_gym_run -y shell python3 -c \
   "import genesis as gs; gs.init(backend=gs.gpu, logging_level='warning'); print('genesis ok')"
 
 # the production image still satisfies the ClearML contract
-podman inspect ceai/aegis_gym_prod:v0.1.0 --format '{{.Config.Entrypoint}}'
+podman inspect ceai/aegis_gym_prod:v0.2.0 --format '{{.Config.Entrypoint}}'
 # -> []
 ```
 
@@ -357,32 +357,32 @@ Each command is a thin wrapper around podman. The equivalents:
 
 ```bash
 # base tiers (build context: this directory)
-podman build . -f Containerfile.torch -t ceai/aegis_gym_torch:v0.1.0
+podman build . -f Containerfile.torch -t ceai/aegis_gym_torch:v0.2.0
 podman build . -f Containerfile \
-    --build-arg TORCH_REF=ceai/aegis_gym_torch:v0.1.0 \
+    --build-arg TORCH_REF=ceai/aegis_gym_torch:v0.2.0 \
     --build-arg AEGIS_GYM_TAG=devel \
     --build-arg CEAI_RSL_RL_TAG=v3.3.2 \
     --build-arg AEGIS_ROS_TAG=humble-devel \
-    -t ceai/aegis_gym:v0.1.0
+    -t ceai/aegis_gym:v0.2.0
 
 # production (build context: run/)
 podman build run -f run/Containerfile.prod \
-    --build-arg BASE_REF=ceai/aegis_gym:v0.1.0 \
+    --build-arg BASE_REF=ceai/aegis_gym:v0.2.0 \
     --build-arg AEGIS_GYM_TAG=devel \
-    -t ceai/aegis_gym_prod:v0.1.0
+    -t ceai/aegis_gym_prod:v0.2.0
 podman run --rm -it --network host --ipc host \
     --device nvidia.com/gpu=all --security-opt label=disable \
     -v ${HOME}/clearml.conf:/root/clearml.conf:ro \
-    ceai/aegis_gym_prod:v0.1.0 aegis-gym train -a rl --env reacher -e TEST_PLAYGROUND_manual
+    ceai/aegis_gym_prod:v0.2.0 aegis-gym train -a rl --env reacher -e TEST_PLAYGROUND_manual
 
 # development (build context: dev/)
 podman build dev -f dev/Containerfile.toolbx \
-    --build-arg BASE_REF=ceai/aegis_gym:v0.1.0 \
-    -t localhost/aegis_gym_dev:v0.1.0
-toolbox create --image localhost/aegis_gym_dev:v0.1.0 aegis_gym_dev-v0.1.0
-toolbox run --container aegis_gym_dev-v0.1.0 bash -lc \
+    --build-arg BASE_REF=ceai/aegis_gym:v0.2.0 \
+    -t localhost/aegis_gym_dev:v0.2.0
+toolbox create --image localhost/aegis_gym_dev:v0.2.0 aegis_gym_dev-v0.2.0
+toolbox run --container aegis_gym_dev-v0.2.0 bash -lc \
     "sudo uv pip install --system --no-deps --editable /path/to/aegis_gym"
-toolbox enter aegis_gym_dev-v0.1.0
+toolbox enter aegis_gym_dev-v0.2.0
 ```
 
 Note that `--ipc host` and `--shm-size` are mutually exclusive in podman: host

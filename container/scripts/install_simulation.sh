@@ -8,6 +8,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 apt-get update \
     && apt-get install -y --no-install-recommends \
+        fonts-dejavu-core \
         libegl-mesa0 \
         libegl1 \
         libgl1 \
@@ -99,6 +100,11 @@ uv export \
 uv pip install \
     --system \
     --requirement requirements.txt
+
+CV2_DIR="$(python3 -c 'import importlib.util, os; print(os.path.dirname(importlib.util.find_spec("cv2").origin))')"
+if [[ -d "${CV2_DIR}/qt" ]]; then
+    ln -sfn /usr/share/fonts/truetype/dejavu "${CV2_DIR}/qt/fonts"
+fi
 
 mkdir -p /ws
 cd /ws
