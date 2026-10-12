@@ -260,18 +260,23 @@ class RosGrpcManipulator(BaseManipulator):
     ) -> None:
         self._servo_disable()
 
-        goal_pose = goal_pose.squeeze(dim=0)
+        # Clone: `squeeze` is a view, the conversion would modify the caller's tensor.
+        goal_pose = goal_pose.squeeze(dim=0).clone()
         goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
 
         target_pos_np = goal_pose[:3].detach().cpu().numpy()
         target_ori_np = goal_pose[3:7].detach().cpu().numpy()
 
-        self._run_coro(
+        success, msg = self._run_coro(
             self._robot_client.goto_pose(
                 position=target_pos_np,
                 orientation=target_ori_np,
             )
         )
+        if not success:
+            raise RuntimeError(
+                f"The planner did not accept the TCP goal {goal_pose.tolist()}: {msg}"
+            )
 
         if open_gripper is None:
             return
