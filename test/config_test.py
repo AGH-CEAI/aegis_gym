@@ -179,3 +179,74 @@ def test_ignore_env_dict_validation_defaults_to_false():
     args = parse_arguments(argv=[""])
 
     assert args.ignore_env_dict_validation is False
+
+
+class _FakeSourceTask:
+    def __init__(self, sections: dict):
+        self._sections = sections
+
+    def get_configuration_object_as_dict(self, name: str) -> dict | None:
+        return self._sections.get(name)
+
+
+def _patch_source_task(monkeypatch, sections: dict) -> None:
+    monkeypatch.setattr(
+        "aegis_gym.config.config_manager.Task.get_task",
+        lambda task_id: _FakeSourceTask(sections),
+    )
+
+
+def _get_source_sections() -> dict:
+    defaults = cm._get_default_config_dict()
+    env = {**defaults["env"], "env_name": "push_t", "num_envs": 4096, "max_steps": 750}
+    rl = defaults["rl"]
+    rl["policy"]["actor_hidden_dims"] = [256, 256, 128]
+    bc = {**defaults["bc"], "learning_rate": 0.123}
+    return {"env": env, "rl": rl, "bc": bc}
+
+
+def test_source_task_config_is_applied(monkeypatch):
+    _patch_source_task(monkeypatch, _get_source_sections())
+    cm.setup_config(argv=["", "--episode-length-s", "10.0"], source_task_id="task")
+    cfg = cm.get_config()
+
+    assert cfg.env_cfg.env_name == "push_t"
+    assert cfg.rl_cfg.policy.actor_hidden_dims == [256, 256, 128]
+    # runtime entries come from the current run
+    assert cfg.env_cfg.num_envs == 10
+    assert cfg.env_cfg.max_steps == int(10.0 / cfg.env_cfg.policy_dt)
+
+
+def test_source_task_config_is_skipped_when_enforcing_current_config(monkeypatch):
+    _patch_source_task(monkeypatch, _get_source_sections())
+    cm.setup_config(argv=["", "--enforce-current-config"], source_task_id="task")
+
+    assert cm.get_config().env_cfg.env_name == "reacher"
+
+
+def test_source_task_teacher_sections_keep_the_current_bc_config(monkeypatch):
+    _patch_source_task(monkeypatch, _get_source_sections())
+    cm.setup_config(
+        argv=["", "-a=bc"],
+        source_task_id="task",
+        source_sections=cm.SOURCE_TASK_TEACHER_SECTIONS,
+    )
+    cfg = cm.get_config()
+
+    assert cfg.env_cfg.env_name == "push_t"
+    assert cfg.rl_cfg.policy.actor_hidden_dims == [256, 256, 128]
+    assert (
+        cfg.bc_cfg.learning_rate == cm._get_default_config_dict()["bc"]["learning_rate"]
+    )
+
+
+def test_resolve_source_task_id(monkeypatch):
+    class _FakeInputModel:
+        def __init__(self, model_id: str):
+            self.task = f"task_of_{model_id}"
+
+    monkeypatch.setattr("aegis_gym.config.config_manager.InputModel", _FakeInputModel)
+
+    assert cm.resolve_source_task_id(task_id="task", model_id="model") == "task"
+    assert cm.resolve_source_task_id(task_id=None, model_id="model") == "task_of_model"
+    assert cm.resolve_source_task_id(task_id=None, model_id=None) is None
