@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - Configurable contact friction in Genesis (`contact_friction` in `env.yaml`, robot and table), tuned to the friction measured on the real robot, plus no-slip solver iterations.
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - Simulated arm servo matched to the real robot: an integrating joint setpoint bounded by `servo_follow_error_max_rad`, command delay (`servo_command_delay_s`), arm stiffness scaling (`servo_stiffness_scale`), servo following error in PlotJuggler and the `scripts/ft_sensor/stiffness_probe.py` script for measuring the effective stiffness in the simulation and on the real robot.
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
 - [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.

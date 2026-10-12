@@ -10,6 +10,8 @@ class EnvCfg(BaseCfg):
     num_envs: int
     num_obs: int
     num_actions: int
+    # Friction coefficient of the robot and the table in Genesis.
+    contact_friction: float
     action_max_linear_speed: float
     action_max_angular_speed: float
     episode_length_s: float
