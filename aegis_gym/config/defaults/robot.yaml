@@ -9,7 +9,7 @@ urdf_id_cell_no_leds: "fb3689c5d7614944afd594d24ccc4959"
 urdf_id_cell_no_leds_collision: "01b800b6990f48fa963faaa8ddad9145"
 urdf_id_no_cell: "621ea36225b943d48f51f151645ca2c5"
 
-# Measured with `ft_calibration.py` on the real cell (two runs: 1.3604 /
+# Measured with `scripts/ft_sensor/calibration.py` on the real cell (two runs: 1.3604 /
 # 1.3578 kg, COM repeatable to 0.1 mm). The URDF link sum is 1.2760 kg at z=65.7 mm,
 # so it under-reads by 83 g and puts the COM 6.6 mm too far out.
 # Re-measure after any change to the gripper, its cabling or the sensor adapter.
