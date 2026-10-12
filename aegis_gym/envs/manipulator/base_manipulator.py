@@ -199,7 +199,7 @@ class BaseManipulator(ABC):
 
     def set_ft_payload(self, mass: float | None, com: list[float] | None) -> None:
         """Registers the payload hanging past the sensor, as measured by
-        `ft_calibration.py` (kg, and metres in the sensor frame).
+        `scripts/ft_sensor/calibration.py` (kg, and metres in the sensor frame).
 
         Passing None for the mass clears it, which disables `get_ft_wrench_gravity()`.
         """

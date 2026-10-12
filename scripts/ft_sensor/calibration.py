@@ -15,8 +15,8 @@ Run it on both backends; the difference between the two fits is the sim-to-real 
 in the two numbers that cause it. Paste the printed values into `robot.yaml`
 (`fts_payload_mass`, `fts_payload_com`).
 
-    python ft_calibration.py --env reacher -B 1 --vis            # simulation
-    python ft_calibration.py --env reacher --control ros         # real robot
+    python -m scripts.ft_sensor.calibration --env reacher -B 1 --vis      # simulation
+    python -m scripts.ft_sensor.calibration --env reacher --control ros   # real robot
 
 On the real robot the joint targets below must be reachable and collision-free from
 home -- check them in RViz before running.
@@ -28,6 +28,15 @@ from aegis_gym.aux.geom import transform_by_quat
 from aegis_gym.aux.logging import get_logger, setup_logger
 from aegis_gym.config import ConfigManager, parse_arguments
 from aegis_gym.envs.manipulator import BaseManipulator
+from scripts.ft_sensor.common import (
+    fmt_wrench,
+    is_modelled,
+    log_frame,
+    quat_to_matrix,
+    rotation_since,
+    sensor_quat,
+    step,
+)
 from train import create_env, init_clearml_task
 
 SETTLE_SECONDS = 4.0
@@ -72,50 +81,11 @@ POSE_OFFSETS_DEG = (
 logger = get_logger("ft_calibration")
 
 
-def _step(scene) -> None:
-    """One environment step. `pre_step()` paces the loop on the real robot (it blocks
-    until a full policy period has elapsed) and is a no-op in simulation."""
-    scene.pre_step()
-    scene.step()
-
-
-def _fmt_wrench(wrench: th.Tensor) -> str:
-    return "[" + " ".join(f"{v:8.3f}" for v in wrench.tolist()) + "]"
-
-
-def _quat_to_matrix(quat: th.Tensor) -> th.Tensor:
-    """Rotation matrix of a WXYZ quaternion, columns being the local axes in world."""
-    eye = th.eye(3, dtype=quat.dtype, device=quat.device)
-    return transform_by_quat(eye, quat.unsqueeze(0).expand(3, 4)).T
-
-
-def _sensor_quat(manipulator: BaseManipulator) -> th.Tensor:
-    """Orientation of the frame the wrench is reported in, env 0.
-
-    In simulation that is `get_ft_frame_quat()`. The real bridge does not publish the
-    sensor link, but per the URDF the only rotation between `tool_mount_link` and the
-    TCP is the +90 deg about Z of `adapter_from_sensor_end_joint`, which is exactly the
-    sensor's output offset -- so there the TCP orientation is the sensor frame.
-    """
-    getter = getattr(manipulator, "get_ft_frame_quat", manipulator.get_tcp_orientation)
-    return getter()[0]
-
-
-def _is_modelled(manipulator: BaseManipulator) -> bool:
-    """Whether this backend exposes the simulation-only modelling internals.
-
-    The real robot reports one measurement over the bridge and nothing else: there is
-    no gravity term to inspect, no untared reading, and no sensor-link handle. Every
-    block guarded by this is a sim-side cross-check, not part of the test itself.
-    """
-    return hasattr(manipulator, "get_ft_wrench_raw")
-
-
 def _log_gravity_links(manipulator: BaseManipulator) -> None:
     """Logs every link counted as "past the F/T sensor" for gravity compensation,
     together with its attachment point: the link's center of mass, both in the
     link's own frame (local COM) and in world coordinates."""
-    if not _is_modelled(manipulator):
+    if not is_modelled(manipulator):
         logger.info(
             "Real sensor: no gravity-compensation model to report (the hardware "
             "measures the load directly)."
@@ -144,46 +114,17 @@ def _log_gravity_links(manipulator: BaseManipulator) -> None:
         )
 
 
-def _log_frame(manipulator: BaseManipulator, label: str) -> None:
-    """Where the frame's own axes point, in world. Without this the wrench cannot be
-    read: 'rotate 90 deg about X' means one thing in world axes and another in the
-    tool's, and at the home pose the two differ by ~90 deg."""
-    rot = _quat_to_matrix(_sensor_quat(manipulator))
-    axes = "  ".join(
-        f"{ax}->[{' '.join(f'{v:6.3f}' for v in rot[:, i].tolist())}]"
-        for i, ax in enumerate("xyz")
-    )
-    logger.info(f"  {label} frame (sensor output frame): {axes}")
-
-
-def _rotation_since(
-    quat_ref: th.Tensor, quat_now: th.Tensor
-) -> tuple[float, list[float]]:
-    """Angle (deg) and world axis of the rotation taking `quat_ref` to `quat_now`."""
-    rel = _quat_to_matrix(quat_now) @ _quat_to_matrix(quat_ref).T
-    cos = th.clamp((th.diagonal(rel).sum() - 1.0) / 2.0, -1.0, 1.0)
-    angle = th.rad2deg(th.acos(cos))
-    axis = th.tensor(
-        [rel[2, 1] - rel[1, 2], rel[0, 2] - rel[2, 0], rel[1, 0] - rel[0, 1]],
-        device=rel.device,
-    )
-    norm = th.linalg.norm(axis)
-    if float(norm) > 1e-6:
-        axis = axis / norm
-    return float(angle), [round(v, 3) for v in axis.tolist()]
-
-
-def _log_wrench(manipulator: BaseManipulator, step: int) -> None:
+def _log_wrench(manipulator: BaseManipulator, step_no: int) -> None:
     """Logs the measurement, plus -- in simulation only -- the untared reading and the
     gravity term behind it. The real robot reports a single value, so that is all there
     is to log there, and it is the column the simulated one must match."""
-    line = f"[step {step}] wrench={_fmt_wrench(manipulator.get_ft_wrench()[0])}"
+    line = f"[step {step_no}] wrench={fmt_wrench(manipulator.get_ft_wrench()[0])}"
     if manipulator.is_ft_biased():
         line += " (tared)"
-    if _is_modelled(manipulator):
+    if is_modelled(manipulator):
         line += (
-            f"  sim_raw={_fmt_wrench(manipulator.get_ft_wrench_raw()[0])}"
-            f"  sim_gravity(world)={_fmt_wrench(manipulator._gravity_wrench_world()[0])}"
+            f"  sim_raw={fmt_wrench(manipulator.get_ft_wrench_raw()[0])}"
+            f"  sim_gravity(world)={fmt_wrench(manipulator._gravity_wrench_world()[0])}"
         )
     logger.info(line)
 
@@ -199,9 +140,7 @@ def _read_both(manipulator: BaseManipulator) -> tuple[th.Tensor | None, th.Tenso
     """The current (untared, measured) wrench for env 0. The untared half is None on
     the real robot, which reports one value and no more."""
     raw = (
-        manipulator.get_ft_wrench_raw()[0].clone()
-        if _is_modelled(manipulator)
-        else None
+        manipulator.get_ft_wrench_raw()[0].clone() if is_modelled(manipulator) else None
     )
     return raw, manipulator.get_ft_wrench()[0].clone()
 
@@ -226,16 +165,16 @@ def _log_bias_report(
         "F/T bias report            [   fx       fy       fz       tx       ty       tz ]"
     )
     if bias is not None:
-        logger.info(f"  bias (untared @ home)    {_fmt_wrench(bias[0])}")
+        logger.info(f"  bias (untared @ home)    {fmt_wrench(bias[0])}")
     if home[0] is not None:
-        logger.info(f"  home    untared (sim)    {_fmt_wrench(home[0])}")
+        logger.info(f"  home    untared (sim)    {fmt_wrench(home[0])}")
     logger.info(
-        f"  home    measured         {_fmt_wrench(home[1])}   <- ~0 by construction"
+        f"  home    measured         {fmt_wrench(home[1])}   <- ~0 by construction"
     )
     if rotated[0] is not None:
-        logger.info(f"  rotated untared (sim)    {_fmt_wrench(rotated[0])}")
+        logger.info(f"  rotated untared (sim)    {fmt_wrench(rotated[0])}")
     logger.info(
-        f"  rotated measured         {_fmt_wrench(rotated[1])}   <- compare sim vs real"
+        f"  rotated measured         {fmt_wrench(rotated[1])}   <- compare sim vs real"
     )
     logger.info(f"  (rotation actually achieved: {angle:.2f} deg)")
     logger.info("=" * 78)
@@ -305,22 +244,22 @@ def _frame_test(manipulator: BaseManipulator, scene, device: th.device, dt: floa
     between them is an error in the sensor frame (`_FTS_OUTPUT_YAW_DEG`)."""
     manipulator.ctrl_go_to_home()
     for _ in range(5):
-        _step(scene)
+        step(scene)
 
     _log_gravity_links(manipulator)
 
     hold_steps = max(1, round(HOLD_SECONDS / dt))
     log_every = max(1, round(1.0 / dt))  # once per simulated second
 
-    quat_home = _sensor_quat(manipulator).clone()
-    _log_frame(manipulator, "home")
+    quat_home = sensor_quat(manipulator).clone()
+    log_frame(manipulator, "home")
 
     # Tared in the home pose with no payload, exactly as the real sensor is zeroed
     # before a measurement, so the bias absorbs the tool's own weight.
     manipulator.set_ft_bias()
     bias = _sim_bias(manipulator)
     logger.info(
-        f"  tared at home, bias={_fmt_wrench(bias[0])}"
+        f"  tared at home, bias={fmt_wrench(bias[0])}"
         if bias is not None
         else "  tared at home (offset held by the sensor)"
     )
@@ -329,7 +268,7 @@ def _frame_test(manipulator: BaseManipulator, scene, device: th.device, dt: floa
         f"Holding home configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
     )
     for i in range(hold_steps):
-        _step(scene)
+        step(scene)
         if i % log_every == 0:
             _log_wrench(manipulator, i)
     home = _read_both(manipulator)
@@ -339,12 +278,12 @@ def _frame_test(manipulator: BaseManipulator, scene, device: th.device, dt: floa
         th.tensor(ROTATED_ARM_DOF, dtype=th.float32, device=device)
     )
     for _ in range(max(1, round(MOVE_SETTLE_SECONDS / dt))):
-        _step(scene)
+        step(scene)
 
     # Never assume the arm arrived: a joint goal cannot be refused for want of a
     # solution, but it can still be clipped by limits or simply not reached yet, and
     # either would look exactly like a frame bug in the wrench below.
-    angle, axis = _rotation_since(quat_home, _sensor_quat(manipulator))
+    angle, axis = rotation_since(quat_home, sensor_quat(manipulator))
     logger.info(
         f"  achieved {angle:.2f} deg about world axis {axis} "
         f"(the measured configuration should sit {ROTATION_DEG:.0f} deg from home)"
@@ -355,13 +294,13 @@ def _frame_test(manipulator: BaseManipulator, scene, device: th.device, dt: floa
             "it did not reach the commanded joints (limits, or still moving), NOT the "
             "sensor frame. Read the wrench accordingly."
         )
-    _log_frame(manipulator, "rotated")
+    log_frame(manipulator, "rotated")
 
     logger.info(
         f"Holding rotated configuration for {HOLD_SECONDS:.0f}s ({hold_steps} steps):"
     )
     for i in range(hold_steps):
-        _step(scene)
+        step(scene)
         if i % log_every == 0:
             _log_wrench(manipulator, i)
     rotated = _read_both(manipulator)
@@ -400,7 +339,7 @@ def main() -> None:
     def go_to(target: th.Tensor) -> None:
         manipulator.ctrl_go_to_joints(target)
         for _ in range(settle_steps):
-            _step(scene)
+            step(scene)
 
     # --- 0. Frame test (tared at home, ~90 deg rotation) -----------------------------
     logger.info("0. Sensor frame and gravity test")
@@ -417,10 +356,10 @@ def main() -> None:
     for i, (offsets, target) in enumerate(zip(POSE_OFFSETS_DEG, targets)):
         go_to(target)
         wrench = manipulator.get_ft_wrench()[0]
-        rots.append(_quat_to_matrix(_sensor_quat(manipulator)))
+        rots.append(quat_to_matrix(sensor_quat(manipulator)))
         forces.append(wrench[:3].clone())
         torques.append(wrench[3:].clone())
-        logger.info(f"  pose {i}: offsets={offsets} wrench={_fmt_wrench(wrench)}")
+        logger.info(f"  pose {i}: offsets={offsets} wrench={fmt_wrench(wrench)}")
 
     gravity = th.tensor(BaseManipulator.GRAVITY_WORLD, dtype=th.float32, device=device)
     mass, com, force_offset, torque_offset = _identify_payload(
@@ -447,8 +386,8 @@ def main() -> None:
         worst_f = max(worst_f, compensated[:3].norm().item())
         worst_t = max(worst_t, compensated[3:].norm().item())
         logger.info(
-            f"  pose {i}: measured={_fmt_wrench(measured)}  "
-            f"compensated={_fmt_wrench(compensated)}"
+            f"  pose {i}: measured={fmt_wrench(measured)}  "
+            f"compensated={fmt_wrench(compensated)}"
         )
     go_to(home)
 
@@ -462,7 +401,7 @@ def main() -> None:
         "(sensor frame)"
     )
     logger.info(
-        f"  sensor offset   = {_fmt_wrench(th.cat([force_offset, torque_offset]))}"
+        f"  sensor offset   = {fmt_wrench(th.cat([force_offset, torque_offset]))}"
     )
     logger.info(
         f"  fit residual    = {float(residuals.max()):.4f} N max, "
@@ -473,7 +412,7 @@ def main() -> None:
             f"  configured      = {cfg_mass:8.4f} kg at {cfg_com} "
             f"-> gap {1000 * (float(mass) - cfg_mass):+.1f} g"
         )
-    if _is_modelled(manipulator):
+    if is_modelled(manipulator):
         modelled = float(manipulator._gravity_link_masses[0].sum())
         logger.info(
             f"  URDF model says   {modelled:8.4f} kg "
