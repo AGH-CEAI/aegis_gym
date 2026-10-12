@@ -13,7 +13,7 @@ from tqdm import tqdm
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import IMAGE_MODALITIES, POLICY_PREVIEW_SEEDS, Modality
 from aegis_gym.envs import BaseEnv
-from aegis_gym.envs.wrappers import camera_obs_to_image
+from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
 
 InferencePolicy = Callable[[TensorDict], th.Tensor]
 
@@ -148,7 +148,7 @@ class PolicyPreviewRecorder:
         for i in range(self._num_envs):
             images = []
             for modality in self._camera_modalities:
-                img = camera_obs_to_image(
+                img = ObsPreviewEnvWrapper.camera_obs_to_image(
                     obs[modality.value][i],
                     max_side=self._CAMERA_SIDE,
                     interpolation=cv2.INTER_NEAREST,

@@ -72,6 +72,8 @@ class LaunchArgs:
 def parse_arguments(
     argv: list[str] | None = None, extra_argparser: Callable | None = None
 ) -> LaunchArgs:
+    from ..envs import available_envs
+
     def str_to_list(arg: str | None) -> list[float] | None:
         if arg is None:
             return None
