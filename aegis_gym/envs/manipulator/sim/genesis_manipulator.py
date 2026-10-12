@@ -1,6 +1,7 @@
 import math
 import time
 import warnings
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
@@ -131,6 +132,13 @@ class GenesisManipulator(BaseManipulator):
         self.max_linear_speed = 1.0
         self.max_angular_speed = 1.0
 
+        # How long each command is held; the scene sets it to `policy_dt`.
+        self.servo_dt = 0.04
+        self._q_servo_target: th.Tensor | None = None
+        self._servo_max_error = float(cfg_robot.servo_follow_error_max_rad)
+        self._servo_delay_s = float(cfg_robot.servo_command_delay_s)
+        self._servo_queue: deque[th.Tensor] = deque()
+
         self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
 
         self._ik_method = cfg_robot.ik_method
@@ -231,13 +239,26 @@ class GenesisManipulator(BaseManipulator):
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
         # TODO(issue#98) Move the robot calibration data into the URDF-dataset
-        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 100.0, 100.0]
-        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 10.0, 10.0]
+        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 5000.0, 5000.0]
+        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 30.0, 30.0]
         FORCE_LOWER = [-87.0, -87.0, -87.0, -87.0, -87.0, -87.0, -100.0, -100.0]
         FORCE_UPPER = [87.0, 87.0, 87.0, 87.0, 87.0, 87.0, 100.0, 100.0]
 
         # Sanity-check against the actual robot
         assert self._robot_entity.n_dofs == len(KP_GAINS)
+
+        # Contact force = K_eff * following error, so kp sets how fast force builds.
+        # kv scales by sqrt to keep the damping ratio.
+        scale = float(self._cfg_robot.servo_stiffness_scale)
+        if scale != 1.0:
+            root = math.sqrt(scale)
+            for i in range(self._arm_dof_dim):
+                KP_GAINS[i] *= scale
+                KV_GAINS[i] *= root
+            get_logger("Genesis::Manipulator").info(
+                f"Servo stiffness scaled x{scale:g} (kv x{root:.2f}); arm kp now "
+                f"{KP_GAINS[: self._arm_dof_dim]}"
+            )
 
         self._default_kp = self._build_gain_tensor(KP_GAINS)
         self._default_kv = self._build_gain_tensor(KV_GAINS)
@@ -285,6 +306,7 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> None:
+        action = self._delay_command(action)
         action[:, :3] *= self.max_linear_speed
         action[:, 3:] *= self.max_angular_speed
 
@@ -297,22 +319,55 @@ class GenesisManipulator(BaseManipulator):
             case _:
                 raise ValueError(f"Invalid IK method: {self._ik_method}")
 
-        # Set gripper position if specified
+        # Fingers only: commanding all DOFs would reset the arm setpoint of `_servo_arm`.
         if open_gripper is not None:
             q_pos = self._robot_entity.get_qpos()
             if open_gripper:
                 q_pos[:, self._fingers_dof] = self._gripper_open_dof
             else:
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
-            # Control gripper with position control
-            if q_vel is not None:
-                self._robot_entity.control_dofs_position(
-                    position=q_pos[:, self._fingers_dof],
-                    dofs_idx_local=self._fingers_dof,
-                )
-            self._robot_entity.control_dofs_position(position=q_pos)
+            self._robot_entity.control_dofs_position(
+                position=q_pos[:, self._fingers_dof],
+                dofs_idx_local=self._fingers_dof,
+            )
 
-        self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        self._servo_arm(q_vel[:, self._arm_dof_idx])
+
+    def _delay_command(self, action: th.Tensor) -> th.Tensor:
+        """Delays the command by `servo_command_delay_s`."""
+        steps = round(self._servo_delay_s / max(self.servo_dt, 1e-9))
+        if steps <= 0:
+            return action
+        if not self._servo_queue:
+            self._servo_queue.extend(action.clone() for _ in range(steps))
+        self._servo_queue.append(action.clone())
+        return self._servo_queue.popleft()
+
+    def resync_servo_target(self) -> None:
+        """Resets the servo setpoint to the current pose.
+        Call after moving the arm by any non-velocity command."""
+        self._q_servo_target = None
+        self._servo_queue.clear()
+
+    def _servo_arm(self, q_vel_arm: th.Tensor) -> None:
+        """Integrates the joint setpoint by the commanded velocity (like the robot's
+        `speedj`) and drives the joints to it.
+
+        Plain velocity control can't build contact force: a blocked joint stalls at
+        `kv * q_vel`. With an integrated setpoint the following error, and so the
+        force, keeps growing, as on the real arm. `_servo_max_error` caps it.
+        """
+        q_now = self._robot_entity.get_qpos()[:, self._arm_dof_idx]
+        if self._q_servo_target is None or self._q_servo_target.shape != q_now.shape:
+            self._q_servo_target = q_now.clone()
+
+        target = self._q_servo_target + q_vel_arm * self.servo_dt
+        self._q_servo_target = th.clamp(
+            target, q_now - self._servo_max_error, q_now + self._servo_max_error
+        )
+        self._robot_entity.control_dofs_position(
+            position=self._q_servo_target, dofs_idx_local=self._arm_dof_idx
+        )
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -385,6 +440,7 @@ class GenesisManipulator(BaseManipulator):
     ) -> None:
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
+        self.resync_servo_target()
 
     def ctrl_go_to_goal(
         self,
@@ -405,6 +461,7 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
+        self.resync_servo_target()
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
@@ -420,6 +477,7 @@ class GenesisManipulator(BaseManipulator):
         self._robot_entity.control_dofs_position(
             position=default_joint_angles, envs_idx=idx
         )
+        self.resync_servo_target()
 
     def ctrl_go_to_joints(
         self, joints: th.Tensor, envs_idx: th.Tensor | None = None
@@ -441,6 +499,7 @@ class GenesisManipulator(BaseManipulator):
         self._robot_entity.control_dofs_position(
             position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
         )
+        self.resync_servo_target()
 
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
