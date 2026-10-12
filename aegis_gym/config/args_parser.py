@@ -210,11 +210,12 @@ def parse_arguments(
     p.add_argument(
         "--record",
         action=BooleanOptionalAction,
-        default=True,
+        default=None,
         help=(
             "Record the policy preview video on the fixed POLICY_PREVIEW_SEEDS and report it "
             "to the ClearML Debug Samples (simulation only; at the end of the training, or of "
-            "the evaluation). Enabled by default, disable with `--no-record`."
+            "the evaluation). Overrides `enable_policy_preview` from the logger config "
+            "(disabled by default)."
         ),
     )
     p.add_argument(

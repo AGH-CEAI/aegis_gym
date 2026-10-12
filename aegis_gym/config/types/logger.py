@@ -14,5 +14,6 @@ class LoggerCfg(BaseCfg):
     clearml_project: str
     clearml_log_cfg_as_hyperparams: bool
     local_log_dir: Path
+    enable_policy_preview: bool = False
     policy_preview_interval: int = 0
     policy_preview_resolution: list[int] = field(default_factory=lambda: [320, 240])

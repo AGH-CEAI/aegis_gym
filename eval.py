@@ -63,7 +63,9 @@ def main():
     logger.info("Setup done")
 
     with th.no_grad():
-        if is_checkpoints_sweep_required(args):
+        if is_checkpoints_sweep_required(
+            args, record=cfg.logger_cfg.enable_policy_preview
+        ):
             raise NotImplementedError("[Eval] Deprecated feature")
 
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
@@ -82,7 +84,7 @@ def get_source_task_id(args: LaunchArgs) -> str | None:
     )
 
 
-def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
+def is_checkpoints_sweep_required(args: LaunchArgs, record: bool) -> bool:
     logger = get_logger("Eval")
     sweep = (args.algorithm == Algorithm.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
@@ -93,7 +95,7 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
         logger.warning(
             "WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
-    if sweep and args.enable_recording:
+    if sweep and record:
         logger.warning("WARNING: record is ignored during multi-checkpoint sweep")
     return sweep
 

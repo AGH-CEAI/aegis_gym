@@ -90,7 +90,9 @@ python3 eval.py -a=rl --env=push_t --num-envs=1 --load-rl-task-id=<CLEARML_TASK_
 
 ### Policy preview video
 `train.py` and `eval.py` (simulation, RL and BC) record the policy acting from the project-wide fixed initial states
-`POLICY_PREVIEW_SEEDS` (`aegis_gym/config/types/logger.py`); disable it with `--no-record`. The 10 episodes run in the
+`POLICY_PREVIEW_SEEDS` (`aegis_gym/config/types/logger.py`). It is disabled by default: enable it with
+`enable_policy_preview: True` in the logger config, or with the `--record` launch arg (`--record`/`--no-record` always
+override the config file). The 10 episodes run in the
 first environments and are rendered as one grid video (WebM), reported to the ClearML task under
 **Debug Samples → policy_preview**, together with its `success_rate`, `mean_return` and `mean_episode_length_s` scalars:
 

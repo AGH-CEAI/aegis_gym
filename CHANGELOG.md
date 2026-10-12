@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, enabled by default, `--no-record` to disable): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, disabled by default, enabled with `enable_policy_preview` in the logger config, overridden by the `--record`/`--no-record` launch arg): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set. Runs with the visual observations record the network's camera inputs instead of the overview camera.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The config file given with `-c` is now deep merged with the defaults, so it may hold only the overridden entries (previously each of its sections replaced the default section as a whole).
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
 - [PR-165](https://github.com/AGH-CEAI/aegis_gym/pull/165) - The Reacher rewards are computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset, and the logged `Episode/rew_*` sums cover exactly their episode.
 - [PR-163](https://github.com/AGH-CEAI/aegis_gym/pull/163) - Updated URDF datasets IDs to v3 (inertias fixes & LED lighting supports).

@@ -85,8 +85,8 @@ def main():
 def create_policy_preview_recorder(
     env: BaseEnv, cfg: ExpConfig
 ) -> PolicyPreviewRecorder | None:
-    """The policy preview recorder, if enabled (`--record`, default) and supported by the env."""
-    if not cfg.args.enable_recording:
+    """The policy preview recorder, if enabled (`enable_policy_preview`) and supported by the env."""
+    if not cfg.logger_cfg.enable_policy_preview:
         return None
     if cfg.args.control_type != Control.SIM:
         get_logger("Train").info(

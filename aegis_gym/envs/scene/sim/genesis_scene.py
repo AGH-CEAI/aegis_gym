@@ -108,7 +108,9 @@ class GenesisScene(BaseScene):
         self._preview_resolution = tuple(cfg.logger_cfg.policy_preview_resolution)
         # With the visual observations, the preview records the observation cameras instead, as the
         # batch renderer would render an extra preview camera at every policy step, for all envs
-        self._preview_enabled = bool(cfg.args.enable_recording) and not self.use_cameras
+        self._preview_enabled = (
+            cfg.logger_cfg.enable_policy_preview and not self.use_cameras
+        )
         num_preview_envs = min(self.num_envs, len(POLICY_PREVIEW_SEEDS))
         self._preview_envs_idx = list(range(num_preview_envs))
 
@@ -345,7 +347,8 @@ class GenesisScene(BaseScene):
     def render_preview(self) -> th.Tensor:
         if self._preview_cam is None:
             raise RuntimeError(
-                "The preview camera is missing: enable it with `--record`, and add it "
+                "The preview camera is missing: enable it with `--record` (or `enable_policy_preview`"
+                " in the logger config), and add it "
                 "with `add_preview_camera()` before building the scene."
             )
         rgb, _, _, _ = self._preview_cam.render(
