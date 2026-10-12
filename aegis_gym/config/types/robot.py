@@ -16,3 +16,11 @@ class RobotCfg(BaseCfg):
     urdf_id_cell_no_leds: str
     urdf_id_cell_no_leds_collision: str
     urdf_id_no_cell: str
+
+    fts_payload_mass: float | None
+    fts_payload_com: list[float] | None
+
+    # Max joint following error [rad]; acts as the force limit.
+    servo_follow_error_max_rad: float
+    servo_stiffness_scale: float
+    servo_command_delay_s: float

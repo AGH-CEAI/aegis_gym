@@ -8,3 +8,21 @@ urdf_id_cell_collision: "f6af140504884a8999fc486c2388d80e"
 urdf_id_cell_no_leds: "fb3689c5d7614944afd594d24ccc4959"
 urdf_id_cell_no_leds_collision: "01b800b6990f48fa963faaa8ddad9145"
 urdf_id_no_cell: "621ea36225b943d48f51f151645ca2c5"
+
+# Measured with `scripts/ft_sensor/calibration.py` on the real cell (two runs: 1.3604 /
+# 1.3578 kg, COM repeatable to 0.1 mm). The URDF link sum is 1.2760 kg at z=65.7 mm,
+# so it under-reads by 83 g and puts the COM 6.6 mm too far out.
+# Re-measure after any change to the gripper, its cabling or the sensor adapter.
+fts_payload_mass: 1.3591
+fts_payload_com: [0.0007, 0.0003, 0.0591]
+
+# Simulated servo config
+
+# Measured at kp=3500: 0.005 -> 40 N, 0.01 -> 79 N, 0.02 -> 162 N, 0.05 -> 384 N.
+servo_follow_error_max_rad: 0.02
+
+# Scales arm kp (kv by sqrt). Set to K_eff_real / K_eff_sim from `scripts/ft_sensor/stiffness_probe.py`.
+servo_stiffness_scale: 0.35
+
+# Delay between a velocity command and the arm acting on it.
+servo_command_delay_s: 1.20

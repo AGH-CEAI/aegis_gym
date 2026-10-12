@@ -1,11 +1,18 @@
 import sys
+from pathlib import Path
 
+import cv2  # noqa: F401
 import genesis as gs
 import torch as th
 from clearml import Task
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy
+from aegis_gym.aux.utils import (
+    checkpoint_input_model,
+    link_teacher_task,
+    load_policy,
+    resolve_checkpoint,
+)
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -15,7 +22,11 @@ from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
-from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners import BasePolicyRunner, BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners.policy_preview import (
+    PolicyPreviewRecorder,
+    make_visual_bc_policy,
+)
 
 
 def init_clearml_task(
@@ -49,7 +60,21 @@ def main():
         exp_name=args.experiment_name,
     )
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    ConfigManager.setup_config(argv=args, device=device, task=task)
+    source_task_id = None
+    if args.algorithm == Algorithm.BC:
+        # the RL teacher must match the config it was trained with
+        source_task_id = ConfigManager.resolve_source_task_id(
+            task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
+        )
+        if source_task_id is not None:
+            link_teacher_task(task=task, teacher_task_id=source_task_id)
+    ConfigManager.setup_config(
+        argv=args,
+        device=device,
+        task=task,
+        source_task_id=source_task_id,
+        source_sections=ConfigManager.SOURCE_TASK_TEACHER_SECTIONS,
+    )
     cfg: ExpConfig = ConfigManager.get_config()
 
     env = create_env(cfg)
@@ -62,6 +87,29 @@ def main():
 
     logger.info("Proceeding training")
     train_runner(env=env, cfg=cfg)
+    logger.info(f"ClearML task: {task.get_output_log_web_page()}")
+
+
+def create_policy_preview_recorder(
+    env: BaseEnv, cfg: ExpConfig
+) -> PolicyPreviewRecorder | None:
+    """The policy preview recorder, if enabled (`enable_policy_preview`) and supported by the env."""
+    if not cfg.logger_cfg.enable_policy_preview:
+        return None
+    if cfg.args.control_type != Control.SIM:
+        get_logger("Train").info(
+            "The policy preview is recorded only in the simulation."
+        )
+        return None
+    recorder = PolicyPreviewRecorder(
+        env=env, out_dir=Path(cfg.logger_cfg.local_log_dir) / "policy_preview"
+    )
+    if not recorder.is_available():
+        get_logger("Train").warning(
+            "The policy preview isn't available for this environment; skipping the recording."
+        )
+        return None
+    return recorder
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -127,7 +175,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.info(">>> Starting training: Behavioral Cloning (BC)")
 
             logger.info(">>> (BC) Loading RL policy")
-            teacher_policy = load_policy(env=env, cfg=cfg, alg=Algorithm.RL)
+            teacher_policy = load_policy(
+                env=env, cfg=cfg, alg=Algorithm.RL, input_model_name="rl_teacher"
+            )
 
             if cfg.dr_cfg.enabled:
                 logger.info(">>> (BC) Wrapping env with VisionAugWrapper")
@@ -147,8 +197,37 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 cfg=cfg,
                 teacher=teacher_policy,
             )
+            if args.resume:
+                resume_runner(
+                    runner=runner,
+                    cfg=cfg,
+                    algorithm=Algorithm.BC,
+                    task_id=args.load_bc_task_id,
+                    model_id=args.load_bc_model_id,
+                    local_checkpoint_pattern=r"checkpoint_\d+\.pt",
+                )
+            preview = create_policy_preview_recorder(env=env, cfg=cfg)
+
+            def record_preview(iteration: int) -> dict[str, float]:
+                student = runner.get_inference_policy(device=cfg.get_device()).eval()
+                metrics = preview.record(
+                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    iteration=iteration,
+                )
+                # the same module keeps training (its BatchNorm and Dropout layers)
+                student.train()
+                return metrics
+
             logger.info(">>> (BC) Starting runner")
-            runner.learn(num_learning_iterations=args.max_iterations)
+            runner.learn(
+                num_learning_iterations=args.max_iterations,
+                preview=record_preview if preview is not None else None,
+                preview_interval=cfg.logger_cfg.policy_preview_interval,
+            )
+
+            if preview is not None:
+                logger.info(">>> (BC) Recording the final policy preview")
+                record_preview(iteration=max(runner.current_iter - 1, 0))
 
         case Algorithm.RL:
             logger.info(">>> Starting training: Reinforcement Learning (RL)")
@@ -161,13 +240,129 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
 
             logger.info(">>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(env=env, cfg=cfg)
+            if args.resume:
+                resume_runner(
+                    runner=runner,
+                    cfg=cfg,
+                    algorithm=Algorithm.RL,
+                    task_id=args.load_rl_task_id,
+                    model_id=args.load_rl_model_id,
+                    local_checkpoint_pattern=r"model_\d+\.pt",
+                )
+            preview = create_policy_preview_recorder(env=env, cfg=cfg)
+            preview_interval = cfg.logger_cfg.policy_preview_interval
+
             logger.info(">>> (RL) Starting runner")
-            runner.learn(
-                num_learning_iterations=cfg.rl_cfg.max_iterations,
-                init_at_random_ep_len=True,
-            )
+            if preview is not None and preview_interval > 0:
+
+                def record_preview(iteration: int) -> None:
+                    policy = runner.get_inference_policy(device=cfg.get_device())
+                    preview.record(policy=policy, iteration=iteration)
+
+                runner.learn_in_chunks(
+                    num_learning_iterations=cfg.rl_cfg.max_iterations,
+                    chunk_iterations=preview_interval,
+                    on_chunk_end=record_preview,
+                    # re-desynchronize the episodes after every preview reset
+                    init_at_random_ep_len=True,
+                )
+            else:
+                runner.learn(
+                    num_learning_iterations=cfg.rl_cfg.max_iterations,
+                    init_at_random_ep_len=True,
+                )
+            if preview is not None:
+                logger.info(">>> (RL) Recording the final policy preview")
+                preview.record(
+                    policy=runner.get_inference_policy(device=cfg.get_device()),
+                    iteration=runner.current_iter,
+                )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
+
+
+def resume_runner(
+    runner: BasePolicyRunner,
+    cfg: ExpConfig,
+    algorithm: Algorithm,
+    task_id: str | None,
+    model_id: str | None,
+    local_checkpoint_pattern: str,
+) -> None:
+    """Restore the runner from a checkpoint and mark the ClearML task as resumed."""
+    logger = get_logger("Train")
+    alg_name = str(algorithm).upper()
+    try:
+        ckpt = resolve_checkpoint(
+            log_dir=cfg.logger_cfg.local_log_dir,
+            clearml_task_id=task_id,
+            clearml_model_id=model_id,
+            local_checkpoint_pattern=local_checkpoint_pattern,
+        )
+    except FileNotFoundError as e:
+        if task_id is not None or model_id is not None:
+            raise
+        alg = str(algorithm)
+        raise FileNotFoundError(
+            f"{e}\nCannot resume locally from {cfg.logger_cfg.local_log_dir}. "
+            "The default local log dir lives in `/tmp`, which is cleared when the "
+            "`aegis_gym_run` container exits and usually on a host reboot. "
+            f"Resume from ClearML with `--load-{alg}-task-id` or "
+            f"`--load-{alg}-model-id` instead, or set a persistent `local_log_dir`."
+        ) from e
+    logger.info(f">>> ({alg_name}) Resuming training from checkpoint: {ckpt}")
+    with checkpoint_input_model(
+        name=f"{algorithm!s}_resumed_checkpoint",
+        clearml_task_id=task_id,
+        clearml_model_id=model_id,
+    ):
+        runner.load(ckpt)
+    mark_task_as_resumed(
+        algorithm=algorithm,
+        ckpt=ckpt,
+        start_iteration=runner.current_iter,
+        task_id=task_id,
+        model_id=model_id,
+    )
+
+
+def mark_task_as_resumed(
+    algorithm: Algorithm,
+    ckpt: Path,
+    start_iteration: int,
+    task_id: str | None,
+    model_id: str | None,
+) -> None:
+    """Note the resume source in the ClearML task description (INFO tab) and tags,
+    and link the source task as the parent (lineage in the ClearML UI)."""
+    task = Task.current_task()
+    if task is None:
+        return
+
+    parent_task_id = ConfigManager.resolve_source_task_id(
+        task_id=task_id, model_id=model_id
+    )
+    if parent_task_id is not None:
+        task.set_parent(parent_task_id)
+
+    if model_id is not None:
+        source = f"ClearML model ID: {model_id}"
+        source_tag = f"resumed_from:model/{model_id}"
+    elif task_id is not None:
+        source = f"ClearML task ID: {task_id}"
+        source_tag = f"resumed_from:task/{task_id}"
+    else:
+        source = "local log dir"
+        source_tag = "resumed_from:local"
+    note = (
+        f"Resumed {str(algorithm).upper()} training from {source}\n"
+        f"Checkpoint: {ckpt.name}\n"
+        f"Starting iteration: {start_iteration}"
+    )
+
+    comment = task.comment or ""
+    task.set_comment(f"{comment}\n\n{note}" if comment else note)
+    task.add_tags(["resumed", source_tag])
 
 
 if __name__ == "__main__":
