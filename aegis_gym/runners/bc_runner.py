@@ -1,3 +1,4 @@
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -10,9 +11,11 @@ import torchvision.utils as vutils
 from rsl_rl.utils.logger import Logger
 from torch import nn
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config import ConfigManager
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
+    BaseCfg,
     BCCfg,
     CamerasSetup,
     ExpConfig,
@@ -128,7 +131,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
     ) -> None:
         self._buffer.clear()
 
-        for it in range(num_learning_iterations):
+        start_iter = self._current_iter
+        for it in range(start_iter, start_iter + num_learning_iterations):
             # Collect experience
             start_time = time.time()
             self._collect_with_rl_teacher()
@@ -204,6 +208,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     forward_time=forward_time,
                     backward_time=backward_time,
                 )
+
+            self._current_iter = it + 1
 
             # Save checkpoints periodically
             if self.logger is not None and (it + 1) % self.cfg_train.save_freq == 0:
@@ -449,6 +455,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
             "model_state_dict": self._policy.state_dict(),
             "optimizer_state_dict": self._optimizer.state_dict(),
             "current_iter": self._current_iter,
+            "best_model_reward": self._best_model_reward,
+            "best_model_iter": self._best_model_iter,
             "config": self.cfg_train,
         }
         th.save(checkpoint, path)
@@ -459,11 +467,67 @@ class BehaviorCloningRunner(BasePolicyRunner):
         checkpoint = th.load(path, map_location=self.device, weights_only=False)
         self._policy.load_state_dict(checkpoint["model_state_dict"])
         self._optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        self.current_iter = checkpoint["current_iter"]
-        print(f"Model loaded from {path}")
+        self._current_iter = checkpoint["current_iter"]
+        if self._current_iter == 0:
+            # Checkpoints saved before the resume support always stored 0
+            m = re.search(r"_(\d+)\.pt$", Path(path).name)
+            if m:
+                self._current_iter = int(m.group(1))
+        self._best_model_reward = checkpoint.get("best_model_reward", float("-inf"))
+        self._best_model_iter = checkpoint.get("best_model_iter", -1)
+        get_logger("BCRunner").info(
+            f"Model loaded from {path} (iteration {self._current_iter})"
+        )
+        self._warn_on_config_mismatch(checkpoint.get("config"))
+
+    def _warn_on_config_mismatch(self, ckpt_cfg: Any) -> None:
+        """Warn if the BC config stored in the checkpoint differs from the current one."""
+        logger = get_logger("BCRunner")
+        if ckpt_cfg is None:
+            logger.info("Checkpoint has no stored config, skipping the comparison")
+            return
+        try:
+            ckpt_dict = (
+                ckpt_cfg.as_dict() if isinstance(ckpt_cfg, BaseCfg) else ckpt_cfg
+            )
+            ckpt_flat = _flatten_dict(ckpt_dict)
+        except (AttributeError, TypeError) as e:
+            # e.g. a config pickled by an older version of `BCCfg`
+            logger.warning(f"Couldn't read the checkpoint config ({e}), skipping")
+            return
+
+        current_flat = _flatten_dict(self.cfg_train.as_dict())
+        diffs = [
+            f"  {key}: {ckpt_flat.get(key, '<missing>')} -> "
+            f"{current_flat.get(key, '<missing>')}"
+            for key in sorted(ckpt_flat.keys() | current_flat.keys())
+            if ckpt_flat.get(key, "<missing>") != current_flat.get(key, "<missing>")
+        ]
+        if diffs:
+            logger.warning(
+                "The current BC config differs from the checkpoint one "
+                "(checkpoint -> current). The current config is used, except the "
+                "optimizer state (incl. the learning rate), which is restored from "
+                "the checkpoint:\n" + "\n".join(diffs)
+            )
+
+    @property
+    def current_iter(self) -> int:
+        return self._current_iter
 
     def get_inference_policy(self, device: th.device) -> Any:
         return self._policy.to(device)
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
         raise NotImplementedError()
+
+
+def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:
+    flat = {}
+    for key, value in d.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flat.update(_flatten_dict(value, name))
+        else:
+            flat[name] = value
+    return flat
