@@ -69,7 +69,10 @@ class PolicyPreviewRecorder:
             with self._env.nominal_domain():
                 metrics = self._run_episodes(policy=policy, video_path=video_path)
             self._env.reset()
-        getattr(self._env, "extras", {}).pop("episode", None)
+        # The reset filled `extras["episode"]` with the reward sums of the preview episodes. The env
+        # returns it on every step until its next reset, so the rsl_rl logger would average them into
+        # the `Episode/rew_*` of the training.
+        self._env.extras.pop("episode", None)
 
         self._report(video_path=video_path, metrics=metrics, iteration=iteration)
         return metrics
