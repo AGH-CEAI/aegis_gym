@@ -376,8 +376,6 @@ class PushTEnv(BaseEnv):
         self.success_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.tee_off_table_buf = th.zeros_like(self.success_buf)
 
-        # tee [x, y, yaw] at the previous step, for its velocity observation
-        self.last_tee_xy_yaw = th.zeros(self.num_envs, 3, device=self.device)
         self.extras = {}
         self.extras["observations"] = {}
 
@@ -414,7 +412,6 @@ class PushTEnv(BaseEnv):
         self.object.set_pose(pose=tee_pose, envs_idx=envs_idx)
         self.last_pose_dist[envs_idx] = self._tee_to_goal_pose_distance()[envs_idx]
         self.last_tcp_dist[envs_idx] = self._tcp_to_tee_footprint_distance()[envs_idx]
-        self.last_tee_xy_yaw[envs_idx] = self._get_tee_xy_yaw()[envs_idx]
 
         # fill extras
         self.extras["episode"] = {
@@ -509,7 +506,6 @@ class PushTEnv(BaseEnv):
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
         tcp_twist = self._planar_action_to_tcp_twist(actions)
-        self.last_tee_xy_yaw = self._get_tee_xy_yaw()
 
         self._scene.pre_step()
         self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
@@ -530,12 +526,6 @@ class PushTEnv(BaseEnv):
 
         self.last_pose_dist = self.pose_dist.clone()
         self.last_tcp_dist = self.tcp_dist.clone()
-
-        # check env termination (Sets the self.reset_buf)
-        env_reset_idx = self._is_episode_complete()
-        if len(env_reset_idx) > 0:
-            self.reset_idx(env_reset_idx)
-            self._obs_cache_clear()
 
         # check env termination (Sets the self.reset_buf)
         env_reset_idx = self._is_episode_complete()
@@ -669,12 +659,6 @@ class PushTEnv(BaseEnv):
         )
         yaw_err = tee_yaw - goal_yaw
 
-        # finite differences, available also on the real robot
-        tee_xy_yaw = th.stack([obj_pose[:, 0], obj_pose[:, 1], tee_yaw], dim=-1)
-        tee_delta = tee_xy_yaw - self.last_tee_xy_yaw
-        # the yaw wraps around in [0, 2pi)
-        tee_delta[:, 2] = th.remainder(tee_delta[:, 2] + math.pi, 2 * math.pi) - math.pi
-
         obs_components = [
             tee_centroid - tcp_xy,  # TCP-to-tee position difference
             goal_centroid - tee_centroid,  # tee-to-goal position difference
@@ -702,11 +686,6 @@ class PushTEnv(BaseEnv):
         centroid_err_sq = (tee_centroid - goal_centroid).square().sum(dim=-1)
         rot_err_sq = 2 * (1 - th.cos(yaw - goal_yaw)) * self._tee_gyration_sq
         return th.sqrt(centroid_err_sq + rot_err_sq)
-
-    def _get_tee_xy_yaw(self) -> th.Tensor:
-        tee_pose = self.object.get_pose()
-        yaw = quat_to_z_euler(tee_pose[:, 3:])
-        return th.stack([tee_pose[:, 0], tee_pose[:, 1], yaw], dim=-1)
 
     @staticmethod
     def _rotate_xy(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:
