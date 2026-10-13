@@ -79,6 +79,7 @@ def main():
 
     logger.info("Proceeding training")
     train_runner(env=env, cfg=cfg)
+    logger.info(f"ClearML task: {task.get_output_log_web_page()}")
 
 
 def create_policy_preview_recorder(
