@@ -116,6 +116,8 @@ class ConfigManager:
                 cfg_dict[cfg_sec_name] = connected
 
         cls._patch_config(args=args, cfg_dict=cfg_dict)
+        for ignored in cls._find_ignored_launch_args(args=args, cfg_dict=cfg_dict):
+            logger.warning(ignored)
         cfg = ExpConfig(
             logger_cfg=LoggerCfg.from_dict(cfg_dict.get("logger", None)),
             rl_cfg=RLCfg.from_dict(cfg_dict.get("rl", None)),
@@ -257,6 +259,65 @@ class ConfigManager:
             given=cfg_dict["env"]["env_specific_dict"],
             validate=not args.ignore_env_dict_validation,
         )
+
+    @classmethod
+    def _find_ignored_launch_args(cls, args: LaunchArgs, cfg_dict: dict) -> list[str]:
+        """
+        The launch args given but missing from the config after `_patch_config()`. Under the ClearML
+        agent the connected config is read-only (`ProxyDictPreWrite` ignores the writes), so it's
+        controlled from the task's configuration sections only, the overrides from `Args` are dropped.
+        """
+        given: list[tuple[str, object, str]] = [
+            ("--exp-name", args.experiment_name, "rl.experiment_name"),
+            ("--max-iterations", args.max_iterations, "rl.max_iterations"),
+            ("--seed", args.seed, "rl.seed"),
+            ("--env", args.env_name, "env.env_name"),
+            # the store_true flags aren't given when False
+            (
+                "--visualize-camera",
+                args.visualize_camera or None,
+                "env.visualize_camera",
+            ),
+            ("--episode-length-s", args.episode_length_s, "env.episode_length_s"),
+            (
+                "--record/--no-record",
+                args.enable_recording,
+                "logger.enable_policy_preview",
+            ),
+            ("--debug-enable", args.debug_enable or None, "debug.enabled"),
+        ]
+        # A real robot is a single instance, `_patch_config()` sets it on purpose
+        if args.control_type != Control.ROS:
+            given.append(("--num-envs", args.num_envs, "env.num_envs"))
+        for path, value in cls._flatten(args.env_specific_dict or {}).items():
+            given.append(("--env-dict", value, f"env.env_specific_dict.{path}"))
+
+        ignored = []
+        for flag, value, path in given:
+            if value is None:
+                continue
+            actual = cfg_dict
+            for key in path.split("."):
+                actual = actual.get(key) if isinstance(actual, dict) else None
+            if actual != value:
+                ignored.append(
+                    f"The launch arg `{flag}` ({value!r}) is ignored, the config keeps "
+                    f"`{path}` = {actual!r}. Under the ClearML agent the config is read-only: "
+                    f"set it in the `{path.split('.')[0]}` configuration of the task instead."
+                )
+        return ignored
+
+    @classmethod
+    def _flatten(cls, d: dict, prefix: str = "") -> dict[str, object]:
+        """Nested dict as {"a.b": value} leaves."""
+        flat = {}
+        for key, value in d.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict):
+                flat.update(cls._flatten(value, prefix=f"{path}."))
+            else:
+                flat[path] = value
+        return flat
 
     @classmethod
     def _resolve_env_specific_dict(

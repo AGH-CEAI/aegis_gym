@@ -343,8 +343,13 @@ class PushTEnv(BaseEnv):
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
         self.reward_functions, self.episode_sums = {}, {}
+        # Scaled copy, the config dict isn't modified: under the ClearML agent it's read-only and
+        # silently ignores the writes (`ProxyDictPreWrite`), which would leave the scales unscaled.
+        dt = self.ctrl_dt * self.sim_substeps
+        self.reward_scales = {
+            name: scale * dt for name, scale in self.reward_scales.items()
+        }
         for name in self.reward_scales:
-            self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=self.device, dtype=th.float32
@@ -513,7 +518,8 @@ class PushTEnv(BaseEnv):
 
         self.intersection_ratio = self._tee_projection_to_goal_intersection()
         self.success_buf = self.intersection_ratio >= self.success_thresh
-        self.extras["success"] = self.success_buf
+        # copies, the buffers are cleared in place by the reset below
+        self.extras["success"] = self.success_buf.clone()
         self.pose_dist = self._tee_to_goal_pose_distance()
         self.tcp_dist = self._tcp_to_tee_footprint_distance()
 
@@ -618,7 +624,7 @@ class PushTEnv(BaseEnv):
     def _is_episode_complete(self) -> th.Tensor:
         time_out_buf = self.episode_length_buf > self.max_episode_length
         self.tee_off_table_buf = self._is_tee_off_table()
-        self.extras["tee_off_table"] = self.tee_off_table_buf
+        self.extras["tee_off_table"] = self.tee_off_table_buf.clone()
 
         self.reset_buf = time_out_buf | self.tee_off_table_buf
         if self.terminate_on_success:
@@ -660,6 +666,7 @@ class PushTEnv(BaseEnv):
         yaw_err = tee_yaw - goal_yaw
 
         obs_components = [
+            tcp_xy,  # absolute TCP position, w.r.t. the workspace limits
             tee_centroid - tcp_xy,  # TCP-to-tee position difference
             goal_centroid - tee_centroid,  # tee-to-goal position difference
             th.stack([th.sin(yaw_err), th.cos(yaw_err)], dim=-1),  # tee-to-goal yaw

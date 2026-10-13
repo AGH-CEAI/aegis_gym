@@ -125,8 +125,13 @@ class ReacherEnv(BaseEnv):
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
         self.reward_functions, self.episode_sums = {}, {}
+        # Scaled copy, the config dict isn't modified: under the ClearML agent it's read-only and
+        # silently ignores the writes (`ProxyDictPreWrite`), which would leave the scales unscaled.
+        dt = self.ctrl_dt * self.sim_substeps
+        self.reward_scales = {
+            name: scale * dt for name, scale in self.reward_scales.items()
+        }
         for name in self.reward_scales:
-            self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=self.device, dtype=th.float32
