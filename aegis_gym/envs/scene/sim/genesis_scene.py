@@ -11,7 +11,6 @@ from aegis_gym.config.types import (
     CAMERAS_LINKS,
     POLICY_PREVIEW_SEEDS,
     Algorithm,
-    CameraLink,
     CameraModality,
     CameraName,
     CamerasSetup,
@@ -287,23 +286,23 @@ class GenesisScene(BaseScene):
             dtype=np.float32,
         )
 
-        get_link = self.manipulator.get_robot_link
-        self._cameras[CameraName.CAMERA_SCENE].attach(
-            get_link(link=CameraLink.CAMERA_SCENE), scene_offset_T
+        self._attach_cameras(
+            offsets={
+                CameraName.CAMERA_SCENE: scene_offset_T,
+                CameraName.CAMERA_TOOL_LEFT: tool_offset_T,
+                CameraName.CAMERA_TOOL_RIGHT: tool_offset_T,
+            }
         )
-        self._cameras[CameraName.CAMERA_SCENE].move_to_attach()
-        self._cameras[CameraName.CAMERA_TOOL_LEFT].attach(
-            get_link(link=CameraLink.CAMERA_TOOL_LEFT), tool_offset_T
-        )
-        self._cameras[CameraName.CAMERA_TOOL_LEFT].move_to_attach()
-        self._cameras[CameraName.CAMERA_TOOL_RIGHT].attach(
-            get_link(link=CameraLink.CAMERA_TOOL_RIGHT), tool_offset_T
-        )
-        self._cameras[CameraName.CAMERA_TOOL_RIGHT].move_to_attach()
-
         self._cache_camera_base_offsets(
             offset_scene=scene_offset_T, offset_tool=tool_offset_T
         )
+
+    def _attach_cameras(self, offsets: dict[CameraName, np.ndarray]) -> None:
+        """Attaches the cameras to their robot links, at the given link -> camera offsets."""
+        for cam_name, offset in offsets.items():
+            link = self.manipulator.get_robot_link(link=CAMERAS_LINKS[cam_name])
+            self._cameras[cam_name].attach(link, offset)
+            self._cameras[cam_name].move_to_attach()
 
     def _cache_camera_base_offsets(
         self, offset_scene: np.ndarray, offset_tool: np.ndarray
@@ -328,6 +327,7 @@ class GenesisScene(BaseScene):
         self.manipulator.max_linear_speed = self._max_linear_speed
         self.manipulator.max_angular_speed = self._max_angular_speed
         self.manipulator.set_joints_pd_gains()
+        self._attach_cameras(offsets=self._dr_cam_base_offsets)
 
     def add_preview_camera(
         self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
@@ -430,6 +430,7 @@ class GenesisScene(BaseScene):
         ):
             return
 
+        perturbed_offsets: dict[CameraName, np.ndarray] = {}
         for cam_name, base_offset in self._dr_cam_base_offsets.items():
             if cam_name == CameraName.CAMERA_SCENE:
                 per_cam = cam_cfg.scene_cam
@@ -444,11 +445,8 @@ class GenesisScene(BaseScene):
             perturb = self._make_random_se3_perturbation(
                 per_cam.translation_std, per_cam.rotation_std_deg
             )
-            perturbed_offset = (base_offset @ perturb).astype(np.float32)
-
-            link = self.manipulator.get_robot_link(link=CAMERAS_LINKS[cam_name])
-            self._cameras[cam_name].attach(link, perturbed_offset)
-            self._cameras[cam_name].move_to_attach()
+            perturbed_offsets[cam_name] = (base_offset @ perturb).astype(np.float32)
+        self._attach_cameras(offsets=perturbed_offsets)
 
     def _make_random_se3_perturbation(
         self,
