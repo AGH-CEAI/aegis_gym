@@ -82,8 +82,22 @@ def local_imports(mod: str, path: Path) -> set[str]:
                 f"{base}.{alias.name}" if f"{base}.{alias.name}" in MODULES else base
                 for alias in node.names
             ]
-        deps.update(t for t in targets if t in MODULES and t != mod)
-    return deps
+        for target in targets:
+            deps.update(
+                p for p in parent_packages(target) if not mod.startswith(f"{p}.")
+            )
+            deps.add(target)
+    return {d for d in deps if d in MODULES and d != mod}
+
+
+def parent_packages(target: str) -> list[str]:
+    """Return the packages whose `__init__` runs before `target` is imported.
+
+    The packages enclosing the importing module are skipped by the caller, as they
+    are already (partially) initialized by then.
+    """
+    parts = target.split(".")
+    return [".".join(parts[:i]) for i in range(1, len(parts))]
 
 
 def find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:

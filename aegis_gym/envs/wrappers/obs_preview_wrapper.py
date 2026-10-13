@@ -42,6 +42,30 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         self._preview(mm_obs)
         return res
 
+    @staticmethod
+    def camera_obs_to_image(
+        img: th.Tensor,
+        max_side: int,
+        normalized: bool = True,
+        interpolation: int = cv2.INTER_AREA,
+    ) -> np.ndarray:
+        """
+        Converts a [3, H, W] camera observation (values in [0, 1] if `normalized`) into an RGB
+        [H', W', 3] uint8 image, scaled to fit in `max_side`.
+        """
+        img_np = img.permute(1, 2, 0).cpu().numpy()  # CHW -> HWC
+        if normalized and np.issubdtype(img_np.dtype, np.floating):
+            img_np = (np.clip(img_np, 0.0, 1.0) * 255).astype(np.uint8)
+        else:
+            img_np = img_np.astype(np.uint8)
+        height, width = img_np.shape[:2]
+        scale = min(max_side / width, max_side / height)
+        return cv2.resize(
+            img_np,
+            (int(width * scale), int(height * scale)),
+            interpolation=interpolation,
+        )
+
     def _preview(self, multimodal_obs: TensorDict) -> None:
         if not (self._cfg.enable_vis_preview or self._cfg.enable_record_obs):
             return
@@ -94,22 +118,12 @@ class ObsPreviewEnvWrapper(BaseEnvWrapper):
         for env_idx in range(num_envs):
             row_images: list[np.ndarray] = []
             for col_idx, modality in enumerate(ordered_modalities):
-                img = (
-                    mm_obs[modality.value][env_idx].permute(1, 2, 0).cpu().numpy()
-                )  # CHW -> HWC
-                if normalize and np.issubdtype(img.dtype, np.floating):
-                    img = (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
-                else:
-                    img = img.astype(np.uint8)
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-                height, width = img.shape[:2]
-                scale = min(max_side / width, max_side / height)
-                img = cv2.resize(
-                    img,
-                    (int(width * scale), int(height * scale)),
-                    interpolation=cv2.INTER_AREA,
+                img = self.camera_obs_to_image(
+                    mm_obs[modality.value][env_idx],
+                    max_side=max_side,
+                    normalized=normalize,
                 )
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 if env_idx == 0:
                     cv2.putText(
                         img,

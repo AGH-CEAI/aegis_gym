@@ -88,6 +88,24 @@ python3 eval.py -a=bc --num-envs=10 --load-bc-task=<CLEARML_TASK_ID> -e EVAL_REA
 python3 eval.py -a=rl --env=push_t --num-envs=1 --load-rl-task-id=<CLEARML_TASK_ID> -e EVAL_PUSH_T
 ```
 
+### Policy preview video
+`train.py` and `eval.py` (simulation, RL and BC) record the policy acting from the project-wide fixed initial states
+`POLICY_PREVIEW_SEEDS` (`aegis_gym/config/types/logger.py`). It is disabled by default: enable it with
+`enable_policy_preview: True` in the logger config, or with the `--record` launch arg (`--record`/`--no-record` always
+override the config file). The 10 episodes run in the
+first environments and are rendered as one grid video (WebM), reported to the ClearML task under
+**Debug Samples → policy_preview**, together with its `success_rate`, `mean_return` and `mean_episode_length_s` scalars:
+
+* series `preview`: an overview camera of each seed's scene (runs without visual observations),
+* series `camera_inputs`: the cameras as the network gets them (runs with visual observations, without augmentation).
+
+* Training records the preview at its end; set `policy_preview_interval` (logger config) to record it also every N iterations
+  (the training is then run in chunks, all the envs are reset after every preview). Each preview has the checkpoint of
+  its policy, `model_<iteration>.pt` (saved besides the regular `save_interval` ones), and the episodes interrupted by
+  the preview are left out of the `Train/mean_reward` and `Train/mean_episode_length`.
+* The videos are also saved in `<local_log_dir>/policy_preview/`.
+* On a machine without a display, run with `PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1` (see [container/README.md](./container/README.md)).
+
 ---
 ## Interaction with ClearML
 

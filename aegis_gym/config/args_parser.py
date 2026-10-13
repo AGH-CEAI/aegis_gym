@@ -1,14 +1,13 @@
 import ast
 import sys
 import time
-from argparse import ArgumentParser, ArgumentTypeError
+from argparse import ArgumentParser, ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
 
@@ -73,6 +72,8 @@ class LaunchArgs:
 def parse_arguments(
     argv: list[str] | None = None, extra_argparser: Callable | None = None
 ) -> LaunchArgs:
+    from ..envs import available_envs
+
     def str_to_list(arg: str | None) -> list[float] | None:
         if arg is None:
             return None
@@ -210,8 +211,14 @@ def parse_arguments(
 
     p.add_argument(
         "--record",
-        action="store_true",
-        help="Record stereo images as video during evaluation",
+        action=BooleanOptionalAction,
+        default=None,
+        help=(
+            "Record the policy preview video on the fixed POLICY_PREVIEW_SEEDS and report it "
+            "to the ClearML Debug Samples (simulation only; at the end of the training, or of "
+            "the evaluation). Overrides `enable_policy_preview` from the logger config "
+            "(disabled by default)."
+        ),
     )
     p.add_argument(
         "--video-path",

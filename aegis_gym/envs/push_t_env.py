@@ -1,4 +1,5 @@
 import math
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import trimesh
 from tensordict import TensorDict
 
 from aegis_gym.aux.geom import check_points_in_polygon, quat_to_z_euler, quat_to_zrot
+from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -19,6 +21,8 @@ from .scene import BaseScene
 @register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+    DEFAULT_EPISODE_LENGTH_S = 30.0
+    PREVIEW_CAMERA_POSE = ((0.95, 0.0, 1.25), (0.47, 0.0, 0.0))
 
     _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
     _TEE_STL_PATH = _ASSETS_DIR / "T_shape.stl"
@@ -171,6 +175,7 @@ class PushTEnv(BaseEnv):
             scale=(1.0, 1.0, self._GOAL_MARKER_Z_SCALE),
         )
         self._scene.add_entity(entity=ObjectType.MESH, properties=p_goal_marker)
+        self._scene.add_preview_camera(*self.PREVIEW_CAMERA_POSE)
 
     def _build_tee_canonical_mask(self, mesh_path: str) -> None:
         mesh = trimesh.load(mesh_path)
@@ -248,7 +253,12 @@ class PushTEnv(BaseEnv):
         self._scene.update_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def reset_idx(self, envs_idx: th.Tensor) -> None:
+    def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
+        tee_pose = self._get_random_tee_pose(num_reset=len(seeds), seeds=seeds)
+        self.reset_idx(envs_idx=envs_idx, tee_pose=tee_pose)
+
+    def reset_idx(self, envs_idx: th.Tensor, tee_pose: th.Tensor | None = None) -> None:
+        """Resets the `envs_idx`, with a random tee pose unless given (then without the DR)."""
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -256,7 +266,9 @@ class PushTEnv(BaseEnv):
         self.manipulator.ctrl_gripper_open(envs_idx)
         self.manipulator.ctrl_go_to_home(envs_idx)
 
-        tee_pose = self._get_random_tee_pose(envs_idx=envs_idx)
+        randomize_domain = self._is_domain_randomized() and tee_pose is None
+        if tee_pose is None:
+            tee_pose = self._get_random_tee_pose(num_reset=len(envs_idx))
         self.object.set_pose(pose=tee_pose, envs_idx=envs_idx)
 
         # fill extras
@@ -268,21 +280,25 @@ class PushTEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if not self._cfg_dr.enabled:
+        if not randomize_domain:
             return
         for rt in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
-    def _get_random_tee_pose(self, envs_idx: th.Tensor) -> th.Tensor:
-        num_reset = len(envs_idx)
-
+    def _get_random_tee_pose(
+        self, num_reset: int, seeds: Sequence[int] | None = None
+    ) -> th.Tensor:
+        """Random pose for `num_reset` envs, reproducible on any device if `seeds` are given."""
+        # The draws columns (x, y, yaw) define the seeded initial states (`reset_seeded()`):
+        # reordering them changes the policy preview scenes (see `test/rand_test.py`).
+        u = rand_uniform(num=num_reset, num_draws=3, device=self.device, seeds=seeds)
         random_x = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_xlength
+            u[:, 0] * self.spawnbox_xlength
             + self.goal_offset_xy[0]
             + self.spawnbox_xoffset
         )
         random_y = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_ylength
+            u[:, 1] * self.spawnbox_ylength
             + self.goal_offset_xy[1]
             + self.spawnbox_yoffset
         )
@@ -291,7 +307,7 @@ class PushTEnv(BaseEnv):
         )
         random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
-        random_yaw = th.rand(num_reset, device=self.device) * 2 * math.pi
+        random_yaw = u[:, 2] * 2 * math.pi
         random_quat = th.stack(
             [
                 th.cos(random_yaw / 2),
@@ -313,20 +329,21 @@ class PushTEnv(BaseEnv):
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
         self._scene.step()
 
-        # check env termination (Sets the self.reset_buf)
-        env_reset_idx = self._is_episode_complete()
-        if len(env_reset_idx) > 0:
-            self.reset_idx(env_reset_idx)
-
+        # compute success and reward based on task, before the reset replaces the terminal state
         self.intersection_ratio = self._tee_projection_to_goal_intersection()
         self.extras["success"] = self.intersection_ratio >= self.success_thresh
 
-        # compute reward based on task
-        reward = th.zeros_like(self.reset_buf, device=self.device, dtype=th.float32)
+        reward = th.zeros(self.num_envs, device=self.device, dtype=th.float32)
         for name, reward_func in self.reward_functions.items():
             rew = reward_func() * self.reward_scales[name]
             reward += rew
             self.episode_sums[name] += rew
+
+        # check env termination (Sets the self.reset_buf)
+        env_reset_idx = self._is_episode_complete()
+        if len(env_reset_idx) > 0:
+            self.reset_idx(env_reset_idx)
+            self._obs_cache_clear()
 
         obs = self.get_observations()
         dones = self.reset_buf

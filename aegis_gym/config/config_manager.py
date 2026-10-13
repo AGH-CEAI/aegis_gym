@@ -102,8 +102,9 @@ class ConfigManager:
             )
         if args.config_path is not None:
             logger.info(f"Patching default config with file: {args.config_path}")
-            cfg_file_dict = cls._load_yaml(args.config_path)
-            cfg_dict.update(cfg_file_dict)
+            cfg_file_dict = cls._load_yaml(args.config_path) or {}
+            # Merged key by key, so the file may hold only the overridden entries
+            cfg_dict = cls._deep_update(base=cfg_dict, override=cfg_file_dict)
 
         if not args.enforce_current_config and task is not None:
             logger.info(f"Connecting config to the ClearML task id {task.task_id}")
@@ -229,6 +230,10 @@ class ConfigManager:
             )
             log_dir.mkdir(parents=True, exist_ok=True)
             cfg_dict["logger"]["local_log_dir"] = str(log_dir)
+
+        # The launch arg overrides the policy preview setting from the config file
+        if args.enable_recording is not None:
+            cfg_dict["logger"]["enable_policy_preview"] = args.enable_recording
 
         # Apply the debug flags
         if args.debug_enable:
