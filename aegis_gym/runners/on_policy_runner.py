@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,6 @@ class OnPolicyRunner(BasePolicyRunner):
             remaining -= chunk
             if remaining > 0:
                 on_chunk_end(self.current_iteration)
-                self.runner.current_learning_iteration += 1
                 self._discard_interrupted_episodes()
                 # `learn()` leaves the counter at its last iteration, continue with the next one
                 self.runner.current_learning_iteration += 1
@@ -98,7 +98,6 @@ class OnPolicyRunner(BasePolicyRunner):
                 buffer.zero_()
         # The recurrent policies drop the hidden state carried over from outside of `learn()`
         self.runner.alg.policy.reset()
-
 
     @property
     def current_iteration(self) -> int:
