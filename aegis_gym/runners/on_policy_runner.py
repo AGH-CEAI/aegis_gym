@@ -55,8 +55,28 @@ class OnPolicyRunner(BasePolicyRunner):
             remaining -= chunk
             if remaining > 0:
                 on_chunk_end(self.current_iteration)
+                self._discard_interrupted_episodes()
                 # `learn()` leaves the counter at its last iteration, continue with the next one
                 self.runner.current_learning_iteration += 1
+
+    def _discard_interrupted_episodes(self) -> None:
+        """
+        Drops the running episode statistics after the env was stepped or reset outside of
+        `learn()`. The rsl_rl logger clears them only on the `dones` it gets, so otherwise the
+        interrupted episodes would be merged with the next ones in the mean reward and length.
+        """
+        logger = self.runner.logger
+        for name in (
+            "cur_reward_sum",
+            "cur_episode_length",
+            "cur_ereward_sum",  # with RND only
+            "cur_ireward_sum",  # with RND only
+        ):
+            buffer = getattr(logger, name, None)
+            if buffer is not None:
+                buffer.zero_()
+        # The recurrent policies drop the hidden state carried over from outside of `learn()`
+        self.runner.alg.policy.reset()
 
     @property
     def current_iteration(self) -> int:

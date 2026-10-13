@@ -100,7 +100,9 @@ first environments and are rendered as one grid video (WebM), reported to the Cl
 * series `camera_inputs`: the cameras as the network gets them (runs with visual observations, without augmentation).
 
 * Training records the preview at its end; set `policy_preview_interval` (logger config) to record it also every N iterations
-  (the training is then run in chunks, all the envs are reset after every preview).
+  (the training is then run in chunks, all the envs are reset after every preview). Each preview has the checkpoint of
+  its policy, `model_<iteration>.pt` (saved besides the regular `save_interval` ones), and the episodes interrupted by
+  the preview are left out of the `Train/mean_reward` and `Train/mean_episode_length`.
 * The videos are also saved in `<local_log_dir>/policy_preview/`.
 * On a machine without a display, run with `PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1` (see [container/README.md](./container/README.md)).
 
