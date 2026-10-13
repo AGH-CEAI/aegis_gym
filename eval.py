@@ -21,7 +21,8 @@ from aegis_gym.config.types import (
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
-from train import create_env, init_clearml_task
+from aegis_gym.runners.policy_preview import make_visual_bc_policy
+from train import create_env, create_policy_preview_recorder, init_clearml_task
 
 
 def main():
@@ -62,7 +63,9 @@ def main():
     logger.info("Setup done")
 
     with th.no_grad():
-        if is_checkpoints_sweep_required(args):
+        if is_checkpoints_sweep_required(
+            args, record=cfg.logger_cfg.enable_policy_preview
+        ):
             raise NotImplementedError("[Eval] Deprecated feature")
 
         eval_policy_single(env=env, cfg=cfg, clearml_task=task)
@@ -81,7 +84,7 @@ def get_source_task_id(args: LaunchArgs) -> str | None:
     )
 
 
-def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
+def is_checkpoints_sweep_required(args: LaunchArgs, record: bool) -> bool:
     logger = get_logger("Eval")
     sweep = (args.algorithm == Algorithm.BC) and (
         args.bc_all_checkpoints or args.bc_eval_every is not None
@@ -92,7 +95,7 @@ def is_checkpoints_sweep_required(args: LaunchArgs) -> bool:
         logger.warning(
             "WARNING: multi-checkpoint sweep are only supported for BC; ignoring for RL"
         )
-    if sweep and args.enable_recording:
+    if sweep and record:
         logger.warning("WARNING: record is ignored during multi-checkpoint sweep")
     return sweep
 
@@ -119,6 +122,13 @@ def eval_policy_single(
         debug_cfg=cfg.debug_cfg,
     )
     log_metrics(clearml_task, metrics)
+
+    preview = create_policy_preview_recorder(env=env, cfg=cfg)
+    if preview is None:
+        return
+    if args.algorithm == Algorithm.BC:
+        policy = make_visual_bc_policy(env=env, bc_policy=policy)
+    preview.record(policy=policy, iteration=0)
 
 
 # TODO(issue#100): Unify policy model types under a common base class or type alias

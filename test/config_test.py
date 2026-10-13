@@ -1,6 +1,7 @@
 from dataclasses import fields
 
 import pytest
+import yaml
 
 from aegis_gym.config import ConfigManager as cm
 from aegis_gym.config import LaunchArgs, parse_arguments
@@ -60,6 +61,7 @@ def test_default_arguments():
         "algorithm",
         "debug_record_dir",
         "project_name",
+        "enable_recording",
     }
     for f in fields(args):
         if f.name not in excluded:
@@ -70,6 +72,12 @@ def test_default_arguments():
     assert args.control_type == Control.SIM
     assert args.algorithm == Algorithm.RL
     assert str(args.debug_record_dir).startswith("/tmp/")
+    assert args.enable_recording is None
+
+
+def test_record_launch_arg():
+    assert parse_arguments(argv=["", "--record"]).enable_recording is True
+    assert parse_arguments(argv=["", "--no-record"]).enable_recording is False
 
 
 def test_get_config_before_setup_raises():
@@ -250,3 +258,60 @@ def test_resolve_source_task_id(monkeypatch):
     assert cm.resolve_source_task_id(task_id="task", model_id="model") == "task"
     assert cm.resolve_source_task_id(task_id=None, model_id="model") == "task_of_model"
     assert cm.resolve_source_task_id(task_id=None, model_id=None) is None
+
+
+def _write_logger_cfg_file(tmp_path, enable_policy_preview: bool):
+    path = tmp_path / "cfg.yaml"
+    path.write_text(
+        yaml.safe_dump({"logger": {"enable_policy_preview": enable_policy_preview}})
+    )
+    return str(path)
+
+
+def test_policy_preview_disabled_by_default():
+    cm.setup_config(argv=[""])
+    assert cm.get_config().logger_cfg.enable_policy_preview is False
+
+
+def test_policy_preview_enabled_from_config_file(tmp_path):
+    cfg_path = _write_logger_cfg_file(tmp_path, enable_policy_preview=True)
+    cm.setup_config(argv=["", "-c", cfg_path])
+    assert cm.get_config().logger_cfg.enable_policy_preview is True
+
+
+@pytest.mark.parametrize(
+    "file_value, launch_arg, expected",
+    [
+        (False, "--record", True),
+        (True, "--no-record", False),
+    ],
+)
+def test_policy_preview_launch_arg_overrides_config_file(
+    tmp_path, file_value, launch_arg, expected
+):
+    cfg_path = _write_logger_cfg_file(tmp_path, enable_policy_preview=file_value)
+    cm.setup_config(argv=["", "-c", cfg_path, launch_arg])
+    assert cm.get_config().logger_cfg.enable_policy_preview is expected
+
+
+def test_config_file_is_deep_merged_with_defaults(tmp_path):
+    defaults = cm._get_default_config_dict()
+    path = tmp_path / "cfg.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "logger": {"policy_preview_interval": 7},
+                "env": {"env_specific_dict": {"box_fixed": False}},
+            }
+        )
+    )
+    cm.setup_config(argv=["", "-c", str(path)])
+    cfg = cm.get_config()
+    assert cfg.logger_cfg.policy_preview_interval == 7
+    # The entries absent in the file keep their default values
+    assert (
+        cfg.logger_cfg.policy_preview_resolution
+        == defaults["logger"]["policy_preview_resolution"]
+    )
+    assert cfg.env_cfg.num_envs == defaults["env"]["num_envs"]
+    assert cfg.env_cfg.env_specific_dict["box_fixed"] is False

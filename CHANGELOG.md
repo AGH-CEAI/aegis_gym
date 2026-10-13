@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the policy preview (`train.py` and `eval.py`, simulation only, disabled by default, enabled with `enable_policy_preview` in the logger config, overridden by the `--record`/`--no-record` launch arg): a grid video of the policy acting from the fixed `POLICY_PREVIEW_SEEDS` initial states, reported to the ClearML Debug Samples at the end of the training, and every `policy_preview_interval` iterations if set (each with the `model_<iteration>.pt` checkpoint of its policy; the episodes interrupted by the preview are left out of the training statistics). Runs with the visual observations record the network's camera inputs instead of the overview camera.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added the seeded reset (`BaseEnv.reset_seeded()`) for reproducible initial states, implemented by the Push-T and Reacher. The seeded values, a counter-based hash computed on the env device and bit-identical on the CPU and the GPU.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters, used by the policy preview.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Added `BaseEnv.nominal_domain()` context, suspending the domain randomization (which applies to all the envs at once) and restoring the calibrated scene parameters (the max speed, the PD gains and the cameras extrinsics), used by the policy preview.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Added `--resume` launch arg for continuing the RL or BC training from a checkpoint (ClearML task/model or local log dir). Resumed runs are noted in the ClearML task description and tagged `resumed` and `resumed_from:<task|model>/<ID>` (or `resumed_from:local`).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The evaluation loads the `env`, `rl`, `bc` and `robot` config from the ClearML task of the evaluated policy (`--load-rl/bc-task-id`, or the task of `--load-rl/bc-model-id`), so the policy is built and evaluated as it was trained. The config file and launch args still apply on top, `num_envs`, `max_steps` and the visualization flags are kept from the current run, and `--enforce-current-config` disables it.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - The BC training loads the `env`, `rl` and `robot` config from the ClearML task of the RL teacher (`--load-rl-task-id` or the task of `--load-rl-model-id`), keeping the current `bc` config.
@@ -29,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The config file given with `-c` is now deep merged with the defaults, so it may hold only the overridden entries (previously each of its sections replaced the default section as a whole).
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The Push-T rewards and `extras["success"]` are computed before the reset of the terminated environments (as for the Reacher in PR-165).
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
 - [PR-165](https://github.com/AGH-CEAI/aegis_gym/pull/165) - The Reacher rewards are computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset, and the logged `Episode/rew_*` sums cover exactly their episode.
 - [PR-163](https://github.com/AGH-CEAI/aegis_gym/pull/163) - Updated URDF datasets IDs to v3 (inertias fixes & LED lighting supports).
@@ -63,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Fixed the circular import `aegis_gym.envs` -> `aegis_gym.config` -> `args_parser` -> `aegis_gym.envs`.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - Fixed the evaluation and the BC teacher loading failing with `state_dict` size mismatches for the policies trained with a non-default environment or network config (e.g. Push-T with its preset).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - Fixed RL checkpoints saved on a GPU failing to load on a CPU-only machine: the checkpoint is mapped onto the runner's device.
