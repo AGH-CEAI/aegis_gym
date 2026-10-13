@@ -17,6 +17,7 @@ from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
 from aegis_gym.runners import (
+    BasePolicyRunner,
     BehaviorCloningRunner,
     OnPolicyRunner,
     PolicyPreviewRecorder,

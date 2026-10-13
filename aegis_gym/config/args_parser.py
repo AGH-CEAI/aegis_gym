@@ -1,5 +1,6 @@
 import ast
 import sys
+import time
 from argparse import ArgumentParser, ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -7,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
 
