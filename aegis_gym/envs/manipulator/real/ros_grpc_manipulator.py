@@ -260,7 +260,6 @@ class RosGrpcManipulator(BaseManipulator):
     ) -> None:
         self._servo_disable()
 
-        # Clone: `squeeze` is a view, the conversion would modify the caller's tensor.
         goal_pose = goal_pose.squeeze(dim=0).clone()
         goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
 
