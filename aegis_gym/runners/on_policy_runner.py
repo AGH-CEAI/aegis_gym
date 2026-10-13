@@ -24,6 +24,8 @@ class OnPolicyRunner(BasePolicyRunner):
             log_dir=str(log_dir),
             device=str(cfg.get_device()),
         )
+        # TODO(issue#176) move to the fork (https://github.com/AGH-CEAI/rsl_rl): log the `*/time`
+        # scalars only if `self.logger_type not in ("wandb", "clearml")` (rsl_rl/utils/logger.py)
         if cfg.logger_cfg.logger == "clearml":
             self._drop_time_scalars()
 
