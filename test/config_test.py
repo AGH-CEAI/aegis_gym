@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from clearml.utilities.proxy_object import ProxyDictPreWrite
 
 from aegis_gym.config import ConfigManager as cm
 from aegis_gym.config import LaunchArgs, parse_arguments
@@ -351,3 +352,46 @@ def test_config_file_is_deep_merged_with_defaults(tmp_path):
     )
     assert cfg.env_cfg.num_envs == defaults["env"]["num_envs"]
     assert cfg.env_cfg.env_specific_dict["box_fixed"] is False
+
+
+class _FakeAgentTask:
+    """A task run by the ClearML agent: the connected config is the remote one, read-only."""
+
+    task_id = "agent_task"
+
+    def connect_configuration(self, configuration: dict, name: str) -> dict:
+        remote = dict(configuration)
+        if name == "env":
+            # derived by the run the task was cloned from
+            remote.update(episode_length_s=30.0, max_steps=750)
+        return ProxyDictPreWrite(False, False, **remote)
+
+
+def test_launch_args_are_applied_without_warnings(caplog):
+    cm.setup_config(argv=["", "--num-envs", "8", "--no-record", "--env", "push_t"])
+
+    assert cm.get_config().env_cfg.num_envs == 8
+    assert "is ignored" not in caplog.text
+
+
+def test_launch_args_ignored_by_read_only_config_are_reported(caplog):
+    cm.setup_config(
+        argv=[
+            "",
+            "--num-envs",
+            "8",
+            "--max-iterations",
+            "7",
+            "--env-dict",
+            '{"friction": 0.9}',
+        ],
+        task=_FakeAgentTask(),
+    )
+    cfg = cm.get_config()
+
+    # The config of the task applies, the dropped overrides are reported
+    assert cfg.env_cfg.num_envs != 8
+    assert "`--num-envs` (8) is ignored" in caplog.text
+    assert "`--max-iterations` (7) is ignored" in caplog.text
+    assert "`--env-dict` (0.9) is ignored" in caplog.text
+    assert "env.env_specific_dict.friction" in caplog.text
