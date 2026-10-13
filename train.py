@@ -254,7 +254,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 logger.info(">>> (RL) Recording the final policy preview")
                 preview.record(
                     policy=runner.get_inference_policy(device=cfg.get_device()),
-                    iteration=runner.current_iteration,
+                    iteration=runner.current_iter,
                 )
             # TODO(issue#120) debug why RL model in CleaRML gets model configuration as BC config
     logger.info("Training finished.")
