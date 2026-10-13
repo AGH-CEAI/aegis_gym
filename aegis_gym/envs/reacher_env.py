@@ -5,6 +5,7 @@ import torch as th
 from tensordict import TensorDict
 
 from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
+from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -174,14 +175,7 @@ class ReacherEnv(BaseEnv):
         return ResetReturn(self.get_observations(), self.extras)
 
     def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
-        obj_pose = th.cat(
-            [
-                self._get_random_object_pose(
-                    num_reset=1, generator=self._make_seeded_generator(seed)
-                )
-                for seed in seeds
-            ]
-        )
+        obj_pose = self._get_random_object_pose(num_reset=len(seeds), seeds=seeds)
         self.reset_idx(envs_idx=envs_idx, obj_pose=obj_pose)
 
     def reset_idx(self, envs_idx: th.Tensor, obj_pose: th.Tensor | None = None) -> None:
@@ -214,15 +208,14 @@ class ReacherEnv(BaseEnv):
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
     def _get_random_object_pose(
-        self, num_reset: int, generator: th.Generator | None = None
+        self, num_reset: int, seeds: Sequence[int] | None = None
     ) -> th.Tensor:
-        def rand() -> th.Tensor:
-            if generator is None:
-                return th.rand(num_reset, device=self.device)
-            return th.rand(num_reset, generator=generator, device="cpu").to(self.device)
-
-        random_x = rand() * self.spawnbox_xlength + self.spawnbox_xoffset
-        random_y = rand() * self.spawnbox_ylength + self.spawnbox_yoffset
+        """Random pose for `num_reset` envs, reproducible on any device if `seeds` are given."""
+        # The draws columns (x, y, yaw) define the seeded initial states (`reset_seeded()`):
+        # reordering them changes the policy preview scenes (see `test/rand_test.py`).
+        u = rand_uniform(num=num_reset, num_draws=3, device=self.device, seeds=seeds)
+        random_x = u[:, 0] * self.spawnbox_xlength + self.spawnbox_xoffset
+        random_y = u[:, 1] * self.spawnbox_ylength + self.spawnbox_yoffset
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
         )
@@ -233,7 +226,7 @@ class ReacherEnv(BaseEnv):
             num_reset, 1
         )
         # randomly yaw the object
-        random_yaw = (rand() * 2 * math.pi - math.pi) * 0.25
+        random_yaw = (u[:, 2] * 2 * math.pi - math.pi) * 0.25
         q_yaw = th.stack(
             [
                 th.cos(random_yaw / 2),

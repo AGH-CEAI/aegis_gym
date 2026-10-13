@@ -8,6 +8,7 @@ import trimesh
 from tensordict import TensorDict
 
 from aegis_gym.aux.geom import check_points_in_polygon, quat_to_z_euler, quat_to_zrot
+from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -253,14 +254,7 @@ class PushTEnv(BaseEnv):
         return ResetReturn(self.get_observations(), self.extras)
 
     def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
-        tee_pose = th.cat(
-            [
-                self._get_random_tee_pose(
-                    num_reset=1, generator=self._make_seeded_generator(seed)
-                )
-                for seed in seeds
-            ]
-        )
+        tee_pose = self._get_random_tee_pose(num_reset=len(seeds), seeds=seeds)
         self.reset_idx(envs_idx=envs_idx, tee_pose=tee_pose)
 
     def reset_idx(self, envs_idx: th.Tensor, tee_pose: th.Tensor | None = None) -> None:
@@ -292,20 +286,19 @@ class PushTEnv(BaseEnv):
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
     def _get_random_tee_pose(
-        self, num_reset: int, generator: th.Generator | None = None
+        self, num_reset: int, seeds: Sequence[int] | None = None
     ) -> th.Tensor:
-        def rand() -> th.Tensor:
-            if generator is None:
-                return th.rand(num_reset, device=self.device)
-            return th.rand(num_reset, generator=generator, device="cpu").to(self.device)
-
+        """Random pose for `num_reset` envs, reproducible on any device if `seeds` are given."""
+        # The draws columns (x, y, yaw) define the seeded initial states (`reset_seeded()`):
+        # reordering them changes the policy preview scenes (see `test/rand_test.py`).
+        u = rand_uniform(num=num_reset, num_draws=3, device=self.device, seeds=seeds)
         random_x = (
-            rand() * self.spawnbox_xlength
+            u[:, 0] * self.spawnbox_xlength
             + self.goal_offset_xy[0]
             + self.spawnbox_xoffset
         )
         random_y = (
-            rand() * self.spawnbox_ylength
+            u[:, 1] * self.spawnbox_ylength
             + self.goal_offset_xy[1]
             + self.spawnbox_yoffset
         )
@@ -314,7 +307,7 @@ class PushTEnv(BaseEnv):
         )
         random_pos = th.stack([random_x, random_y, random_z], dim=-1)
 
-        random_yaw = rand() * 2 * math.pi
+        random_yaw = u[:, 2] * 2 * math.pi
         random_quat = th.stack(
             [
                 th.cos(random_yaw / 2),

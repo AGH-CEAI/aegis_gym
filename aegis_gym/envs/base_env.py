@@ -242,11 +242,6 @@ class BaseEnv(VecEnv):
         """Returns [num_preview_envs, H, W, 3] uint8 RGB images of the first environments."""
         return self._scene.render_preview()
 
-    @staticmethod
-    def _make_seeded_generator(seed: int) -> th.Generator:
-        """CPU generator, so a seed defines the same initial state on any device."""
-        return th.Generator(device="cpu").manual_seed(seed)
-
     def step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv. Needs the `_step()` implementation."""
         self._obs_cache_clear()
