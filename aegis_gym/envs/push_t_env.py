@@ -7,7 +7,6 @@ import torch as th
 import trimesh
 from tensordict import TensorDict
 
-from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.aux.geom import (
     check_points_in_polygon,
     quat_to_rotvec_error,
@@ -15,6 +14,7 @@ from aegis_gym.aux.geom import (
     quat_to_zrot,
 )
 from aegis_gym.aux.logging import get_logger
+from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -388,11 +388,15 @@ class PushTEnv(BaseEnv):
         return ResetReturn(self.get_observations(), self.extras)
 
     def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
-        tee_pose = self._get_random_tee_pose(num_reset=len(seeds), seeds=seeds)
-        self.reset_idx(envs_idx=envs_idx, tee_pose=tee_pose)
+        self.reset_idx(envs_idx=envs_idx, seeds=seeds)
 
-    def reset_idx(self, envs_idx: th.Tensor, tee_pose: th.Tensor | None = None) -> None:
-        """Resets the `envs_idx`, with a random tee pose unless given (then without the DR)."""
+    def reset_idx(
+        self, envs_idx: th.Tensor, seeds: Sequence[int] | None = None
+    ) -> None:
+        """
+        Resets the `envs_idx` with a random tee pose (and goal, if randomized), or with the
+        reproducible ones of the `seeds` (then without the DR).
+        """
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -403,11 +407,10 @@ class PushTEnv(BaseEnv):
             pose=self.tcp_start_pose[envs_idx], open_gripper=False, envs_idx=envs_idx
         )
 
+        randomize_domain = self._is_domain_randomized() and seeds is None
         if self.goal_rand_enabled:
-            self._randomize_goal(envs_idx=envs_idx)
-
-        tee_pose = self._get_random_tee_pose(envs_idx=envs_idx)
-
+            self._randomize_goal(envs_idx=envs_idx, seeds=seeds)
+        tee_pose = self._get_random_tee_pose(num_reset=len(envs_idx), seeds=seeds)
         self.object.set_pose(pose=tee_pose, envs_idx=envs_idx)
         self.last_pose_dist[envs_idx] = self._tee_to_goal_pose_distance()[envs_idx]
         self.last_tcp_dist[envs_idx] = self._tcp_to_tee_footprint_distance()[envs_idx]
@@ -435,17 +438,24 @@ class PushTEnv(BaseEnv):
         for rt in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
-    def _randomize_goal(self, envs_idx: th.Tensor) -> None:
-        num_reset = len(envs_idx)
+    def _randomize_goal(
+        self, envs_idx: th.Tensor, seeds: Sequence[int] | None = None
+    ) -> None:
+        """Random goal pose for the `envs_idx`, reproducible on any device if `seeds` are given."""
+        # The draws 0-2 are the tee pose's (`_get_random_tee_pose()`), the goal takes the next
+        # ones (x, y, yaw), so the seeded tee poses stay as they were without the goal randomization.
+        u = rand_uniform(
+            num=len(envs_idx), num_draws=6, device=self.device, seeds=seeds
+        )[:, 3:]
 
-        def uniform(low_high: list[float]) -> th.Tensor:
+        def uniform(column: int, low_high: list[float]) -> th.Tensor:
             low, high = low_high
-            return th.rand(num_reset, device=self.device) * (high - low) + low
+            return u[:, column] * (high - low) + low
 
-        goal_x = self.goal_offset_xy[0] + uniform(self.goal_rand_x)
-        goal_y = self.goal_offset_xy[1] + uniform(self.goal_rand_y)
+        goal_x = self.goal_offset_xy[0] + uniform(0, self.goal_rand_x)
+        goal_y = self.goal_offset_xy[1] + uniform(1, self.goal_rand_y)
         goal_yaw = th.remainder(
-            self.goal_z_rot + uniform(self.goal_rand_z_rot), 2 * math.pi
+            self.goal_z_rot + uniform(2, self.goal_rand_z_rot), 2 * math.pi
         )
 
         self.goal_yaw[envs_idx] = goal_yaw
@@ -459,9 +469,13 @@ class PushTEnv(BaseEnv):
         marker_pose[:, 2] += self._GOAL_MARKER_LIFT
         self.goal_marker.set_pose(pose=marker_pose, envs_idx=envs_idx)
 
-    def _get_random_tee_pose(self, envs_idx: th.Tensor) -> th.Tensor:
-        num_reset = len(envs_idx)
-
+    def _get_random_tee_pose(
+        self, num_reset: int, seeds: Sequence[int] | None = None
+    ) -> th.Tensor:
+        """Random pose for `num_reset` envs, reproducible on any device if `seeds` are given."""
+        # The draws columns (x, y, yaw) define the seeded initial states (`reset_seeded()`):
+        # reordering them changes the policy preview scenes (see `test/rand_test.py`).
+        u = rand_uniform(num=num_reset, num_draws=3, device=self.device, seeds=seeds)
         random_x = (
             u[:, 0] * self.spawnbox_xlength
             + self.goal_offset_xy[0]
