@@ -80,6 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
+- [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
+- [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).
 - [PR-166](https://github.com/AGH-CEAI/aegis_gym/pull/166) - With the ClearML logger, rsl_rl's `*/time` scalars (logged with the elapsed seconds as the step, which ClearML takes as the iteration) are dropped, so they no longer move the task's last iteration; ClearML plots the scalars against the wall time itself.
 - [PR-175](https://github.com/AGH-CEAI/aegis_gym/pull/175) - Fixed `RosGrpcManipulator.ctrl_go_to_goal()` overwriting the caller's goal tensor with an XYZW quaternion, and silently ignoring a goal rejected by the planner; it now raises `RuntimeError`.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Fixed the circular import `aegis_gym.envs` -> `aegis_gym.config` -> `args_parser` -> `aegis_gym.envs`.
