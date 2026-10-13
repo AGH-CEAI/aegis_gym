@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The config file given with `-c` is now deep merged with the defaults, so it may hold only the overridden entries (previously each of its sections replaced the default section as a whole).
+- [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - The Push-T rewards and `extras["success"]` are computed before the reset of the terminated environments (as for the Reacher in PR-165).
 - [PR-156](https://github.com/AGH-CEAI/aegis_gym/pull/156) - Moved the PlotJuggler UDP Server to `BaseScene`, so both the real and the Genesis scenes can log to it.
 - [PR-165](https://github.com/AGH-CEAI/aegis_gym/pull/165) - The Reacher rewards are computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset, and the logged `Episode/rew_*` sums cover exactly their episode.
 - [PR-163](https://github.com/AGH-CEAI/aegis_gym/pull/163) - Updated URDF datasets IDs to v3 (inertias fixes & LED lighting supports).
