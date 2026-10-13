@@ -70,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-175](https://github.com/AGH-CEAI/aegis_gym/pull/175) - Fixed `RosGrpcManipulator.ctrl_go_to_goal()` overwriting the caller's goal tensor with an XYZW quaternion, and silently ignoring a goal rejected by the planner; it now raises `RuntimeError`.
 - [PR-164](https://github.com/AGH-CEAI/aegis_gym/pull/164) - Fixed the circular import `aegis_gym.envs` -> `aegis_gym.config` -> `args_parser` -> `aegis_gym.envs`.
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - `BehaviorCloningRunner` now stores the current iteration and the best model stats in its checkpoints and restores them on `load()` (previously the iteration was always saved as 0).
 - [PR-158](https://github.com/AGH-CEAI/aegis_gym/pull/158) - [Issue-120](https://github.com/AGH-CEAI/aegis_gym/issues/120) - Fixed the evaluation and the BC teacher loading failing with `state_dict` size mismatches for the policies trained with a non-default environment or network config (e.g. Push-T with its preset).
