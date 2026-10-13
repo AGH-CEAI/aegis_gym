@@ -21,7 +21,7 @@ from aegis_gym.config.types import (
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
-from aegis_gym.runners import make_visual_bc_policy
+from aegis_gym.runners.policy_preview import make_visual_bc_policy
 from train import create_env, create_policy_preview_recorder, init_clearml_task
 
 

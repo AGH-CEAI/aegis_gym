@@ -95,6 +95,7 @@ def test_rand_uniform():
 def _bare_env(env_cls: type, **attrs) -> object:
     """The env with only the attributes needed by its random pose (no scene)."""
     env = object.__new__(env_cls)
+    env._scene = None  # checked by `BaseEnv.__del__()`
     env.device = th.device("cpu")
     env.spawnbox_xlength = 1.0
     env.spawnbox_ylength = 1.0
