@@ -52,3 +52,7 @@ rl:
     noise_std_type: "log"  # 'scalar' or 'log'
     state_dependent_std: False
     detach_actor_grad: False
+
+logger:
+  # Policy preview video at the end of the training, `--no-record` disables it
+  enable_policy_preview: True
