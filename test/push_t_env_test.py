@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import torch as th
@@ -98,3 +99,37 @@ def test_reward_scales_are_scaled_copies(env_cls: type, read_only: bool):
 
     assert env.reward_scales == pytest.approx({"a": 0.4, "b": 0.04})
     assert dict(config_scales) == given
+
+
+def test_push_t_reset_reports_the_ended_episodes_metrics():
+    env = object.__new__(PushTEnv)
+    env._scene = _Scene()
+    env.device, env.num_envs = th.device("cpu"), NUM_ENVS
+    env._cfg_env = SimpleNamespace(episode_length_s=30.0)
+    env.episode_length_buf = th.zeros(NUM_ENVS, dtype=th.long)
+    env.manipulator = MagicMock()
+    env.object = MagicMock()
+    env.tcp_start_pose = th.zeros(NUM_ENVS, 7)
+    env.goal_rand_enabled = False
+    env._is_domain_randomized = lambda: False
+    env._get_random_tee_pose = lambda num_reset, seeds: th.zeros(num_reset, 7)
+    env._tee_to_goal_pose_distance = lambda: th.zeros(NUM_ENVS)
+    env._tcp_to_tee_footprint_distance = lambda: th.zeros(NUM_ENVS)
+    env.last_pose_dist, env.last_tcp_dist = th.zeros(NUM_ENVS), th.zeros(NUM_ENVS)
+    env.episode_sums, env.extras = {}, {}
+    # the last step of the ended episodes (envs 0 and 1)
+    env.success_buf = th.tensor([True, False, False])
+    env.tee_off_table_buf = th.tensor([False, True, False])
+    env.intersection_ratio = th.tensor([0.95, 0.15, 0.5])
+    env.pose_dist = th.tensor([0.01, 0.2, 0.1])
+
+    env.reset_idx(th.tensor([0, 1]))
+
+    assert env.extras["episode"] == pytest.approx(
+        {
+            "success_rate": 0.5,
+            "tee_off_table_rate": 0.5,
+            "final_coverage": 0.55,
+            "final_pose_dist_cm": 10.5,
+        }
+    )

@@ -19,7 +19,10 @@ def test_env_wrappers_are_instantiable(wrapper_cls: type):
 
 
 def test_env_wrapper_delegates_the_default_env_specific_dict():
-    env = SimpleNamespace(get_default_env_specific_dict=lambda: {"friction": 0.4})
+    env = SimpleNamespace(
+        get_default_env_specific_dict=lambda: {"friction": 0.4},
+        _scene=None,  # checked by `BaseEnv.__del__()` of the wrapper
+    )
 
     wrapper = BaseEnvWrapper(env=env)
 
