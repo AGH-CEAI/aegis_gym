@@ -196,17 +196,28 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                     model_id=args.load_bc_model_id,
                     local_checkpoint_pattern=r"checkpoint_\d+\.pt",
                 )
-            logger.info(">>> (BC) Starting runner")
-            runner.learn(num_learning_iterations=args.max_iterations)
-
             preview = create_policy_preview_recorder(env=env, cfg=cfg)
+
+            def record_preview(iteration: int) -> dict[str, float]:
+                student = runner.get_inference_policy(device=cfg.get_device()).eval()
+                metrics = preview.record(
+                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    iteration=iteration,
+                )
+                # the same module keeps training (its BatchNorm and Dropout layers)
+                student.train()
+                return metrics
+
+            logger.info(">>> (BC) Starting runner")
+            runner.learn(
+                num_learning_iterations=args.max_iterations,
+                preview=record_preview if preview is not None else None,
+                preview_interval=cfg.logger_cfg.policy_preview_interval,
+            )
+
             if preview is not None:
                 logger.info(">>> (BC) Recording the final policy preview")
-                student = runner.get_inference_policy(device=cfg.get_device()).eval()
-                preview.record(
-                    policy=make_visual_bc_policy(env=env, bc_policy=student),
-                    iteration=max(args.max_iterations - 1, 0),
-                )
+                record_preview(iteration=max(runner.current_iter - 1, 0))
 
         case Algorithm.RL:
             logger.info(">>> Starting training: Reinforcement Learning (RL)")

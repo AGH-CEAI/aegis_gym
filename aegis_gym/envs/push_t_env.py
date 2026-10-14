@@ -425,6 +425,8 @@ class PushTEnv(BaseEnv):
             .float()
             .mean()
             .item(),
+            "final_coverage": self.intersection_ratio[envs_idx].mean().item(),
+            "final_pose_dist_cm": 100 * self.pose_dist[envs_idx].mean().item(),
         }
         self.success_buf[envs_idx] = False
         self.tee_off_table_buf[envs_idx] = False

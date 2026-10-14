@@ -4,7 +4,11 @@ from collections.abc import Sequence
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
+from aegis_gym.aux.geom import (
+    quat_to_rotvec_error,
+    transform_by_quat,
+    transform_quat_by_quat,
+)
 from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
@@ -19,6 +23,7 @@ from .scene import BaseScene
 class ReacherEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
     DEFAULT_EPISODE_LENGTH_S = 5.0
+    _TCP_TARGET_OFFSET = (0.0, 0.0, -0.08)
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
@@ -91,6 +96,8 @@ class ReacherEnv(BaseEnv):
         self.spawnbox_ylength = env_dict["box_spawnbox_ylength"]
         self.spawnbox_xoffset = env_dict["box_spawnbox_xoffset"]
         self.spawnbox_yoffset = env_dict["box_spawnbox_yoffset"]
+        self.success_pos_thresh = env_dict["success_pos_thresh"]
+        self.success_rot_thresh = math.radians(env_dict["success_rot_thresh_deg"])
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -106,6 +113,8 @@ class ReacherEnv(BaseEnv):
             "box_spawnbox_ylength": 0.4,
             "box_spawnbox_xoffset": 0.36,
             "box_spawnbox_yoffset": -0.2,
+            "success_pos_thresh": 0.01,
+            "success_rot_thresh_deg": 5.0,
         }
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
@@ -171,6 +180,9 @@ class ReacherEnv(BaseEnv):
         )
         self.reset_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.goal_pose = th.zeros(self.num_envs, 7, device=self.device)
+        self.tcp_pos_err = th.zeros(self.num_envs, device=self.device)
+        self.tcp_rot_err = th.zeros_like(self.tcp_pos_err)
+        self.success_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.extras = {}
         self.extras["observations"] = {}
 
@@ -200,7 +212,13 @@ class ReacherEnv(BaseEnv):
         self.goal_pose[envs_idx] = obj_pose
 
         # fill extras
-        self.extras["episode"] = {}
+        # the episodes end on the time out only, so the success is of their last step
+        self.extras["episode"] = {
+            "success_rate": self.success_buf[envs_idx].float().mean().item(),
+            "final_tcp_dist_cm": 100 * self.tcp_pos_err[envs_idx].mean().item(),
+            "final_rot_err_deg": math.degrees(self.tcp_rot_err[envs_idx].mean().item()),
+        }
+        self.success_buf[envs_idx] = False
         for key in self.episode_sums:
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
@@ -256,6 +274,12 @@ class ReacherEnv(BaseEnv):
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
         self._scene.step()
 
+        self.tcp_pos_err, self.tcp_rot_err = self._tcp_to_target_errors()
+        self.success_buf = (self.tcp_pos_err < self.success_pos_thresh) & (
+            self.tcp_rot_err < self.success_rot_thresh
+        )
+        self.extras["success"] = self.success_buf.clone()
+
         # compute reward based on task, before the reset replaces the terminal state
         reward = th.zeros(self.num_envs, device=self.device, dtype=th.float32)
         for name, reward_func in self.reward_functions.items():
@@ -308,9 +332,7 @@ class ReacherEnv(BaseEnv):
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         keypoints_offset = self.keypoints_offset
         object_offset = th.tensor(
-            [0.0, 0.0, -0.08],
-            device=self.device,
-            dtype=th.float32,
+            self._TCP_TARGET_OFFSET, device=self.device, dtype=th.float32
         ).repeat(self.num_envs, 1)
 
         finger_pos_keypoints = self._to_world_frame(
@@ -324,6 +346,19 @@ class ReacherEnv(BaseEnv):
         object_pos_keypoints = self._to_world_frame(obj_pos, obj_quat, keypoints_offset)
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
+
+    def _tcp_to_target_errors(self) -> tuple[th.Tensor, th.Tensor]:
+        """[N] position [m] and rotation angle [rad] errors of the TCP w.r.t. the target pose."""
+        tcp_pose = self.manipulator.get_tcp_pose()
+        obj_pose = self.object.get_pose()
+        offset = th.tensor(self._TCP_TARGET_OFFSET, device=self.device)
+        pos_err = th.linalg.vector_norm(
+            tcp_pose[:, :3] + offset - obj_pose[:, :3], dim=-1
+        )
+        rot_err = th.linalg.vector_norm(
+            quat_to_rotvec_error(obj_pose[:, 3:], tcp_pose[:, 3:]), dim=-1
+        )
+        return pos_err, rot_err
 
     def _to_world_frame(
         self,
