@@ -11,7 +11,15 @@ from tensordict import TensorDict
 from tqdm import tqdm
 
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import IMAGE_MODALITIES, POLICY_PREVIEW_SEEDS, Modality
+from aegis_gym.aux.utils import list_clearml_checkpoint_artifacts
+from aegis_gym.config import LaunchArgs
+from aegis_gym.config.types import (
+    IMAGE_MODALITIES,
+    POLICY_PREVIEW_SEEDS,
+    Algorithm,
+    Control,
+    Modality,
+)
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
 
@@ -27,6 +35,9 @@ class PolicyPreviewRecorder:
 
     With the visual observations the tiles show the cameras as the network gets them (not
     augmented), otherwise the scene's overview preview camera.
+
+    It reports to the current ClearML task, or to the given `report_task` (e.g. the training task
+    of the evaluated checkpoints).
     """
 
     TITLE = "policy_preview"
@@ -39,8 +50,9 @@ class PolicyPreviewRecorder:
     }
     _OUTCOME_COLOR_OTHER = (220, 50, 50)
 
-    def __init__(self, env: BaseEnv, out_dir: Path):
+    def __init__(self, env: BaseEnv, out_dir: Path, report_task: Task | None = None):
         self._env = env.unwrapped
+        self._report_task = report_task
         self._out_dir = Path(out_dir)
         self._logger = get_logger("PolicyPreview")
         self._num_envs = min(env.num_envs, len(POLICY_PREVIEW_SEEDS))
@@ -230,7 +242,7 @@ class PolicyPreviewRecorder:
             f"Policy preview (iteration {iteration}): "
             + ", ".join(f"{k}={v:.3f}" for k, v in metrics.items())
         )
-        task = Task.current_task()
+        task = self._report_task or Task.current_task()
         if task is None:
             self._logger.warning("No ClearML task, the preview is only saved locally.")
             return
@@ -262,6 +274,47 @@ def make_visual_bc_policy(env: BaseEnv, bc_policy: Callable) -> InferencePolicy:
         return bc_policy(rgb, env.manipulator.get_tcp_pose().float())
 
     return policy
+
+
+def preview_iteration(algorithm: Algorithm, checkpoint_iter: int) -> int:
+    """
+    The training iteration of the preview of the `model_<checkpoint_iter>` checkpoint, the one its
+    scalars are logged at: RL saves `model_<it>` at the iteration `it`, BC saves `model_<it + 1>`
+    after the (0-based) iteration `it`.
+    """
+    if algorithm == Algorithm.BC:
+        return max(checkpoint_iter - 1, 0)
+    return checkpoint_iter
+
+
+def get_preview_target_task(args: LaunchArgs) -> Task:
+    """The ClearML training task whose checkpoints are previewed (`--preview-checkpoints`)."""
+    task_id = (
+        args.load_rl_task_id if args.algorithm == Algorithm.RL else args.load_bc_task_id
+    )
+    if task_id is None:
+        flag = (
+            "--load-rl-task-id"
+            if args.algorithm == Algorithm.RL
+            else "--load-bc-task-id"
+        )
+        raise ValueError(
+            f"`--preview-checkpoints` requires the training task, see `{flag}`."
+        )
+    if args.control_type != Control.SIM:
+        raise ValueError("`--preview-checkpoints` is supported only in the simulation.")
+    task = Task.get_task(task_id=task_id)
+    # the published tasks are read-only, the server rejects their new events
+    if task.get_status() == "published":
+        raise ValueError(
+            f"The ClearML task {task_id} is published, its Debug Samples can't be extended."
+        )
+    if not list_clearml_checkpoint_artifacts(task):
+        raise FileNotFoundError(
+            f"The ClearML task {task_id} has no `model_<N>` checkpoints, available artifacts: "
+            f"{list(task.artifacts)}"
+        )
+    return task
 
 
 def _put_text(

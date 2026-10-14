@@ -58,6 +58,7 @@ class LaunchArgs:
     load_from_pickle: bool | None
     bc_all_checkpoints: bool | None
     bc_eval_every: int | None
+    preview_checkpoints: bool | None
     seed: int | None
 
     _args_raw: Any
@@ -250,6 +251,17 @@ def parse_arguments(
         default=None,
         help="Sweep every N-th BC checkpoint",
     )
+    p.add_argument(
+        "--preview-checkpoints",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluation only: record the policy preview of every `model_<N>` checkpoint of the "
+            "ClearML training task (`--load-rl-task-id`, or `--load-bc-task-id` with `-a bc`) and "
+            "report it to that task's Debug Samples at the checkpoint's training iteration, e.g. "
+            "for a training run without the preview. The task must not be published."
+        ),
+    )
 
     if extra_argparser is not None:
         extra_argparser(p)
@@ -299,6 +311,7 @@ def parse_arguments(
         load_from_pickle=args.load_from_pickle,
         bc_all_checkpoints=args.bc_all_checkpoints,
         bc_eval_every=args.bc_eval_every,
+        preview_checkpoints=args.preview_checkpoints,
         seed=args.seed,
         _args_raw=args,
     )

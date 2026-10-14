@@ -220,6 +220,20 @@ def get_latest_clearml_checkpoint(
     return local_path
 
 
+def list_clearml_checkpoint_artifacts(
+    task: Task, clearml_artifact_name: str = "model"
+) -> list[tuple[int, str]]:
+    """The (iteration, artifact name) of the task's `<clearml_artifact_name>_<N>` checkpoints, by
+    iteration (e.g. without the `model_best`)."""
+    pattern = re.compile(rf"^{re.escape(clearml_artifact_name)}_(\d+)$")
+    matched = [
+        (int(m.group(1)), name)
+        for name in task.artifacts
+        if (m := pattern.match(name)) is not None
+    ]
+    return sorted(matched)
+
+
 def resolve_latest_local_checkpoint(log_dir: Path, r_pattern: str) -> Path:
     if not log_dir.exists():
         raise FileNotFoundError(f"Log directory {log_dir} does not exist")
