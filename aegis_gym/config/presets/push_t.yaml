@@ -53,6 +53,31 @@ rl:
     state_dependent_std: False
     detach_actor_grad: False
 
+bc:
+  # The grasp studies' optimizer settings (lr, steps, grad clip) are kept for the comparability
+  num_steps_per_env: 24
+  learning_rate: 0.001
+  # The samples of a 32k buffer (64 envs) in ~2k batches: 48 updates per iteration, as in the
+  # grasp studies (5 x 10), but with fewer passes over the rarely refreshed samples
+  num_epochs: 3
+  num_mini_batches: 16
+  # Push-T episodes are long (teacher ~9 s, timeout 30 s): the student-driven rollouts alone
+  # rarely reach the late, fine alignment phase, so the teacher takes over the large deviations
+  use_teacher_mixing: True
+  # Steps per env, the float32 RGB buffer of 3 cameras at 64x64 takes ~4.7 GB with 64 envs
+  buffer_size: 500
+  policy:
+    encoder_type: "shared_cnn"
+    # Keeps the image patches positions, which the tee pose precision relies on (the linear
+    # fusion averages each camera down to a 4x4 grid); the lowest action loss in the grasp studies
+    fusion_type: "attention_spatial"
+    # The tee pose as the auxiliary target, the main latent of the task
+    use_pose_head: True
+    action_head_state_obs_dim: 7  # TCP pose
+    # The teacher's capacity: the Push-T actions depend on the contact geometry
+    action_head_hidden_dims: [256, 256, 128]
+    pose_head_hidden_dims: [64, 64]
+
 logger:
   # Policy preview video at the end of the training, `--no-record` disables it
   enable_policy_preview: True
