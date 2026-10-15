@@ -25,11 +25,12 @@ class _FakeLogger:
     def process_env_step(
         self, rewards: th.Tensor, dones: th.Tensor, extras: dict
     ) -> None:
-        self.steps.append((dones.tolist(), extras))
+        # a copy, the env clears the key on the next step
+        self.steps.append((dones.tolist(), dict(extras)))
 
 
 class _FakeEnv:
-    """Ends the episode of env 0 on the 2nd step, `extras["episode"]` is kept afterwards."""
+    """Ends the episode of env 0 on the 2nd step, with its `extras["episode"]` of that step only."""
 
     def __init__(self):
         self.num_steps = 0
@@ -46,6 +47,7 @@ class _FakeEnv:
 
     def step(self, actions: th.Tensor):
         self.num_steps += 1
+        self.extras.pop("episode", None)  # as `BaseEnv.step()`
         dones = th.tensor([self.num_steps == 2, False])
         if self.num_steps == 2:
             self.extras["episode"] = {"success_rate": 1.0}
@@ -83,12 +85,11 @@ def test_collection_without_mixing_has_no_intervention_rate():
     assert "teacher_intervention_rate" not in stats
 
 
-def test_collection_passes_the_episode_metrics_of_the_ended_episodes_only():
+def test_collection_passes_the_episode_metrics_of_the_ended_episodes():
     runner = _collecting_runner(teacher_mixing=False)
 
     runner._collect_with_rl_teacher()
 
-    # The env keeps the 2nd step's `extras["episode"]` on the 3rd step, which ended no episode
     assert [extras for _, extras in runner.logger.steps] == [
         {},
         {"episode": {"success_rate": 1.0}},

@@ -45,6 +45,7 @@ def _stepping_env(success: list[bool], off_table: list[bool]) -> PushTEnv:
 
     def reset_idx(envs_idx: th.Tensor) -> None:
         env.reset_calls.append(envs_idx.tolist())
+        env.extras["episode"] = {"success_rate": 1.0}
         env.episode_length_buf[envs_idx] = 0
         # as the env's reset, clears the buffers in place
         env.success_buf[envs_idx] = False
@@ -78,6 +79,19 @@ def test_push_t_step_resets_a_success_once():
     # The flag of the ended episode, though the reset cleared the env's buffer
     assert extras["success"].tolist() == [True, False, False]
     assert env.reset_calls == [[0]]
+
+
+def test_episode_metrics_are_of_the_resets_of_the_step_only():
+    env = _stepping_env(success=[True, False, False], off_table=[False, False, False])
+
+    *_, extras = env.step(th.zeros(NUM_ENVS, 2))
+    assert extras["episode"] == {"success_rate": 1.0}
+
+    # no reset on the next step, the rsl_rl logger would count the earlier metrics again
+    env._tee_projection_to_goal_intersection = lambda: th.zeros(NUM_ENVS)
+    *_, extras = env.step(th.zeros(NUM_ENVS, 2))
+    assert env.reset_calls == [[0]]
+    assert "episode" not in extras
 
 
 @pytest.mark.parametrize("env_cls", [PushTEnv, ReacherEnv])

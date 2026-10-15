@@ -392,11 +392,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 )
 
                 next_obs, reward, done, extras = self.env.step(action)
-                # The episode metrics only of the steps that ended episodes: the env keeps returning
-                # the last ones on the next steps, which would otherwise be counted again
-                self.logger.process_env_step(
-                    rewards=reward, dones=done, extras=extras if done.any() else {}
-                )
+                self.logger.process_env_step(rewards=reward, dones=done, extras=extras)
                 obs = next_obs
 
         n = self._num_steps_per_env

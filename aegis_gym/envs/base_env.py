@@ -245,6 +245,9 @@ class BaseEnv(VecEnv):
     def step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv. Needs the `_step()` implementation."""
         self._obs_cache_clear()
+        # The episode metrics are of the resets of this step only. The rsl_rl logger takes them on
+        # every step they are in the extras, so the ones of an earlier reset would be counted again.
+        self.extras.pop("episode", None)
         return self._step(actions=actions)
 
     @abstractmethod
