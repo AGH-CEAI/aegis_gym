@@ -7,7 +7,11 @@ from clearml import Task
 from tqdm import tqdm
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import list_clearml_checkpoint_artifacts, load_policy
+from aegis_gym.aux.utils import (
+    list_clearml_checkpoint_artifacts,
+    load_policy,
+    without_clearml_load_binding,
+)
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -143,13 +147,17 @@ def preview_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
 def make_checkpoint_loader(
     env: BaseEnv, cfg: ExpConfig
 ) -> Callable[[Path], InferencePolicy]:
-    """Loads the checkpoints into a single runner, as the preview's policy."""
+    """
+    Loads the checkpoints into a single runner, as the preview's policy. They aren't connected to
+    the evaluation task as its input models, these are the target task's own checkpoints.
+    """
     device = cfg.get_device()
     if cfg.args.algorithm == Algorithm.RL:
         rl_runner = OnPolicyRunner(env=env, cfg=cfg)
 
         def load_rl(path: Path) -> InferencePolicy:
-            rl_runner.load(path)
+            with without_clearml_load_binding():
+                rl_runner.load(path)
             return rl_runner.get_inference_policy(device=device)
 
         return load_rl
@@ -157,7 +165,8 @@ def make_checkpoint_loader(
     bc_runner = BehaviorCloningRunner(env=env, cfg=cfg, teacher=None)
 
     def load_bc(path: Path) -> InferencePolicy:
-        bc_runner.load(path)
+        with without_clearml_load_binding():
+            bc_runner.load(path)
         student = bc_runner.get_inference_policy(device=device).eval()
         return make_visual_bc_policy(env=env, bc_policy=student)
 

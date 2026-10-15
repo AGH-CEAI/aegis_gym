@@ -6,7 +6,12 @@ import torch as th
 from clearml import Task
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy, resolve_checkpoint
+from aegis_gym.aux.utils import (
+    checkpoint_input_model,
+    link_teacher_task,
+    load_policy,
+    resolve_checkpoint,
+)
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -60,6 +65,8 @@ def main():
         source_task_id = ConfigManager.resolve_source_task_id(
             task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
         )
+        if source_task_id is not None:
+            link_teacher_task(task=task, teacher_task_id=source_task_id)
     ConfigManager.setup_config(
         argv=args,
         device=device,
@@ -167,7 +174,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.info(">>> Starting training: Behavioral Cloning (BC)")
 
             logger.info(">>> (BC) Loading RL policy")
-            teacher_policy = load_policy(env=env, cfg=cfg, alg=Algorithm.RL)
+            teacher_policy = load_policy(
+                env=env, cfg=cfg, alg=Algorithm.RL, input_model_name="rl_teacher"
+            )
 
             if cfg.dr_cfg.enabled:
                 logger.info(">>> (BC) Wrapping env with VisionAugWrapper")
@@ -301,7 +310,12 @@ def resume_runner(
             f"`--load-{alg}-model-id` instead, or set a persistent `local_log_dir`."
         ) from e
     logger.info(f">>> ({alg_name}) Resuming training from checkpoint: {ckpt}")
-    runner.load(ckpt)
+    with checkpoint_input_model(
+        name=f"{algorithm!s}_resumed_checkpoint",
+        clearml_task_id=task_id,
+        clearml_model_id=model_id,
+    ):
+        runner.load(ckpt)
     mark_task_as_resumed(
         algorithm=algorithm,
         ckpt=ckpt,
