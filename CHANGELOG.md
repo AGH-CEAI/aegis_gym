@@ -89,7 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The observation cameras' near clipping plane is 1 mm (`GenesisScene.CAMERA_NEAR`) instead of Genesis' default 10 cm, which clipped everything closer from the tool cameras: the gripper body (leaving only the "levitating" fingertips) and the T-block when the gripper got to it. The BC students trained on the earlier images should be retrained.
+- [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The observation cameras' near clipping plane is 1 mm (`GenesisScene.CAMERA_NEAR`) instead of Genesis' default 10 cm.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T reward is computed before the reset of the terminated environments, so the terminal step is no longer rewarded with the state after the reset.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).
