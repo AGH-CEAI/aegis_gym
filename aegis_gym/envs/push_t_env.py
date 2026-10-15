@@ -420,13 +420,10 @@ class PushTEnv(BaseEnv):
 
         # fill extras
         self.extras["episode"] = {
-            "success_rate": self.success_buf[envs_idx].float().mean().item(),
-            "tee_off_table_rate": self.tee_off_table_buf[envs_idx]
-            .float()
-            .mean()
-            .item(),
-            "final_coverage": self.intersection_ratio[envs_idx].mean().item(),
-            "final_pose_dist_cm": 100 * self.pose_dist[envs_idx].mean().item(),
+            "success_rate": self.success_buf[envs_idx].float(),
+            "tee_off_table_rate": self.tee_off_table_buf[envs_idx].float(),
+            "final_coverage": self.intersection_ratio[envs_idx],
+            "final_pose_dist_cm": 100 * self.pose_dist[envs_idx],
         }
         self.success_buf[envs_idx] = False
         self.tee_off_table_buf[envs_idx] = False
