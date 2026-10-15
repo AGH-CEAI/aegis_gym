@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import cv2  # noqa: F401
 import genesis as gs
 import torch as th
 from clearml import Task

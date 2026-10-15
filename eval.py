@@ -2,6 +2,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import cv2  # noqa: F401
 import torch as th
 from clearml import Task
 from tqdm import tqdm
