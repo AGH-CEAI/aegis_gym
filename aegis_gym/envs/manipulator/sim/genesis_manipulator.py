@@ -76,8 +76,6 @@ class GenesisManipulator(BaseManipulator):
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
                 "tool_mount_link",
-                # Kept so their mass isn't merged into `tool_mount_link`: the F/T
-                # gravity model needs the links past the sensor.
                 "adapter_from_sensor",
                 "robotiq_hande_coupler",
                 "robotiq_hande_link",
@@ -156,13 +154,11 @@ class GenesisManipulator(BaseManipulator):
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
         self._fts_link = self._robot_entity.get_link("tool_mount_link")
         self._gravity_links = self._get_downstream_links(self._fts_link)
-        # Global link indices past the sensor, for matching contacts against.
         self._gravity_link_idx = th.tensor(
             [link.idx for link in self._gravity_links],
             dtype=th.int32,
             device=self.device,
         )
-        # Filled on first use: mass and COM need a built scene.
         self._gravity_link_masses: th.Tensor | None = None
         self._gravity_link_local_coms: th.Tensor | None = None
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
