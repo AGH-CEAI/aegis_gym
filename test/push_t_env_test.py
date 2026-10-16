@@ -139,11 +139,14 @@ def test_push_t_reset_reports_the_ended_episodes_metrics():
 
     env.reset_idx(th.tensor([0, 1]))
 
-    assert env.extras["episode"] == pytest.approx(
-        {
-            "success_rate": 0.5,
-            "tee_off_table_rate": 0.5,
-            "final_coverage": 0.55,
-            "final_pose_dist_cm": 10.5,
-        }
-    )
+    # per ended episode, the rsl_rl logger averages them over all the episodes of the iteration
+    expected = {
+        "success_rate": [1.0, 0.0],
+        "tee_off_table_rate": [0.0, 1.0],
+        "final_coverage": [0.95, 0.15],
+        "final_pose_dist_cm": [1.0, 20.0],
+    }
+    episode = env.extras["episode"]
+    assert episode.keys() == expected.keys()
+    for key, values in expected.items():
+        assert episode[key].tolist() == pytest.approx(values), key
