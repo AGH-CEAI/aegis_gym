@@ -404,6 +404,10 @@ class GenesisScene(BaseScene):
             max_angular_speed=self._max_angular_speed,
             device=self.device,
         )
+        self.manipulator.max_linear_speed = self._max_linear_speed
+        self.manipulator.max_angular_speed = self._max_angular_speed
+        # Each action is held for one policy step.
+        self.manipulator.servo_dt = self.policy_dt
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
@@ -536,3 +540,17 @@ class GenesisScene(BaseScene):
         ranges = th.tensor([[*cfg.force_range, *cfg.torque_range]], device=self.device)
         bias = (th.rand(len(envs_idx), 6, device=self.device) * 2.0 - 1.0) * ranges
         self.manipulator.set_ft_residual_bias(bias, envs_idx=envs_idx)
+
+    def _collect_pj_extra_data(self) -> dict[str, float]:
+        # Servo following error per joint; contact force = K_eff * this.
+        target = self.manipulator._q_servo_target
+        if target is None:
+            return {}
+        measured = self.manipulator.get_joints_positions()[
+            :, self.manipulator._arm_dof_idx
+        ]
+        error = (target - measured)[0].tolist()
+        return {
+            f"servo/follow_error/{name}": err
+            for name, err in zip(self.PJ_JOINT_NAMES, error)
+        }
