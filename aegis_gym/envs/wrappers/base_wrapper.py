@@ -32,6 +32,9 @@ class BaseEnvWrapper(BaseEnv):
     def get_cfg_as_dict(self) -> dict:
         return self._env.get_cfg_as_dict()
 
+    def get_default_env_specific_dict(self) -> dict:  # type: ignore[override]
+        return self._env.get_default_env_specific_dict()
+
     def get_cameras_setup(self) -> CamerasSetup:
         return self._env.get_cameras_setup()
 
