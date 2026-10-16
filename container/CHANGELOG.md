@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-168](https://github.com/AGH-CEAI/aegis_gym/pull/168) - Bumped default version from `v0.1.0` to `v0.2.0`.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - The in-image `aegis-gym` dispatcher now reports an unrecognised command itself instead of letting `exec` fail, and `aegis_gym_run` warns about one before it builds or starts anything. Running a real command verbatim is unchanged; only the failure path is different.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Repo, branch and revision resolution moved into `lib/common.sh`, shared by all four commands. The three copies had already drifted apart: branch detection ran in `$PWD` in one and in the repo root in another, and warnings went to stdout in one and stderr in the others.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - `--rebuild-torch` now implies `--no-cache` for the torch tier. Nothing in that tier's inputs changes between builds, so a cached rebuild was a no-op that re-tagged the identical image and could never redo a corrupt CUDA wheel install.
