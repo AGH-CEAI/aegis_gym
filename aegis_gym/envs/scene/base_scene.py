@@ -161,8 +161,7 @@ class BaseScene(ABC):
         # TODO(issue#55) Enable orientation logging
 
         wrench = manip.get_ft_wrench()[0].tolist()
-        # Gravity removed, so it is comparable with a tared sensor on the robot rather
-        # than carrying the tool's own 13.3 N.
+        # Gravity removed, so it is comparable with a tared sensor
         comp = manip.get_ft_wrench_compensated()[0].tolist()
         for i, axis in enumerate("xyz"):
             data[f"ft_sensor/force/{axis}"] = wrench[i]
@@ -173,3 +172,33 @@ class BaseScene(ABC):
 
     def _collect_pj_extra_data(self) -> dict[str, float]:
         return {}
+
+    def set_nominal_domain(self) -> None:
+        """
+        Restore the nominal (not randomized) parameters of the scene. No-op by default, for the
+        scenes without the domain randomization.
+        """
+        return
+
+    def add_preview_camera(
+        self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
+    ) -> None:
+        """
+        Add the camera for the policy preview recording, if enabled. Must be called before `build()`.
+        No-op by default, for the scenes without the recording support.
+        """
+        return
+
+    def is_preview_available(self) -> bool:
+        """Whether `render_preview()` can be used."""
+        return False
+
+    def has_observation_cameras(self) -> bool:
+        """Whether the cameras of the visual observations are rendered."""
+        return False
+
+    def render_preview(self) -> th.Tensor:
+        """Returns [num_preview_envs, H, W, 3] uint8 RGB images of the preview environments."""
+        raise NotImplementedError(
+            f"The `{type(self).__name__}` scene doesn't support the policy preview."
+        )
