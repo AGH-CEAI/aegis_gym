@@ -20,11 +20,8 @@ class RobotCfg(BaseCfg):
     fts_payload_mass: float | None
     fts_payload_com: list[float] | None
 
-    # Max joint following error [rad]; acts as the cell's force limit.
-    # Measured at kp=3500: 0.005 -> 40 N, 0.01 -> 79 N, 0.02 -> 162 N, 0.05 -> 384 N.
+    # Max joint following error [rad]; acts as the force limit.
     servo_follow_error_max_rad: float
-
-    # Scales arm kp (kv by sqrt). Set to K_eff_real / K_eff_sim from `scripts/ft_sensor/stiffness_probe.py`.
     servo_stiffness_scale: float
 
     # Delay between a velocity command and the arm acting on it [s].

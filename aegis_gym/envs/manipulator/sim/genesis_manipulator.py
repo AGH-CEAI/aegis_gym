@@ -139,7 +139,7 @@ class GenesisManipulator(BaseManipulator):
         self.max_linear_speed = max_linear_speed
         self.max_angular_speed = max_angular_speed
 
-        # How long each command is held; the scene sets it to `policy_dt`.
+        # Simulated MoveIt2 servo control
         self.servo_dt = 0.04
         self._q_servo_target: th.Tensor | None = None
         self._servo_max_error = float(cfg_robot.servo_follow_error_max_rad)
