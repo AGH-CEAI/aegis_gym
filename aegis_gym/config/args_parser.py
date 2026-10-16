@@ -1,12 +1,13 @@
 import ast
 import sys
-from argparse import ArgumentParser, ArgumentTypeError
+import time
+from argparse import ArgumentParser, ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aegis_gym.envs import available_envs
+from aegis_gym.aux.logging import get_logger
 
 from .types import Algorithm, Control
 
@@ -32,6 +33,7 @@ class LaunchArgs:
     load_rl_model_id: str | None
     load_bc_task_id: str | None
     load_bc_model_id: str | None
+    resume: bool | None
 
     enforce_current_config: bool | None
     control_type: Control | None
@@ -56,6 +58,7 @@ class LaunchArgs:
     load_from_pickle: bool | None
     bc_all_checkpoints: bool | None
     bc_eval_every: int | None
+    preview_checkpoints: bool | None
     seed: int | None
 
     _args_raw: Any
@@ -70,6 +73,8 @@ class LaunchArgs:
 def parse_arguments(
     argv: list[str] | None = None, extra_argparser: Callable | None = None
 ) -> LaunchArgs:
+    from ..envs import available_envs
+
     def str_to_list(arg: str | None) -> list[float] | None:
         if arg is None:
             return None
@@ -128,6 +133,22 @@ def parse_arguments(
     p.add_argument("--load-rl-model-id", type=str, default=None)
     p.add_argument("--load-bc-task-id", type=str, default=None)
     p.add_argument("--load-bc-model-id", type=str, default=None)
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help=(
+            "Continue the training from a checkpoint: the model, optimizer state and "
+            "iteration counter are restored. RL: the checkpoint is taken from "
+            "`--load-rl-model-id`, `--load-rl-task-id` or, if neither is given, "
+            "the latest `model_<N>.pt` in the local log dir of the experiment. "
+            "BC: the same with `--load-bc-model-id`, `--load-bc-task-id` or the latest "
+            "`checkpoint_<N>.pt` (the RL teacher is still set by `--load-rl-*`). "
+            "NOTE: the local log dir defaults to `/tmp/aegis_gym_logs_<user>/`, which "
+            "doesn't survive a container exit (`aegis_gym_run`) or a host reboot; "
+            "prefer the ClearML IDs for a durable resume."
+        ),
+    )
     p.add_argument(
         "--enforce-current-config",
         action="store_true",
@@ -191,8 +212,14 @@ def parse_arguments(
 
     p.add_argument(
         "--record",
-        action="store_true",
-        help="Record stereo images as video during evaluation",
+        action=BooleanOptionalAction,
+        default=None,
+        help=(
+            "Record the policy preview video on the fixed POLICY_PREVIEW_SEEDS and report it "
+            "to the ClearML Debug Samples (simulation only; at the end of the training, or of "
+            "the evaluation). Overrides `enable_policy_preview` from the logger config "
+            "(disabled by default)."
+        ),
     )
     p.add_argument(
         "--video-path",
@@ -224,11 +251,31 @@ def parse_arguments(
         default=None,
         help="Sweep every N-th BC checkpoint",
     )
+    p.add_argument(
+        "--preview-checkpoints",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluation only: record the policy preview of every `model_<N>` checkpoint of the "
+            "ClearML training task (`--load-rl-task-id`, or `--load-bc-task-id` with `-a bc`) and "
+            "report it to that task's Debug Samples at the checkpoint's training iteration, e.g. "
+            "for a training run without the preview. The task must not be published."
+        ),
+    )
 
     if extra_argparser is not None:
         extra_argparser(p)
 
     args = p.parse_args(argv[1:])
+
+    if args.algorithm == Algorithm.RL and (
+        args.load_bc_task_id is not None or args.load_bc_model_id is not None
+    ):
+        get_logger("ArgsParser").warning(
+            "`--load-bc-task-id` and `--load-bc-model-id` are ignored with "
+            "`--algorithm rl`. Continuing in 5 s..."
+        )
+        time.sleep(5)
 
     return LaunchArgs(
         config_path=args.config,
@@ -244,6 +291,7 @@ def parse_arguments(
         load_rl_model_id=args.load_rl_model_id,
         load_bc_task_id=args.load_bc_task_id,
         load_bc_model_id=args.load_bc_model_id,
+        resume=args.resume,
         enforce_current_config=args.enforce_current_config,
         control_type=args.control,
         env_name=args.env,
@@ -263,6 +311,7 @@ def parse_arguments(
         load_from_pickle=args.load_from_pickle,
         bc_all_checkpoints=args.bc_all_checkpoints,
         bc_eval_every=args.bc_eval_every,
+        preview_checkpoints=args.preview_checkpoints,
         seed=args.seed,
         _args_raw=args,
     )

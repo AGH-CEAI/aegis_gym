@@ -24,7 +24,7 @@ class RosGrcpScene(BaseScene):
         device: th.device,
     ):
         logger = get_logger("RosGrpcScene")
-        if cfg.args.num_envs > 1:
+        if cfg.env_cfg.num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
         cfg_env = cfg.env_cfg
