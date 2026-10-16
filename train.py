@@ -1,12 +1,18 @@
 import sys
 from pathlib import Path
 
+import cv2  # noqa: F401
 import genesis as gs
 import torch as th
 from clearml import Task
 
 from aegis_gym.aux.logging import get_logger, setup_logger
-from aegis_gym.aux.utils import load_policy, resolve_checkpoint
+from aegis_gym.aux.utils import (
+    checkpoint_input_model,
+    link_teacher_task,
+    load_policy,
+    resolve_checkpoint,
+)
 from aegis_gym.config import (
     ConfigManager,
     LaunchArgs,
@@ -60,6 +66,8 @@ def main():
         source_task_id = ConfigManager.resolve_source_task_id(
             task_id=args.load_rl_task_id, model_id=args.load_rl_model_id
         )
+        if source_task_id is not None:
+            link_teacher_task(task=task, teacher_task_id=source_task_id)
     ConfigManager.setup_config(
         argv=args,
         device=device,
@@ -167,7 +175,9 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             logger.info(">>> Starting training: Behavioral Cloning (BC)")
 
             logger.info(">>> (BC) Loading RL policy")
-            teacher_policy = load_policy(env=env, cfg=cfg, alg=Algorithm.RL)
+            teacher_policy = load_policy(
+                env=env, cfg=cfg, alg=Algorithm.RL, input_model_name="rl_teacher"
+            )
 
             if cfg.dr_cfg.enabled:
                 logger.info(">>> (BC) Wrapping env with VisionAugWrapper")
@@ -196,17 +206,28 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                     model_id=args.load_bc_model_id,
                     local_checkpoint_pattern=r"checkpoint_\d+\.pt",
                 )
-            logger.info(">>> (BC) Starting runner")
-            runner.learn(num_learning_iterations=args.max_iterations)
-
             preview = create_policy_preview_recorder(env=env, cfg=cfg)
+
+            def record_preview(iteration: int) -> dict[str, float]:
+                student = runner.get_inference_policy(device=cfg.get_device()).eval()
+                metrics = preview.record(
+                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    iteration=iteration,
+                )
+                # the same module keeps training (its BatchNorm and Dropout layers)
+                student.train()
+                return metrics
+
+            logger.info(">>> (BC) Starting runner")
+            runner.learn(
+                num_learning_iterations=args.max_iterations,
+                preview=record_preview if preview is not None else None,
+                preview_interval=cfg.logger_cfg.policy_preview_interval,
+            )
+
             if preview is not None:
                 logger.info(">>> (BC) Recording the final policy preview")
-                student = runner.get_inference_policy(device=cfg.get_device()).eval()
-                preview.record(
-                    policy=make_visual_bc_policy(env=env, bc_policy=student),
-                    iteration=max(args.max_iterations - 1, 0),
-                )
+                record_preview(iteration=max(runner.current_iter - 1, 0))
 
         case Algorithm.RL:
             logger.info(">>> Starting training: Reinforcement Learning (RL)")
@@ -290,7 +311,12 @@ def resume_runner(
             f"`--load-{alg}-model-id` instead, or set a persistent `local_log_dir`."
         ) from e
     logger.info(f">>> ({alg_name}) Resuming training from checkpoint: {ckpt}")
-    runner.load(ckpt)
+    with checkpoint_input_model(
+        name=f"{algorithm!s}_resumed_checkpoint",
+        clearml_task_id=task_id,
+        clearml_model_id=model_id,
+    ):
+        runner.load(ckpt)
     mark_task_as_resumed(
         algorithm=algorithm,
         ckpt=ckpt,

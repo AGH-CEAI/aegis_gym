@@ -31,6 +31,9 @@ from ..base_scene import BaseScene, RandomizationType
 
 
 class GenesisScene(BaseScene):
+    # The observation cameras' near clipping plane [m]. Genesis' default started to clip 0.1 m
+    CAMERA_NEAR = 0.001
+
     def __init__(
         self,
         cfg: ExpConfig,
@@ -259,6 +262,7 @@ class GenesisScene(BaseScene):
             pos=pos,
             lookat=lookat,
             fov=fov,
+            near=self.CAMERA_NEAR,
             GUI=show_cameras_gui,
         )
         self._cameras_modalities[name] = (CameraModality.RGB,)
@@ -393,6 +397,9 @@ class GenesisScene(BaseScene):
             available_cameras=self._cameras_modalities,
             cfg_robot=cfg,
             show_cell=self.show_cell,
+            policy_dt=self.policy_dt,
+            max_linear_speed=self._max_linear_speed,
+            max_angular_speed=self._max_angular_speed,
             device=self.device,
         )
 

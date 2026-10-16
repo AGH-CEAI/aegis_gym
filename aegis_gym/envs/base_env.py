@@ -38,7 +38,7 @@ class BaseEnv(VecEnv):
     """
     Base class for implementing an environment compatible with rsl_rl's VecEnv.
     See https://github.com/leggedrobotics/rsl_rl/blob/main/rsl_rl/env/vec_env.py
-    You need to define the `DEFAULT_MODALITIES` and `_observation_fns` manually.
+    You need to define the `DEFAULT_MODALITIES`, `DEFAULT_EPISODE_LENGTH_S` and `_observation_fns` manually.
     """
 
     DEFAULT_MODALITIES: frozenset[Modality]
@@ -245,6 +245,9 @@ class BaseEnv(VecEnv):
     def step(self, actions: th.Tensor) -> StepReturn:
         """Perform a step in environment. Derived from VecEnv. Needs the `_step()` implementation."""
         self._obs_cache_clear()
+        # The episode metrics are of the resets of this step only. The rsl_rl logger takes them on
+        # every step they are in the extras, so the ones of an earlier reset would be counted again.
+        self.extras.pop("episode", None)
         return self._step(actions=actions)
 
     @abstractmethod

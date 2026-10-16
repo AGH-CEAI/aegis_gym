@@ -1,4 +1,5 @@
 import math
+from types import SimpleNamespace
 
 import pytest
 import torch as th
@@ -120,6 +121,32 @@ def test_push_t_seeded_pose_uses_pinned_draws():
     assert th.allclose(pose[:, 0], u[:, 0])
     assert th.allclose(pose[:, 1], u[:, 1])
     assert th.allclose(pose[:, 3:], _yaw_quat(u[:, 2] * 2 * math.pi))
+
+
+def test_push_t_seeded_goal_follows_the_tee_draws():
+    seeds = POLICY_PREVIEW_SEEDS
+    n = len(seeds)
+    env = _bare_env(
+        PushTEnv,
+        goal_offset_xy=[0.0, 0.0],
+        goal_z_rot=0.0,
+        goal_rand_x=[0.0, 1.0],
+        goal_rand_y=[0.0, 1.0],
+        goal_rand_z_rot=[0.0, 2 * math.pi],
+        goal_pose=th.zeros(n, 7),
+        goal_yaw=th.zeros(n),
+        _GOAL_MARKER_LIFT=0.0,
+        goal_marker=SimpleNamespace(set_pose=lambda pose, envs_idx: None),
+        _build_goal_transform=lambda envs_idx: None,
+    )
+    env._randomize_goal(envs_idx=th.arange(n), seeds=seeds)
+
+    u = hash_uniform(seeds=seeds, num_draws=6, device="cpu")
+    # The goal takes the draws after the tee pose's, which stay the pinned ones
+    assert th.equal(u[:, :3], _pinned_draws())
+    assert th.allclose(env.goal_pose[:, 0], u[:, 3])
+    assert th.allclose(env.goal_pose[:, 1], u[:, 4])
+    assert th.allclose(env.goal_yaw, th.remainder(u[:, 5] * 2 * math.pi, 2 * math.pi))
 
 
 def test_reacher_seeded_pose_uses_pinned_draws():

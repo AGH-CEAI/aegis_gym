@@ -1,10 +1,11 @@
+import math
 import re
+import statistics
 import time
-from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
-import numpy as np
 import torch as th
 import torch.nn.functional as F
 import torchvision.utils as vutils
@@ -59,11 +60,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
         # Training state
         self._current_iter = 0
-        self._rewbuffer = deque(maxlen=100)
-        self._cur_reward_sum = th.zeros(
-            self.env.num_envs, dtype=th.float, device=self.device
-        )
-        self._best_model_reward: float = float("-inf")
+        self._best_model_score: tuple[float, float] = (-math.inf, -math.inf)
         self._best_model_iter: int = -1
 
         self._setup_policy()
@@ -127,15 +124,21 @@ class BehaviorCloningRunner(BasePolicyRunner):
         )
 
     def learn(
-        self, num_learning_iterations: int, init_at_random_ep_len: bool = False
+        self,
+        num_learning_iterations: int,
+        init_at_random_ep_len: bool = False,
+        preview: Callable[[int], dict[str, float]] | None = None,
+        preview_interval: int = 0,
     ) -> None:
         self._buffer.clear()
+        use_preview = preview is not None and preview_interval > 0
 
         start_iter = self._current_iter
-        for it in range(start_iter, start_iter + num_learning_iterations):
+        end_iter = start_iter + num_learning_iterations
+        for it in range(start_iter, end_iter):
             # Collect experience
             start_time = time.time()
-            self._collect_with_rl_teacher()
+            bc_stats = self._collect_with_rl_teacher()
             end_time = time.time()
             forward_time = end_time - start_time
 
@@ -143,6 +146,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
             total_action_loss = 0.0
             total_pose_loss = 0.0
             total_recon_loss = 0.0
+            total_pose_pos_err = 0.0
+            total_pose_rot_err = 0.0
             num_batches = 0
             last_recons = None
             last_batch = None
@@ -166,6 +171,14 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     pose_loss += self._compute_pose_loss(
                         pred_pose, batch["object_poses"]
                     )
+                if pred_poses:
+                    # in physical units, the loss mixes meters with the quaternion distance
+                    pos_err, rot_err = _pose_errors(
+                        th.stack([p.detach() for p in pred_poses]),
+                        batch["object_poses"],
+                    )
+                    total_pose_pos_err += pos_err
+                    total_pose_rot_err += rot_err
 
                 recon_loss, recons = self._compute_recon_loss(batch)
                 if recons is not None:
@@ -196,6 +209,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
             # Compute average losses
             if num_batches == 0:
                 raise ValueError("No batches collected")
+            if self._policy.use_pose_head:
+                bc_stats["pose_pos_err_cm"] = 100 * total_pose_pos_err / num_batches
+                bc_stats["pose_rot_err_deg"] = math.degrees(
+                    total_pose_rot_err / num_batches
+                )
 
             if self.logger is not None:
                 self._log_metrics(
@@ -207,6 +225,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     fps=(self._num_steps_per_env * self.env.num_envs) / (forward_time),
                     forward_time=forward_time,
                     backward_time=backward_time,
+                    bc_stats=bc_stats,
                 )
 
             self._current_iter = it + 1
@@ -218,9 +237,17 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 if self.logger is not None:
                     self.logger.save_model(path=str(ckpt_path), it=it + 1)
 
-            # Save best model based on mean reward
-            if self.logger is not None and len(self._rewbuffer) > 0:
-                self._update_best_model(it, float(np.mean(self._rewbuffer)))
+            # Save the best model, by the student alone (preview) if available
+            if self.logger is not None and use_preview:
+                if (it + 1) % preview_interval == 0 and it + 1 < end_iter:
+                    metrics = preview(it)
+                    self._discard_interrupted_episodes()
+                    self._update_best_model(
+                        it, score=(metrics["success_rate"], metrics["mean_return"])
+                    )
+            elif self.logger is not None and len(self.logger.rewbuffer) > 0:
+                mean_reward = statistics.mean(self.logger.rewbuffer)
+                self._update_best_model(it, score=(-1.0, mean_reward))
 
             # The last layer reset should be done AFTER saving a checkpoint
             self._maybe_reset_last_layer_weights(it)
@@ -229,15 +256,30 @@ class BehaviorCloningRunner(BasePolicyRunner):
             print(
                 f"\nBest model:\n"
                 f" Iteration = {self._best_model_iter}\n"
-                f" Mean reward = {self._best_model_reward:.2f}\n"
+                f" {_format_score(self._best_model_score)}\n"
             )
 
-    def _update_best_model(self, it: int, mean_reward: float) -> None:
+    def _discard_interrupted_episodes(self) -> None:
+        """
+        Drops the running episode statistics after the env was stepped and reset outside of the
+        rollouts (by the preview), so they aren't merged with the next episodes.
+        """
+        for name in (
+            "cur_reward_sum",
+            "cur_episode_length",
+            "cur_ereward_sum",  # with RND only
+            "cur_ireward_sum",  # with RND only
+        ):
+            buffer = getattr(self.logger, name, None)
+            if buffer is not None:
+                buffer.zero_()
+
+    def _update_best_model(self, it: int, score: tuple[float, float]) -> None:
         skip = self.cfg_train.best_model_skip_iters
-        if it < skip or mean_reward <= self._best_model_reward:
+        if it < skip or score <= self._best_model_score:
             return
 
-        self._best_model_reward = mean_reward
+        self._best_model_score = score
         self._best_model_iter = it + 1
 
         path = Path(self._log_dir) / "checkpoint_best.pt"
@@ -249,7 +291,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         )
 
         print(
-            f"New best model!\n Iteration = {self._best_model_iter}\n Mean reward = {mean_reward:.2f}"
+            f"New best model!\n Iteration = {self._best_model_iter}\n {_format_score(score)}"
         )
 
     def _compute_pose_loss(
@@ -279,8 +321,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
         return pos_loss + quat_loss
 
-    def _collect_with_rl_teacher(self) -> None:
-        """Collect experience from environment using stereo rgb images and object poses."""
+    def _collect_with_rl_teacher(self) -> dict[str, float]:
+        """
+        Collect experience from environment using stereo rgb images and object poses.
+        Returns the student vs teacher statistics of the rollouts.
+        """
         # Get state observation
         obs = self.env.get_observations()
 
@@ -290,6 +335,16 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
             return th.cat([obs[m] for m in IMAGE_MODALITIES], dim=1).float()
 
+        sums = dict.fromkeys(
+            (
+                "action_error",
+                "intervention",
+                "student_norm",
+                "teacher_norm",
+                "teacher_saturation",
+            ),
+            0.0,
+        )
         with th.inference_mode():
             for _ in range(self._num_steps_per_env):
                 rgb_obs = get_obs_vis()
@@ -319,16 +374,37 @@ class BehaviorCloningRunner(BasePolicyRunner):
                         (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
                     )
                     action = th.where(condition, student_action, teacher_action)
+                    sums["intervention"] += (action_diff >= 1.0).float().mean().item()
 
-                next_obs, reward, done, _ = self.env.step(action)
-                self._cur_reward_sum += reward
-
-                obs = next_obs
-                new_ids = (done > 0).nonzero(as_tuple=False)
-                self._rewbuffer.extend(
-                    self._cur_reward_sum[new_ids][:, 0].cpu().numpy().tolist()
+                # on the new states, unlike the action loss on the (trained on) buffer
+                sums["action_error"] += F.mse_loss(
+                    student_action, teacher_action
+                ).item()
+                # the env clamps the actions to [-1, 1]
+                sums["student_norm"] += (
+                    student_action.clamp(-1.0, 1.0).norm(dim=-1).mean().item()
                 )
-                self._cur_reward_sum[new_ids] = 0
+                sums["teacher_norm"] += (
+                    teacher_action.clamp(-1.0, 1.0).norm(dim=-1).mean().item()
+                )
+                sums["teacher_saturation"] += (
+                    (teacher_action.abs() > 1.0).float().mean().item()
+                )
+
+                next_obs, reward, done, extras = self.env.step(action)
+                self.logger.process_env_step(rewards=reward, dones=done, extras=extras)
+                obs = next_obs
+
+        n = self._num_steps_per_env
+        stats = {
+            "action_error_onpolicy": sums["action_error"] / n,
+            # < 1: the student moves less than the teacher, e.g. when its prediction is averaged
+            "action_norm_ratio": sums["student_norm"] / max(sums["teacher_norm"], 1e-8),
+            "teacher_action_saturation": sums["teacher_saturation"] / n,
+        }
+        if self._use_teacher_mixing:
+            stats["teacher_intervention_rate"] = sums["intervention"] / n
+        return stats
 
     def _compute_recon_loss(
         self, batch: dict[str, th.Tensor]
@@ -414,6 +490,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         fps: float,
         forward_time: float,
         backward_time: float,
+        bc_stats: dict[str, float],
     ) -> None:
         total_loss = avg_action_loss + avg_pose_loss + avg_recon_loss
 
@@ -427,10 +504,22 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
         self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
 
+        for name, value in bc_stats.items():
+            self.logger.writer.add_scalar(f"BC/{name}", value, it)
+
+        # The episode metrics of the envs, as in the RL training (`Episode/*`)
+        episode_metrics = _mean_episode_extras(self.logger.ep_extras)
+        self.logger.ep_extras.clear()
+        for key, value in episode_metrics.items():
+            tag = key if "/" in key else f"Episode/{key}"
+            self.logger.writer.add_scalar(tag, value, it)
+
         mean_reward = None
-        if len(self._rewbuffer) > 0:
-            mean_reward = float(np.mean(self._rewbuffer))
-            self.logger.writer.add_scalar("Reward/mean", mean_reward, it)
+        if len(self.logger.rewbuffer) > 0:
+            mean_reward = statistics.mean(self.logger.rewbuffer)
+            mean_length = statistics.mean(self.logger.lenbuffer)
+            self.logger.writer.add_scalar("Train/mean_reward", mean_reward, it)
+            self.logger.writer.add_scalar("Train/mean_episode_length", mean_length, it)
 
         print("--------------------------------")
         info_str = (
@@ -446,6 +535,12 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
         if mean_reward is not None:
             info_str += f"\n | Mean Reward:   {mean_reward:.4f}"
+        if "success_rate" in episode_metrics:
+            info_str += f"\n | Success Rate:  {episode_metrics['success_rate']:.4f}"
+        if "teacher_intervention_rate" in bc_stats:
+            info_str += (
+                f"\n | Teacher Steps: {bc_stats['teacher_intervention_rate']:.4f}"
+            )
 
         print(info_str)
 
@@ -455,7 +550,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             "model_state_dict": self._policy.state_dict(),
             "optimizer_state_dict": self._optimizer.state_dict(),
             "current_iter": self._current_iter,
-            "best_model_reward": self._best_model_reward,
+            "best_model_score": list(self._best_model_score),
             "best_model_iter": self._best_model_iter,
             "config": self.cfg_train,
         }
@@ -473,7 +568,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
             m = re.search(r"_(\d+)\.pt$", Path(path).name)
             if m:
                 self._current_iter = int(m.group(1))
-        self._best_model_reward = checkpoint.get("best_model_reward", float("-inf"))
+        score = checkpoint.get("best_model_score")
+        if score is None:
+            # the checkpoints before the preview based selection stored the mean reward only
+            score = (-1.0, checkpoint.get("best_model_reward", -math.inf))
+        self._best_model_score = tuple(score)
         self._best_model_iter = checkpoint.get("best_model_iter", -1)
         get_logger("BCRunner").info(
             f"Model loaded from {path} (iteration {self._current_iter})"
@@ -531,3 +630,34 @@ def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:
         else:
             flat[name] = value
     return flat
+
+
+def _mean_episode_extras(ep_extras: list[dict]) -> dict[str, float]:
+    """Means of the envs' `extras["episode"]` entries, e.g. the success rate of the ended episodes."""
+    values: dict[str, list[float]] = {}
+    for ep_info in ep_extras:
+        for key, value in ep_info.items():
+            if isinstance(value, th.Tensor):
+                value = value.float().mean().item()
+            values.setdefault(key, []).append(float(value))
+    return {key: statistics.mean(v) for key, v in values.items()}
+
+
+def _pose_errors(pred_poses: th.Tensor, target_poses: th.Tensor) -> tuple[float, float]:
+    """
+    Mean position [m] and rotation angle [rad] errors of the [..., N, 7] (x, y, z, qw, qx, qy, qz)
+    predicted poses w.r.t. the [N, 7] targets.
+    """
+    pos_err = th.linalg.vector_norm(pred_poses[..., :3] - target_poses[:, :3], dim=-1)
+    pred_quat = F.normalize(pred_poses[..., 3:7], p=2, dim=-1)
+    target_quat = F.normalize(target_poses[:, 3:7], p=2, dim=-1)
+    quat_dot = th.sum(pred_quat * target_quat, dim=-1).abs().clamp(max=1.0)
+    rot_err = 2 * th.acos(quat_dot)
+    return pos_err.mean().item(), rot_err.mean().item()
+
+
+def _format_score(score: tuple[float, float]) -> str:
+    success_rate, value = score
+    if success_rate < 0:
+        return f"Mean reward = {value:.2f}"
+    return f"Preview success rate = {success_rate:.3f}, mean return = {value:.2f}"
