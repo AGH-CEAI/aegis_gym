@@ -26,10 +26,10 @@ Featuring real-time control of the physical robot via a <a href="https://github.
 ---
 ## Environments catalogue
 
-|     |     |     |
-| --- | --- | --- |
-| [**Reacher**](./aegis_gym/envs/reacher_env.py) | **T-Pusher**     | **Peg-in-Hole**     |
-| <img src="./docs/aegis_reacher.png" height="120"> | W.I.P.     | W.I.P.     |
+|                                                                                                 |                                                                                               |                 |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------- |
+| [**Reacher**](./aegis_gym/envs/reacher_env.py)                                                  | [**T-Pusher**](./aegis_gym/envs/push_t_env.py)                                                | **Peg-in-Hole** |
+| <a href="./aegis_gym/envs/reacher_env.py"><img src="./docs/aegis_reacher.png" height="128"></a> | <a href="./aegis_gym/envs/push_t_env.py"><img src="./docs/aegis_push_t.png" height="128"></a> | W.I.P.          |
 
 
 ---
@@ -58,14 +58,53 @@ uv build && pip3 uninstall aegis_gym -y && pip3 install "./dist/aegis_gym-0.0.1-
 # Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 train.py -a=rl --num-envs=5 --max-iterations=10 -e REACHER_TRAIN
 python3 train.py -a=bc --num-envs=2 --max-iterations=50 --load-rl-task=<CLEARML_TASK_ID> -e REACHER_TRAIN
+# Select the environment by its short name with `--env` (e.g. `reacher`, `push_t`)
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN
 ```
+
+#### Resume training
+Add the `--resume` flag to continue the RL or BC training from a checkpoint (model, optimizer state and iteration counter are restored). The `--max-iterations` value is the number of **additional** iterations.
+```bash
+# From the latest checkpoint of a ClearML task (or a specific model with `--load-rl-model-id`)
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume --load-rl-task-id=<CLEARML_TASK_ID>
+# From the latest local `model_<N>.pt` of the experiment with the same `-e` name
+python3 train.py -a=rl --env=push_t --num-envs=5 --max-iterations=10 -e PUSH_T_TRAIN --resume
+# BC: the student checkpoint comes from `--load-bc-task-id`/`--load-bc-model-id` (or the local `checkpoint_<N>.pt`),
+# the RL teacher is still given by `--load-rl-task-id`
+python3 train.py -a=bc --num-envs=2 --max-iterations=50 -e REACHER_TRAIN --resume --load-rl-task-id=<RL_TASK_ID> --load-bc-task-id=<BC_TASK_ID>
+```
+
+> [!NOTE]
+> The environment configuration is taken from the current launch arguments, not from the checkpoint. Keep the same `--env` and `--env-dict` as in the resumed run.
+
+> [!WARNING]
+> The local resume reads the checkpoints from `local_log_dir` of the logger config, which defaults to `/tmp/aegis_gym_logs_<user>/<exp_name>_<rl|bc>`. The `/tmp` content is removed when the `aegis_gym_run` container exits (`podman run --rm`) and usually on a host reboot (also for the toolbx container, which shares the host's `/tmp`). Use `--load-*-task-id`/`--load-*-model-id` for a resume that doesn't depend on the local files, or set `local_log_dir` to a persistent directory.
 
 ### Evaluation
 ```bash
 # Add flag `--control=ros` for real robot control (needs the ROS stack in other container)
 python3 eval.py -a=rl --num-envs=1 --load-rl-task=<CLEARML_TASK_ID> -e EVAL_REACHER
 python3 eval.py -a=bc --num-envs=10 --load-bc-task=<CLEARML_TASK_ID> -e EVAL_REACHER
+python3 eval.py -a=rl --env=push_t --num-envs=1 --load-rl-task-id=<CLEARML_TASK_ID> -e EVAL_PUSH_T
 ```
+
+### Policy preview video
+`train.py` and `eval.py` (simulation, RL and BC) record the policy acting from the project-wide fixed initial states
+`POLICY_PREVIEW_SEEDS` (`aegis_gym/config/types/logger.py`). It is disabled by default: enable it with
+`enable_policy_preview: True` in the logger config, or with the `--record` launch arg (`--record`/`--no-record` always
+override the config file). The 10 episodes run in the
+first environments and are rendered as one grid video (WebM), reported to the ClearML task under
+**Debug Samples → policy_preview**, together with its `success_rate`, `mean_return` and `mean_episode_length_s` scalars:
+
+* series `preview`: an overview camera of each seed's scene (runs without visual observations),
+* series `camera_inputs`: the cameras as the network gets them (runs with visual observations, without augmentation).
+
+* Training records the preview at its end; set `policy_preview_interval` (logger config) to record it also every N iterations
+  (the training is then run in chunks, all the envs are reset after every preview). Each preview has the checkpoint of
+  its policy, `model_<iteration>.pt` (saved besides the regular `save_interval` ones), and the episodes interrupted by
+  the preview are left out of the `Train/mean_reward` and `Train/mean_episode_length`.
+* The videos are also saved in `<local_log_dir>/policy_preview/`.
+* On a machine without a display, run with `PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1` (see [container/README.md](./container/README.md)).
 
 ---
 ## Interaction with ClearML
