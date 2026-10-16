@@ -556,8 +556,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([force, torque], dim=-1)
 
     def get_ft_wrench(self) -> th.Tensor:
-        """The simulated F/T measurement, tared when `set_ft_bias()` has been called.
-        """
+        """The simulated F/T measurement, tared when `set_ft_bias()` has been called."""
         wrench = self.get_ft_wrench_raw()
         if self._ft_bias is not None:
             wrench = wrench - self._ft_bias
@@ -575,14 +574,11 @@ class GenesisManipulator(BaseManipulator):
         return self._ft_bias is not None
 
     def get_ft_bias(self) -> th.Tensor | None:
-        """Simulation only: the stored offset, [num_envs, 6], or None when untared.
-        """
+        """Simulation only: the stored offset, [num_envs, 6], or None when untared."""
         return None if self._ft_bias is None else self._ft_bias.clone()
 
     def get_ft_wrench_raw(self) -> th.Tensor:
-        """Simulation only: the modelled wrench before the software tare.
-
-        """
+        """Simulation only: the modelled wrench before the software tare."""
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
