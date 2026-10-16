@@ -39,5 +39,8 @@ test = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
 [tool.uv]
 # Optional: configure uv-specific settings here
