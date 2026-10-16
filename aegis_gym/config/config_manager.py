@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch as th
 import yaml
-from clearml import Task
+from clearml import InputModel, Task
 
 from ..aux.logging import get_logger
 from .args_parser import LaunchArgs, parse_arguments
@@ -23,6 +23,17 @@ from .types import (
 
 class ConfigManager:
     _global_cfg: ExpConfig | None = None
+    # sections defining the trained policy and its environment
+    SOURCE_TASK_SECTIONS = ("env", "rl", "bc", "robot")
+    # sections of the RL teacher, the BC section belongs to the current run
+    SOURCE_TASK_TEACHER_SECTIONS = ("env", "rl", "robot")
+    # env entries of the current run, kept over the ones of the source task
+    _SOURCE_TASK_ENV_RUNTIME_KEYS = (
+        "num_envs",
+        "max_steps",
+        "visualize_camera",
+        "visualize_cell",
+    )
 
     @classmethod
     def get_config(cls) -> ExpConfig:
@@ -37,18 +48,34 @@ class ConfigManager:
         extra_argparser: Callable | None = None,
         device: th.device | None = None,
         task: Task | None = None,
+        source_task_id: str | None = None,
+        source_sections: tuple[str, ...] = SOURCE_TASK_SECTIONS,
     ) -> None:
         """
         Initializes the global config based on the launch arguments.
         Launch arguments can be parsed by providing raw `argv` with optional `extra_argparser` options.
         Allows to setup the global `device` argument.
         Allows to connect config to the ClearML `task`.
+        Allows to base the `source_sections` of the config on the ClearML `source_task_id`
+        the loaded policy was trained in; the config file and the launch arguments still apply.
         """
         if cls._global_cfg is not None:
             raise AttributeError("Tried to reinitialize global config!")
         cls._global_cfg = cls._initalize_config(
-            argv=argv, extra_argparser=extra_argparser, device=device, task=task
+            argv=argv,
+            extra_argparser=extra_argparser,
+            device=device,
+            task=task,
+            source_task_id=source_task_id,
+            source_sections=source_sections,
         )
+
+    @staticmethod
+    def resolve_source_task_id(task_id: str | None, model_id: str | None) -> str | None:
+        """ClearML task the policy was trained in, given either its `task_id` or `model_id`."""
+        if task_id is None and model_id is not None:
+            return InputModel(model_id=model_id).task
+        return task_id
 
     @classmethod
     def _initalize_config(
@@ -57,6 +84,8 @@ class ConfigManager:
         extra_argparser: Callable | None,
         device: th.device | None,
         task: Task | None,
+        source_task_id: str | None = None,
+        source_sections: tuple[str, ...] = SOURCE_TASK_SECTIONS,
     ) -> ExpConfig:
         logger = get_logger("InitializeConfig")
         if not isinstance(argv, LaunchArgs):
@@ -67,10 +96,15 @@ class ConfigManager:
             args = argv
 
         cfg_dict = cls._get_default_config_dict()
+        if source_task_id is not None and not args.enforce_current_config:
+            cls._apply_source_task_config(
+                task_id=source_task_id, cfg_dict=cfg_dict, sections=source_sections
+            )
         if args.config_path is not None:
             logger.info(f"Patching default config with file: {args.config_path}")
-            cfg_file_dict = cls._load_yaml(args.config_path)
-            cfg_dict.update(cfg_file_dict)
+            cfg_file_dict = cls._load_yaml(args.config_path) or {}
+            # Merged key by key, so the file may hold only the overridden entries
+            cfg_dict = cls._deep_update(base=cfg_dict, override=cfg_file_dict)
 
         if not args.enforce_current_config and task is not None:
             logger.info(f"Connecting config to the ClearML task id {task.task_id}")
@@ -82,6 +116,8 @@ class ConfigManager:
                 cfg_dict[cfg_sec_name] = connected
 
         cls._patch_config(args=args, cfg_dict=cfg_dict)
+        for ignored in cls._find_ignored_launch_args(args=args, cfg_dict=cfg_dict):
+            logger.warning(ignored)
         cfg = ExpConfig(
             logger_cfg=LoggerCfg.from_dict(cfg_dict.get("logger", None)),
             rl_cfg=RLCfg.from_dict(cfg_dict.get("rl", None)),
@@ -95,6 +131,31 @@ class ConfigManager:
         device = device or th.device("cpu")
         cfg.set_device(device=device)
         return cfg
+
+    @classmethod
+    def _apply_source_task_config(
+        cls, task_id: str, cfg_dict: dict, sections: tuple[str, ...]
+    ) -> None:
+        """
+        Replaces the `sections` of `cfg_dict` with the ones connected to
+        the ClearML task `task_id`, so the loaded policy matches the config.
+        """
+        logger = get_logger("InitializeConfig")
+        source_task = Task.get_task(task_id=task_id)
+        for name in sections:
+            section = source_task.get_configuration_object_as_dict(name)
+            if not section:
+                logger.warning(
+                    f"No `{name}` config in the ClearML task {task_id}, keeping the current one"
+                )
+                continue
+            if name == "env":
+                for key in cls._SOURCE_TASK_ENV_RUNTIME_KEYS:
+                    section[key] = cfg_dict[name][key]
+            cfg_dict[name] = section
+        logger.info(
+            f"Loaded the {list(sections)} config from the ClearML task {task_id}"
+        )
 
     @classmethod
     def _get_default_config_dict(cls) -> dict:
@@ -151,6 +212,11 @@ class ConfigManager:
             cfg_dict["env"]["visualize_camera"] = args.visualize_camera
         if args.episode_length_s:
             cfg_dict["env"]["episode_length_s"] = args.episode_length_s
+        if not cfg_dict["env"]["episode_length_s"]:
+            from ..envs import get_env_class
+
+            env_cls = get_env_class(cfg_dict["env"]["env_name"])
+            cfg_dict["env"]["episode_length_s"] = env_cls.DEFAULT_EPISODE_LENGTH_S
 
         # You can control only 1 real instance
         if args.control_type == Control.ROS:
@@ -172,6 +238,10 @@ class ConfigManager:
             log_dir.mkdir(parents=True, exist_ok=True)
             cfg_dict["logger"]["local_log_dir"] = str(log_dir)
 
+        # The launch arg overrides the policy preview setting from the config file
+        if args.enable_recording is not None:
+            cfg_dict["logger"]["enable_policy_preview"] = args.enable_recording
+
         # Apply the debug flags
         if args.debug_enable:
             cfg_dict["debug"]["enabled"] = args.debug_enable
@@ -189,6 +259,65 @@ class ConfigManager:
             given=cfg_dict["env"]["env_specific_dict"],
             validate=not args.ignore_env_dict_validation,
         )
+
+    @classmethod
+    def _find_ignored_launch_args(cls, args: LaunchArgs, cfg_dict: dict) -> list[str]:
+        """
+        The launch args given but missing from the config after `_patch_config()`. Under the ClearML
+        agent the connected config is read-only (`ProxyDictPreWrite` ignores the writes), so it's
+        controlled from the task's configuration sections only, the overrides from `Args` are dropped.
+        """
+        given: list[tuple[str, object, str]] = [
+            ("--exp-name", args.experiment_name, "rl.experiment_name"),
+            ("--max-iterations", args.max_iterations, "rl.max_iterations"),
+            ("--seed", args.seed, "rl.seed"),
+            ("--env", args.env_name, "env.env_name"),
+            # the store_true flags aren't given when False
+            (
+                "--visualize-camera",
+                args.visualize_camera or None,
+                "env.visualize_camera",
+            ),
+            ("--episode-length-s", args.episode_length_s, "env.episode_length_s"),
+            (
+                "--record/--no-record",
+                args.enable_recording,
+                "logger.enable_policy_preview",
+            ),
+            ("--debug-enable", args.debug_enable or None, "debug.enabled"),
+        ]
+        # A real robot is a single instance, `_patch_config()` sets it on purpose
+        if args.control_type != Control.ROS:
+            given.append(("--num-envs", args.num_envs, "env.num_envs"))
+        for path, value in cls._flatten(args.env_specific_dict or {}).items():
+            given.append(("--env-dict", value, f"env.env_specific_dict.{path}"))
+
+        ignored = []
+        for flag, value, path in given:
+            if value is None:
+                continue
+            actual = cfg_dict
+            for key in path.split("."):
+                actual = actual.get(key) if isinstance(actual, dict) else None
+            if actual != value:
+                ignored.append(
+                    f"The launch arg `{flag}` ({value!r}) is ignored, the config keeps "
+                    f"`{path}` = {actual!r}. Under the ClearML agent the config is read-only: "
+                    f"set it in the `{path.split('.')[0]}` configuration of the task instead."
+                )
+        return ignored
+
+    @classmethod
+    def _flatten(cls, d: dict, prefix: str = "") -> dict[str, object]:
+        """Nested dict as {"a.b": value} leaves."""
+        flat = {}
+        for key, value in d.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict):
+                flat.update(cls._flatten(value, prefix=f"{path}."))
+            else:
+                flat[path] = value
+        return flat
 
     @classmethod
     def _resolve_env_specific_dict(
