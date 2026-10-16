@@ -39,11 +39,13 @@ class GenesisManipulator(BaseManipulator):
         cfg_dr: DomainRandomizationCfg,
         show_cell: bool,
         policy_dt: float,
+        contact_friction: float,
         max_linear_speed: float,
         max_angular_speed: float,
         device: th.device | None = None,
     ):
         super().__init__(device=device)
+        self._contact_friction = contact_friction
 
         logger = get_logger("Genesis::Manipulator")
         self._num_envs = num_envs
@@ -83,7 +85,10 @@ class GenesisManipulator(BaseManipulator):
         logger.info(f"URDF path: {self._urdf_path}")
 
         # == Genesis configurations ==
-        material = gs.materials.Rigid(gravity_compensation=1.0)
+        material = gs.materials.Rigid(
+            gravity_compensation=1.0,
+            friction=self._contact_friction,
+        )
         morph = gs.morphs.URDF(
             file=self._urdf_path,
             fixed=True,
