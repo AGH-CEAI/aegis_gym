@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
+- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode.
+- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
 - [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode, with the `scripts/ft_sensor/dr_test.py` check.
 - [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
 - [PR-169](https://github.com/AGH-CEAI/aegis_gym/pull/169) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler, with the `scripts/ft_sensor/touch_test.py` sanity check.
