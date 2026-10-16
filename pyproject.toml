@@ -13,6 +13,7 @@ dependencies = [
     "colorama>=0.4.6",
     "gymnasium>=1.2.0,<1.3.0",
     "natsort>=8.4.0",
+    "opencv-python>=4.13.0,<5",
     "rsl-rl-lib>=3.3.0,<4",
     "strenum>=0.4.15",
     "tensorboard>=2.20.0",

@@ -9,8 +9,8 @@ from genesis.vis.camera import Camera
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import (
     CAMERAS_LINKS,
+    POLICY_PREVIEW_SEEDS,
     Algorithm,
-    CameraLink,
     CameraModality,
     CameraName,
     CamerasSetup,
@@ -31,6 +31,9 @@ from ..base_scene import BaseScene, RandomizationType
 
 
 class GenesisScene(BaseScene):
+    # The observation cameras' near clipping plane [m]. Genesis' default started to clip 0.1 m
+    CAMERA_NEAR = 0.001
+
     def __init__(
         self,
         cfg: ExpConfig,
@@ -55,6 +58,7 @@ class GenesisScene(BaseScene):
                 self.use_cameras = cfg.rl_cfg.use_cameras
             case Algorithm.BC:
                 self.use_cameras = cfg.bc_cfg.use_cameras
+        self._setup_preview_config(cfg=cfg)
 
         logger.info(
             f"f_c: {1 / self.ctrl_dt} Hz | f_pi: {1 / self.policy_dt} Hz | Action: {self.sim_substeps} steps | Max speed: {self._max_linear_speed} m/s ; {self._max_angular_speed} rad/s"
@@ -101,6 +105,17 @@ class GenesisScene(BaseScene):
         self._max_linear_speed = self._cfg_env.action_max_linear_speed
         self._max_angular_speed = self._cfg_env.action_max_angular_speed
 
+    def _setup_preview_config(self, cfg: ExpConfig) -> None:
+        self._preview_cam: Camera | None = None
+        self._preview_resolution = tuple(cfg.logger_cfg.policy_preview_resolution)
+        # With the visual observations, the preview records the observation cameras instead, as the
+        # batch renderer would render an extra preview camera at every policy step, for all envs
+        self._preview_enabled = (
+            cfg.logger_cfg.enable_policy_preview and not self.use_cameras
+        )
+        num_preview_envs = min(self.num_envs, len(POLICY_PREVIEW_SEEDS))
+        self._preview_envs_idx = list(range(num_preview_envs))
+
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self.gs_scene = self._setup_create_scene(cfg.env_cfg, cfg.args.disable_headless)
         self._setup_create_plane(self.gs_scene)
@@ -133,7 +148,12 @@ class GenesisScene(BaseScene):
                 batch_links_info=True,  # Enables (n_envs, n_links, ...) shapes
             ),
             vis_options=gs.options.VisOptions(
-                rendered_envs_idx=list(range(self.num_envs)),
+                rendered_envs_idx=(
+                    self._preview_envs_idx
+                    if self._preview_enabled
+                    else list(range(self.num_envs))
+                ),
+                split_envs=self._preview_enabled,
                 shadow=True,
                 plane_reflection=False,
             ),
@@ -242,6 +262,7 @@ class GenesisScene(BaseScene):
             pos=pos,
             lookat=lookat,
             fov=fov,
+            near=self.CAMERA_NEAR,
             GUI=show_cameras_gui,
         )
         self._cameras_modalities[name] = (CameraModality.RGB,)
@@ -269,23 +290,23 @@ class GenesisScene(BaseScene):
             dtype=np.float32,
         )
 
-        get_link = self.manipulator.get_robot_link
-        self._cameras[CameraName.CAMERA_SCENE].attach(
-            get_link(link=CameraLink.CAMERA_SCENE), scene_offset_T
+        self._attach_cameras(
+            offsets={
+                CameraName.CAMERA_SCENE: scene_offset_T,
+                CameraName.CAMERA_TOOL_LEFT: tool_offset_T,
+                CameraName.CAMERA_TOOL_RIGHT: tool_offset_T,
+            }
         )
-        self._cameras[CameraName.CAMERA_SCENE].move_to_attach()
-        self._cameras[CameraName.CAMERA_TOOL_LEFT].attach(
-            get_link(link=CameraLink.CAMERA_TOOL_LEFT), tool_offset_T
-        )
-        self._cameras[CameraName.CAMERA_TOOL_LEFT].move_to_attach()
-        self._cameras[CameraName.CAMERA_TOOL_RIGHT].attach(
-            get_link(link=CameraLink.CAMERA_TOOL_RIGHT), tool_offset_T
-        )
-        self._cameras[CameraName.CAMERA_TOOL_RIGHT].move_to_attach()
-
         self._cache_camera_base_offsets(
             offset_scene=scene_offset_T, offset_tool=tool_offset_T
         )
+
+    def _attach_cameras(self, offsets: dict[CameraName, np.ndarray]) -> None:
+        """Attaches the cameras to their robot links, at the given link -> camera offsets."""
+        for cam_name, offset in offsets.items():
+            link = self.manipulator.get_robot_link(link=CAMERAS_LINKS[cam_name])
+            self._cameras[cam_name].attach(link, offset)
+            self._cameras[cam_name].move_to_attach()
 
     def _cache_camera_base_offsets(
         self, offset_scene: np.ndarray, offset_tool: np.ndarray
@@ -305,6 +326,42 @@ class GenesisScene(BaseScene):
 
     def get_policy_dt(self) -> float:
         return self.policy_dt
+
+    def set_nominal_domain(self) -> None:
+        self.manipulator.max_linear_speed = self._max_linear_speed
+        self.manipulator.max_angular_speed = self._max_angular_speed
+        self.manipulator.set_joints_pd_gains()
+        self._attach_cameras(offsets=self._dr_cam_base_offsets)
+
+    def add_preview_camera(
+        self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
+    ) -> None:
+        if not self._preview_enabled:
+            return
+        self._preview_cam = self.gs_scene.add_camera(
+            res=self._preview_resolution, pos=pos, lookat=lookat, fov=45, GUI=False
+        )
+
+    def is_preview_available(self) -> bool:
+        return self._preview_cam is not None
+
+    def has_observation_cameras(self) -> bool:
+        return bool(self._cameras)
+
+    def render_preview(self) -> th.Tensor:
+        if self._preview_cam is None:
+            raise RuntimeError(
+                "The preview camera is missing: enable it with `--record` (or `enable_policy_preview`"
+                " in the logger config), and add it "
+                "with `add_preview_camera()` before building the scene."
+            )
+        rgb, _, _, _ = self._preview_cam.render(
+            rgb=True, depth=False, segmentation=False, normal=False
+        )
+        rgb = th.as_tensor(rgb)
+        if rgb.dim() == 3:  # single rendered env
+            rgb = rgb.unsqueeze(0)
+        return rgb[..., :3].to(dtype=th.uint8)
 
     def observe_camera(self, camera: CameraName, modality: CameraModality) -> th.Tensor:
         if not modality == CameraModality.RGB:
@@ -340,6 +397,9 @@ class GenesisScene(BaseScene):
             available_cameras=self._cameras_modalities,
             cfg_robot=cfg,
             show_cell=self.show_cell,
+            policy_dt=self.policy_dt,
+            max_linear_speed=self._max_linear_speed,
+            max_angular_speed=self._max_angular_speed,
             device=self.device,
         )
 
@@ -377,6 +437,7 @@ class GenesisScene(BaseScene):
         ):
             return
 
+        perturbed_offsets: dict[CameraName, np.ndarray] = {}
         for cam_name, base_offset in self._dr_cam_base_offsets.items():
             if cam_name == CameraName.CAMERA_SCENE:
                 per_cam = cam_cfg.scene_cam
@@ -391,11 +452,8 @@ class GenesisScene(BaseScene):
             perturb = self._make_random_se3_perturbation(
                 per_cam.translation_std, per_cam.rotation_std_deg
             )
-            perturbed_offset = (base_offset @ perturb).astype(np.float32)
-
-            link = self.manipulator.get_robot_link(link=CAMERAS_LINKS[cam_name])
-            self._cameras[cam_name].attach(link, perturbed_offset)
-            self._cameras[cam_name].move_to_attach()
+            perturbed_offsets[cam_name] = (base_offset @ perturb).astype(np.float32)
+        self._attach_cameras(offsets=perturbed_offsets)
 
     def _make_random_se3_perturbation(
         self,
