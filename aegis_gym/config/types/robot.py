@@ -23,6 +23,4 @@ class RobotCfg(BaseCfg):
     # Max joint following error [rad]; acts as the force limit.
     servo_follow_error_max_rad: float
     servo_stiffness_scale: float
-
-    # Delay between a velocity command and the arm acting on it [s].
     servo_command_delay_s: float
