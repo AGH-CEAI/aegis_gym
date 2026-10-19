@@ -7,7 +7,7 @@ rl:
   seed: 1
   use_cameras: False
   # Observations mapping
-  obs_groups: {"policy": ["policy"], "critic": ["policy"]}
+  obs_groups: {"actor": ["policy"], "critic": ["policy"]}
 
   # Logging parameters
   save_interval: 100  # Check for potential saves every `save_interval` iterations
@@ -41,17 +41,21 @@ rl:
   # reset_last_layer_weights_part: part # `actor`, `critic` or `both`
   reset_last_layer_weights: {"interval": 0, "part": "both"}
   init_member_classes: {}
-  policy:
-    class_name: "ActorCritic"
+  actor:
+    class_name: "aegis_gym.runners.models:AegisMLPModel"
+    hidden_dims: [256, 256, 128]
     activation: "elu"  # original: "relu"
-    actor_obs_normalization: True
-    critic_obs_normalization: True
-    init_noise_std: 1.0
-    actor_hidden_dims: [256, 256, 128]
-    critic_hidden_dims: [256, 256, 128]
-    noise_std_type: "log"  # 'scalar' or 'log'
-    state_dependent_std: False
+    obs_normalization: True
     detach_actor_grad: False
+    distribution_cfg:
+      class_name: "GaussianDistribution"  # state-dependent std: HeteroscedasticGaussianDistribution
+      init_std: 1.0
+      std_type: "log"  # 'scalar' or 'log'
+  critic:
+    class_name: "aegis_gym.runners.models:AegisMLPModel"
+    hidden_dims: [256, 256, 128]
+    activation: "elu"
+    obs_normalization: True
 
 bc:
   # The grasp studies' optimizer settings (lr, steps, grad clip) are kept for the comparability

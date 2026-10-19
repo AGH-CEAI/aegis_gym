@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Literal
+from dataclasses import dataclass, field
 
 from .base_cfg import BaseCfg
 
@@ -25,17 +24,22 @@ class AlgorithmCfg(BaseCfg):
 
 
 @dataclass(slots=True)
-class PolicyCfg(BaseCfg):
+class ActorCfg(BaseCfg):
     class_name: str
+    hidden_dims: list[int]
     activation: str
-    actor_obs_normalization: bool
-    critic_obs_normalization: bool
-    init_noise_std: float
-    actor_hidden_dims: list[int]
-    critic_hidden_dims: list[int]
-    noise_std_type: Literal["scalar", "log"]
-    state_dependent_std: bool
-    detach_actor_grad: bool
+    obs_normalization: bool
+    detach_actor_grad: bool = False
+    # `GaussianDistribution` (`init_std`, `std_type`) or `HeteroscedasticGaussianDistribution`
+    distribution_cfg: dict = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class CriticCfg(BaseCfg):
+    class_name: str
+    hidden_dims: list[int]
+    activation: str
+    obs_normalization: bool
 
 
 @dataclass(slots=True)
@@ -55,4 +59,5 @@ class RLCfg(BaseCfg):
     # reset_last_layer_weights_part: Literal["actor", "critic", "both"]
     reset_last_layer_weights: dict
     init_member_classes: dict
-    policy: PolicyCfg
+    actor: ActorCfg
+    critic: CriticCfg

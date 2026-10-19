@@ -282,13 +282,9 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self._best_model_score = score
         self._best_model_iter = it + 1
 
-        path = Path(self._log_dir) / "checkpoint_best.pt"
+        path = Path(self._log_dir) / "model_best.pt"
         self.save(path)
-        self.logger.save_model(
-            path=str(path),
-            it=self._best_model_iter,
-            custom_name="model_best",
-        )
+        self.logger.save_model(path=str(path), it=self._best_model_iter)
 
         print(
             f"New best model!\n Iteration = {self._best_model_iter}\n {_format_score(score)}"

@@ -5,10 +5,13 @@ from typing import Any
 import torch as th
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
 
-from aegis_gym.config.types import ExpConfig
+from aegis_gym.config.types import ExpConfig, LoggerCfg
 from aegis_gym.envs import BaseEnv
 
 from .base_runner import BasePolicyRunner
+from .training_logger import TrainingLogger
+
+CLEARML_WRITER = "aegis_gym.aux.logging.clearml_writer:ClearMLLogWriter"
 
 
 class OnPolicyRunner(BasePolicyRunner):
@@ -17,6 +20,7 @@ class OnPolicyRunner(BasePolicyRunner):
 
         rsl_rl_cfg = cfg.rl_cfg.as_dict()
         rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
+        rsl_rl_cfg["logger"] = _resolve_log_writer_cfg(cfg.logger_cfg)
         log_dir = cfg.logger_cfg.local_log_dir
         self.runner = RslRlOnPolicyRunner(
             env=env,
@@ -24,10 +28,23 @@ class OnPolicyRunner(BasePolicyRunner):
             log_dir=str(log_dir),
             device=str(cfg.get_device()),
         )
-        # TODO(issue#176) move to the fork (https://github.com/AGH-CEAI/rsl_rl): log the `*/time`
-        # scalars only if `self.logger_type not in ("wandb", "clearml")` (rsl_rl/utils/logger.py)
-        if cfg.logger_cfg.logger == "clearml":
-            self._drop_time_scalars()
+
+        reset_cfg = cfg.rl_cfg.reset_last_layer_weights
+        self._reset_last_layer_part = reset_cfg.get("part", "both")
+        self.runner.logger = TrainingLogger(
+            log_dir=str(log_dir),
+            cfg=rsl_rl_cfg,
+            env_cfg=env.get_cfg_as_dict(),
+            num_envs=env.num_envs,
+            is_distributed=self.runner.is_distributed,
+            gpu_world_size=self.runner.gpu_world_size,
+            gpu_global_rank=self.runner.gpu_global_rank,
+            device=str(cfg.get_device()),
+            save_best_model=self.save,
+            best_model_skip_iters=cfg.rl_cfg.best_model_skip_iters,
+            reset_last_layer=self._reset_last_layer_weights,
+            reset_last_layer_interval=reset_cfg.get("interval", 0),
+        )
 
     def learn(
         self, num_learning_iterations: int, init_at_random_ep_len: bool = False
@@ -36,25 +53,6 @@ class OnPolicyRunner(BasePolicyRunner):
             num_learning_iterations=num_learning_iterations,
             init_at_random_ep_len=init_at_random_ep_len,
         )
-
-    def _drop_time_scalars(self) -> None:
-        """
-        rsl_rl logs the `*/time` scalars with the elapsed seconds as the step, which ClearML takes
-        as the iteration: e.g. 3000 iterations over 5 h would log up to "iteration" 18000, also
-        moving the task's last iteration (and its resource monitor) there. ClearML plots the scalars
-        against the wall time itself, so these duplicates are dropped.
-        """
-        writer = self.runner.logger.writer
-        if writer is None:
-            return
-        add_scalar = writer.add_scalar
-
-        def add_scalar_per_iteration(tag: str, *args: Any, **kwargs: Any) -> None:
-            if tag.endswith("/time"):
-                return
-            add_scalar(tag, *args, **kwargs)
-
-        writer.add_scalar = add_scalar_per_iteration
 
     def learn_in_chunks(
         self,
@@ -98,8 +96,28 @@ class OnPolicyRunner(BasePolicyRunner):
             buffer = getattr(logger, name, None)
             if buffer is not None:
                 buffer.zero_()
-        # The recurrent policies drop the hidden state carried over from outside of `learn()`
-        self.runner.alg.policy.reset()
+        alg = self.runner.alg
+        alg.actor.reset()
+        alg.critic.reset()
+
+    def _reset_last_layer_weights(self) -> None:
+        """Reinitialize the last layer of the actor and/or the critic, per the config."""
+        part = self._reset_last_layer_part
+        if part not in {"actor", "critic", "both"}:
+            raise ValueError(
+                f"reset_last_layer_weights.part must be 'actor', 'critic' or 'both', got {part!r}"
+            )
+
+        alg = self.runner.alg
+        models = {"actor": alg.get_policy(), "critic": alg._raw_critic}
+        for name, model in models.items():
+            if part in {name, "both"}:
+                if not hasattr(model, "reset_last_layer_weights"):
+                    raise AttributeError(
+                        f"The {name} model does not support reset_last_layer_weights(). "
+                        f"Set its `class_name` to a model that does, e.g. AegisMLPModel."
+                    )
+                model.reset_last_layer_weights()
 
     def save(self, path: Path, infos: dict | None = None) -> None:
         self.runner.save(path=str(path), infos=infos)
@@ -118,10 +136,31 @@ class OnPolicyRunner(BasePolicyRunner):
         return self.runner.get_inference_policy(device=str(device))
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
-        try:
-            if filename.endswith(".pt"):
-                return self.runner.export_policy_to_jit(path=path, filename=filename)
-            if filename.endswith(".onnx"):
-                return self.runner.export_policy_to_onnx(path=path, filename=filename)
-        except (ValueError, OSError) as e:
-            raise NotImplementedError("Export policy not implemented.") from e
+        if filename.endswith(".pt"):
+            return self.runner.export_policy_to_jit(path=str(path), filename=filename)
+        if filename.endswith(".onnx"):
+            return self.runner.export_policy_to_onnx(path=str(path), filename=filename)
+        raise NotImplementedError(f"Unsupported export format: {filename}")
+
+
+def _resolve_log_writer_cfg(logger_cfg: LoggerCfg) -> str | dict[str, Any]:
+    """Translate this project's `logger` name into the writer configuration rsl_rl expects."""
+    match logger_cfg.logger:
+        case "clearml":
+            return {
+                "class_name": CLEARML_WRITER,
+                "project_name": logger_cfg.clearml_project,
+                "log_cfg_as_hyperparams": logger_cfg.clearml_log_cfg_as_hyperparams,
+            }
+        case "wandb":
+            return {
+                "class_name": "WandbLogWriter",
+                "project_name": logger_cfg.wandb_project,
+            }
+        case "neptune":
+            return {
+                "class_name": "NeptuneLogWriter",
+                "project_name": logger_cfg.neptune_project,
+            }
+        case other:
+            return other
