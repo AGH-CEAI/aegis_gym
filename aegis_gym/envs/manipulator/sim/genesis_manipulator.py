@@ -513,10 +513,10 @@ class GenesisManipulator(BaseManipulator):
             sensor_pos
         )  # [num_envs, 3]
 
-        if self._fts_payload_mass is not None:
-            weight = self._fts_payload_mass * gravity  # [num_envs, 3]
+        if self._ft_payload_mass is not None:
+            weight = self._ft_payload_mass * gravity  # [num_envs, 3]
             lever = transform_by_quat(
-                self._fts_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
+                self._ft_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
             )
             return th.cat([weight, th.linalg.cross(lever, weight)], dim=-1)
 
