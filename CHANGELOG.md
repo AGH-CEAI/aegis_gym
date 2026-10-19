@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
+- [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode, with the `scripts/ft_sensor/dr_test.py` check.
+- [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
 - [PR-169](https://github.com/AGH-CEAI/aegis_gym/pull/169) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler, with the `scripts/ft_sensor/touch_test.py` sanity check.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T episode terminates when the T-block leaves the table top.
