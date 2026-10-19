@@ -24,6 +24,10 @@ _FTS_OUTPUT_YAW_DEG = 90.0
 
 
 class GenesisManipulator(BaseManipulator):
+    # Fraction of the policy step the position target leads the joints; larger values overshoot
+    # the calibrated speed on the action changes (0.3 measured at ~96% of the per-step limit)
+    _SERVO_TARGET_LEAD = 0.3
+
     def __init__(
         self,
         num_envs: int,
@@ -33,6 +37,9 @@ class GenesisManipulator(BaseManipulator):
         cfg_robot: RobotCfg,
         cfg_dr: DomainRandomizationCfg,
         show_cell: bool,
+        policy_dt: float,
+        max_linear_speed: float,
+        max_angular_speed: float,
         device: th.device | None = None,
     ):
         super().__init__(device=device)
@@ -43,6 +50,7 @@ class GenesisManipulator(BaseManipulator):
         self._observe_camera_fn = cameras_obs_getter
         self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
+        self._policy_dt = policy_dt
         self._ft_residual_bias = th.zeros(
             (num_envs, 6), dtype=th.float32, device=self.device
         )
@@ -87,37 +95,12 @@ class GenesisManipulator(BaseManipulator):
                 "cam_tool_left",
                 "cam_scene_rgb_camera_frame",
                 "tool_mount_link",
-                # Kept so their mass isn't merged into `tool_mount_link`: the F/T
-                # gravity model needs the links past the sensor.
                 "adapter_from_sensor",
                 "robotiq_hande_coupler",
                 "robotiq_hande_link",
             ],
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
-
-        # Software tare offset, [num_envs, 6]; None until `set_ft_bias()`. The real
-        # robot has no counterpart -- its sensor tares itself.
-        self._ft_bias: th.Tensor | None = None
-
-        self._fts_payload_mass: th.Tensor | None = None
-        self._fts_payload_com: th.Tensor | None = None
-        if cfg_robot.fts_payload_mass is not None:
-            if cfg_robot.fts_payload_com is None:
-                raise ValueError(
-                    "fts_payload_mass is set but fts_payload_com is not; both are "
-                    "needed to place the measured payload."
-                )
-            self._fts_payload_mass = th.tensor(
-                cfg_robot.fts_payload_mass, dtype=th.float32, device=self.device
-            )
-            self._fts_payload_com = th.tensor(
-                [cfg_robot.fts_payload_com], dtype=th.float32, device=self.device
-            )
-            logger.info(
-                f"F/T payload calibration: {cfg_robot.fts_payload_mass:.4f} kg at "
-                f"{cfg_robot.fts_payload_com} m (sensor frame)"
-            )
 
         half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
         self._fts_output_offset = th.tensor(
@@ -128,8 +111,9 @@ class GenesisManipulator(BaseManipulator):
 
         self._gripper_open_dof = 0.025
         self._gripper_close_dof = 0.0
-        self.max_linear_speed = 1.0
-        self.max_angular_speed = 1.0
+        # calibrated on the real robot, may be scaled by the domain randomization
+        self.max_linear_speed = max_linear_speed
+        self.max_angular_speed = max_angular_speed
 
         self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
 
@@ -191,13 +175,11 @@ class GenesisManipulator(BaseManipulator):
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
         self._fts_link = self._robot_entity.get_link("tool_mount_link")
         self._gravity_links = self._get_downstream_links(self._fts_link)
-        # Global link indices past the sensor, for matching contacts against.
         self._gravity_link_idx = th.tensor(
             [link.idx for link in self._gravity_links],
             dtype=th.int32,
             device=self.device,
         )
-        # Filled on first use: mass and COM need a built scene.
         self._gravity_link_masses: th.Tensor | None = None
         self._gravity_link_local_coms: th.Tensor | None = None
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
@@ -231,8 +213,8 @@ class GenesisManipulator(BaseManipulator):
     def _init_pd_tensors(self) -> None:
         """Cache default PD tensors; call once after the entity is ready."""
         # TODO(issue#98) Move the robot calibration data into the URDF-dataset
-        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 100.0, 100.0]
-        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 10.0, 10.0]
+        KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 500.0, 500.0]
+        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 100.0, 100.0]
         FORCE_LOWER = [-87.0, -87.0, -87.0, -87.0, -87.0, -87.0, -100.0, -100.0]
         FORCE_UPPER = [87.0, 87.0, 87.0, 87.0, 87.0, 87.0, 100.0, 100.0]
 
@@ -297,22 +279,28 @@ class GenesisManipulator(BaseManipulator):
             case _:
                 raise ValueError(f"Invalid IK method: {self._ik_method}")
 
-        # Set gripper position if specified
-        if open_gripper is not None:
-            q_pos = self._robot_entity.get_qpos()
-            if open_gripper:
-                q_pos[:, self._fingers_dof] = self._gripper_open_dof
-            else:
-                q_pos[:, self._fingers_dof] = self._gripper_close_dof
-            # Control gripper with position control
-            if q_vel is not None:
-                self._robot_entity.control_dofs_position(
-                    position=q_pos[:, self._fingers_dof],
-                    dofs_idx_local=self._fingers_dof,
-                )
-            self._robot_entity.control_dofs_position(position=q_pos)
+        # Emulates the real servo, which streams joint positions: the stiff PD tracks the commanded
+        # velocity with a position target slightly ahead of the current joints, so the contacts can't
+        # deflect the arm. Anchoring at the current joints (not the last target) avoids a windup.
+        q_pos = self._robot_entity.get_qpos()
+        arm_q_vel = q_vel[:, self._arm_dof_idx]
+        self._robot_entity.control_dofs_position_velocity(
+            position=q_pos[:, self._arm_dof_idx]
+            + arm_q_vel * self._policy_dt * self._SERVO_TARGET_LEAD,
+            velocity=arm_q_vel,
+            dofs_idx_local=self._arm_dof_idx,
+        )
 
-        self._robot_entity.control_dofs_velocity(velocity=q_vel)
+        if open_gripper is None:
+            return
+        if open_gripper:
+            q_pos[:, self._fingers_dof] = self._gripper_open_dof
+        else:
+            q_pos[:, self._fingers_dof] = self._gripper_close_dof
+        self._robot_entity.control_dofs_position(
+            position=q_pos[:, self._fingers_dof],
+            dofs_idx_local=self._fingers_dof,
+        )
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -405,6 +393,34 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
+
+    def ctrl_reset_to_pose(
+        self,
+        pose: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        # IK is seeded with the current joints, so reset to home beforehand to keep the arm configuration
+        q_pos = self._robot_entity.inverse_kinematics(
+            link=self._ee_link,
+            pos=pose[:, :3],
+            quat=pose[:, 3:7],
+            dofs_idx_local=self._arm_dof_idx,
+            envs_idx=idx,
+        )
+        if open_gripper is not None:
+            if open_gripper:
+                q_pos[:, self._fingers_dof] = self._gripper_open_dof
+            else:
+                q_pos[:, self._fingers_dof] = self._gripper_close_dof
+
+        self._robot_entity.set_qpos(q_pos, envs_idx=idx)
+        self._robot_entity.control_dofs_position(position=q_pos, envs_idx=idx)
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (

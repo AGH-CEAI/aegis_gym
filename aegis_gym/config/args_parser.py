@@ -1,14 +1,13 @@
 import ast
 import sys
 import time
-from argparse import ArgumentParser, ArgumentTypeError
+from argparse import ArgumentParser, ArgumentTypeError, BooleanOptionalAction
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.envs import available_envs
 
 from .types import Algorithm, Control
 
@@ -59,6 +58,7 @@ class LaunchArgs:
     load_from_pickle: bool | None
     bc_all_checkpoints: bool | None
     bc_eval_every: int | None
+    preview_checkpoints: bool | None
     seed: int | None
 
     _args_raw: Any
@@ -73,6 +73,8 @@ class LaunchArgs:
 def parse_arguments(
     argv: list[str] | None = None, extra_argparser: Callable | None = None
 ) -> LaunchArgs:
+    from ..envs import available_envs
+
     def str_to_list(arg: str | None) -> list[float] | None:
         if arg is None:
             return None
@@ -210,8 +212,14 @@ def parse_arguments(
 
     p.add_argument(
         "--record",
-        action="store_true",
-        help="Record stereo images as video during evaluation",
+        action=BooleanOptionalAction,
+        default=None,
+        help=(
+            "Record the policy preview video on the fixed POLICY_PREVIEW_SEEDS and report it "
+            "to the ClearML Debug Samples (simulation only; at the end of the training, or of "
+            "the evaluation). Overrides `enable_policy_preview` from the logger config "
+            "(disabled by default)."
+        ),
     )
     p.add_argument(
         "--video-path",
@@ -242,6 +250,17 @@ def parse_arguments(
         type=int,
         default=None,
         help="Sweep every N-th BC checkpoint",
+    )
+    p.add_argument(
+        "--preview-checkpoints",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluation only: record the policy preview of every `model_<N>` checkpoint of the "
+            "ClearML training task (`--load-rl-task-id`, or `--load-bc-task-id` with `-a bc`) and "
+            "report it to that task's Debug Samples at the checkpoint's training iteration, e.g. "
+            "for a training run without the preview. The task must not be published."
+        ),
     )
 
     if extra_argparser is not None:
@@ -292,6 +311,7 @@ def parse_arguments(
         load_from_pickle=args.load_from_pickle,
         bc_all_checkpoints=args.bc_all_checkpoints,
         bc_eval_every=args.bc_eval_every,
+        preview_checkpoints=args.preview_checkpoints,
         seed=args.seed,
         _args_raw=args,
     )

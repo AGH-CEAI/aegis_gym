@@ -1,9 +1,15 @@
 import math
+from collections.abc import Sequence
 
 import torch as th
 from tensordict import TensorDict
 
-from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
+from aegis_gym.aux.geom import (
+    quat_to_rotvec_error,
+    transform_by_quat,
+    transform_quat_by_quat,
+)
+from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
@@ -16,6 +22,8 @@ from .scene import BaseScene
 @register_env("reacher")
 class ReacherEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
+    DEFAULT_EPISODE_LENGTH_S = 5.0
+    _TCP_TARGET_OFFSET = (0.0, 0.0, -0.08)
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
@@ -88,6 +96,8 @@ class ReacherEnv(BaseEnv):
         self.spawnbox_ylength = env_dict["box_spawnbox_ylength"]
         self.spawnbox_xoffset = env_dict["box_spawnbox_xoffset"]
         self.spawnbox_yoffset = env_dict["box_spawnbox_yoffset"]
+        self.success_pos_thresh = env_dict["success_pos_thresh"]
+        self.success_rot_thresh = math.radians(env_dict["success_rot_thresh_deg"])
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -103,6 +113,8 @@ class ReacherEnv(BaseEnv):
             "box_spawnbox_ylength": 0.4,
             "box_spawnbox_xoffset": 0.36,
             "box_spawnbox_yoffset": -0.2,
+            "success_pos_thresh": 0.01,
+            "success_rot_thresh_deg": 5.0,
         }
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
@@ -117,12 +129,18 @@ class ReacherEnv(BaseEnv):
         self.object: BaseBox = self._scene.add_entity(
             entity=ObjectType.BOX, properties=p
         )
+        self._scene.add_preview_camera(*self.PREVIEW_CAMERA_POSE)
 
     def _init_reward_functions(self) -> None:
         # TODO(issue#141) simplify creation of the rewards_functions registry
         self.reward_functions, self.episode_sums = {}, {}
+        # Scaled copy, the config dict isn't modified: under the ClearML agent it's read-only and
+        # silently ignores the writes (`ProxyDictPreWrite`), which would leave the scales unscaled.
+        dt = self.ctrl_dt * self.sim_substeps
+        self.reward_scales = {
+            name: scale * dt for name, scale in self.reward_scales.items()
+        }
         for name in self.reward_scales:
-            self.reward_scales[name] *= self.ctrl_dt * self.sim_substeps
             self.reward_functions[name] = getattr(self, "_reward_" + name)
             self.episode_sums[name] = th.zeros(
                 (self.num_envs,), device=self.device, dtype=th.float32
@@ -162,6 +180,9 @@ class ReacherEnv(BaseEnv):
         )
         self.reset_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.goal_pose = th.zeros(self.num_envs, 7, device=self.device)
+        self.tcp_pos_err = th.zeros(self.num_envs, device=self.device)
+        self.tcp_rot_err = th.zeros_like(self.tcp_pos_err)
+        self.success_buf = th.zeros(self.num_envs, dtype=th.bool, device=self.device)
         self.extras = {}
         self.extras["observations"] = {}
 
@@ -171,7 +192,12 @@ class ReacherEnv(BaseEnv):
         self._scene.update_state()
         return ResetReturn(self.get_observations(), self.extras)
 
-    def reset_idx(self, envs_idx: th.Tensor) -> None:
+    def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
+        obj_pose = self._get_random_object_pose(num_reset=len(seeds), seeds=seeds)
+        self.reset_idx(envs_idx=envs_idx, obj_pose=obj_pose)
+
+    def reset_idx(self, envs_idx: th.Tensor, obj_pose: th.Tensor | None = None) -> None:
+        """Resets the `envs_idx`, with a random object pose unless given (then without the DR)."""
         if len(envs_idx) == 0:
             return
         self.episode_length_buf[envs_idx] = 0
@@ -179,12 +205,20 @@ class ReacherEnv(BaseEnv):
         self.manipulator.ctrl_gripper_open(envs_idx)
         self.manipulator.ctrl_go_to_home(envs_idx)
 
-        obj_pose = self._get_random_object_pose(envs_idx=envs_idx)
+        randomize_domain = self._is_domain_randomized() and obj_pose is None
+        if obj_pose is None:
+            obj_pose = self._get_random_object_pose(num_reset=len(envs_idx))
         self.object.set_pose(pose=obj_pose, envs_idx=envs_idx)
         self.goal_pose[envs_idx] = obj_pose
 
         # fill extras
-        self.extras["episode"] = {}
+        # the episodes end on the time out only, so the success is of their last step
+        self.extras["episode"] = {
+            "success_rate": self.success_buf[envs_idx].float().mean().item(),
+            "final_tcp_dist_cm": 100 * self.tcp_pos_err[envs_idx].mean().item(),
+            "final_rot_err_deg": math.degrees(self.tcp_rot_err[envs_idx].mean().item()),
+        }
+        self.success_buf[envs_idx] = False
         for key in self.episode_sums:
             self.extras["episode"]["rew_" + key] = (
                 th.mean(self.episode_sums[key][envs_idx]).item()
@@ -192,22 +226,20 @@ class ReacherEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if not self._cfg_dr.enabled:
+        if not randomize_domain:
             return
         for rt in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
 
-    def _get_random_object_pose(self, envs_idx: th.Tensor) -> th.Tensor:
-        num_reset = len(envs_idx)
-
-        random_x = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_xlength
-            + self.spawnbox_xoffset
-        )
-        random_y = (
-            th.rand(num_reset, device=self.device) * self.spawnbox_ylength
-            + self.spawnbox_yoffset
-        )
+    def _get_random_object_pose(
+        self, num_reset: int, seeds: Sequence[int] | None = None
+    ) -> th.Tensor:
+        """Random pose for `num_reset` envs, reproducible on any device if `seeds` are given."""
+        # The draws columns (x, y, yaw) define the seeded initial states (`reset_seeded()`):
+        # reordering them changes the policy preview scenes (see `test/rand_test.py`).
+        u = rand_uniform(num=num_reset, num_draws=3, device=self.device, seeds=seeds)
+        random_x = u[:, 0] * self.spawnbox_xlength + self.spawnbox_xoffset
+        random_y = u[:, 1] * self.spawnbox_ylength + self.spawnbox_yoffset
         random_z = th.ones(num_reset, device=self.device) * (
             self.table_size[2] - self.workbench_size[2] + self.box_size[2] / 2
         )
@@ -218,9 +250,7 @@ class ReacherEnv(BaseEnv):
             num_reset, 1
         )
         # randomly yaw the object
-        random_yaw = (
-            th.rand(num_reset, device=self.device) * 2 * math.pi - math.pi
-        ) * 0.25
+        random_yaw = (u[:, 2] * 2 * math.pi - math.pi) * 0.25
         q_yaw = th.stack(
             [
                 th.cos(random_yaw / 2),
@@ -243,6 +273,12 @@ class ReacherEnv(BaseEnv):
         self._scene.pre_step()
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)
         self._scene.step()
+
+        self.tcp_pos_err, self.tcp_rot_err = self._tcp_to_target_errors()
+        self.success_buf = (self.tcp_pos_err < self.success_pos_thresh) & (
+            self.tcp_rot_err < self.success_rot_thresh
+        )
+        self.extras["success"] = self.success_buf.clone()
 
         # compute reward based on task, before the reset replaces the terminal state
         reward = th.zeros(self.num_envs, device=self.device, dtype=th.float32)
@@ -296,9 +332,7 @@ class ReacherEnv(BaseEnv):
         tcp_pos, tcp_quat = tcp_pose[:, :3], tcp_pose[:, 3:]
         keypoints_offset = self.keypoints_offset
         object_offset = th.tensor(
-            [0.0, 0.0, -0.08],
-            device=self.device,
-            dtype=th.float32,
+            self._TCP_TARGET_OFFSET, device=self.device, dtype=th.float32
         ).repeat(self.num_envs, 1)
 
         finger_pos_keypoints = self._to_world_frame(
@@ -312,6 +346,19 @@ class ReacherEnv(BaseEnv):
         object_pos_keypoints = self._to_world_frame(obj_pos, obj_quat, keypoints_offset)
         dist = th.norm(finger_pos_keypoints - object_pos_keypoints, p=2, dim=-1).sum(-1)
         return th.exp(-dist)
+
+    def _tcp_to_target_errors(self) -> tuple[th.Tensor, th.Tensor]:
+        """[N] position [m] and rotation angle [rad] errors of the TCP w.r.t. the target pose."""
+        tcp_pose = self.manipulator.get_tcp_pose()
+        obj_pose = self.object.get_pose()
+        offset = th.tensor(self._TCP_TARGET_OFFSET, device=self.device)
+        pos_err = th.linalg.vector_norm(
+            tcp_pose[:, :3] + offset - obj_pose[:, :3], dim=-1
+        )
+        rot_err = th.linalg.vector_norm(
+            quat_to_rotvec_error(obj_pose[:, 3:], tcp_pose[:, 3:]), dim=-1
+        )
+        return pos_err, rot_err
 
     def _to_world_frame(
         self,

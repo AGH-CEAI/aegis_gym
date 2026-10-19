@@ -14,10 +14,21 @@ from aegis_gym.config.types import Algorithm, Checkpoint, ExpConfig
 from aegis_gym.envs import BaseEnv
 from aegis_gym.runners import BehaviorCloningRunner, OnPolicyRunner
 
+from .clearml_models import checkpoint_input_model
+
 _LOGGER_NAME = "PolicyLoader"
 
 
-def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> Callable:
+def load_policy(
+    env: BaseEnv,
+    cfg: ExpConfig,
+    alg: Algorithm | None = None,
+    input_model_name: str | None = None,
+) -> Callable:
+    """
+    The `--load-rl/bc-*` policy, its ClearML checkpoint connected to the current task as the input
+    model `input_model_name` (by default `<algorithm>_policy`).
+    """
     args: LaunchArgs = cfg.args
 
     algorithm = alg or cfg.args.algorithm
@@ -27,6 +38,7 @@ def load_policy(env: BaseEnv, cfg: ExpConfig, alg: Algorithm | None = None) -> C
         "cfg": cfg,
         "exp_name": args.experiment_name,
         "clearml_artifact_name": "model",
+        "input_model_name": input_model_name or f"{algorithm!s}_policy",
     }
 
     if algorithm == Algorithm.RL:
@@ -49,6 +61,7 @@ def load_rl_policy(
     clearml_task_id: str | None = None,
     clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
+    input_model_name: str = "rl_policy",
 ) -> nn.Module:
     logger = get_logger(_LOGGER_NAME)
     logger.info("Resolving RL checkpoint")
@@ -67,7 +80,13 @@ def load_rl_policy(
         env=env,
         cfg=cfg,
     )
-    runner.load(last_ckpt)
+    with checkpoint_input_model(
+        name=input_model_name,
+        clearml_task_id=clearml_task_id,
+        clearml_model_id=clearml_model_id,
+        clearml_artifact_name=clearml_artifact_name,
+    ):
+        runner.load(last_ckpt)
     logger.info("Loaded RL checkpoint")
     return runner.get_inference_policy(device=cfg.get_device())
 
@@ -80,6 +99,7 @@ def load_bc_policy(
     clearml_task_id: str | None = None,
     clearml_model_id: str | None = None,
     clearml_artifact_name: str = "model",
+    input_model_name: str = "bc_policy",
 ) -> nn.Module:
     logger = get_logger(_LOGGER_NAME)
     logger.info("Resolving BC checkpoint")
@@ -98,7 +118,13 @@ def load_bc_policy(
         cfg=cfg,
         teacher=None,
     )
-    bc_runner.load(last_ckpt)
+    with checkpoint_input_model(
+        name=input_model_name,
+        clearml_task_id=clearml_task_id,
+        clearml_model_id=clearml_model_id,
+        clearml_artifact_name=clearml_artifact_name,
+    ):
+        bc_runner.load(last_ckpt)
     logger.info("Loaded BC checkpoint")
     return bc_runner.get_inference_policy(device=cfg.get_device())
 

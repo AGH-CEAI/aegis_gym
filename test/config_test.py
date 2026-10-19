@@ -1,6 +1,9 @@
 from dataclasses import fields
+from pathlib import Path
 
 import pytest
+import yaml
+from clearml.utilities.proxy_object import ProxyDictPreWrite
 
 from aegis_gym.config import ConfigManager as cm
 from aegis_gym.config import LaunchArgs, parse_arguments
@@ -11,6 +14,7 @@ from aegis_gym.config.types import (
     Control,
     VisionEncoderCfg,
 )
+from aegis_gym.envs import PushTEnv
 
 
 def dict_diff(actual: dict, expected: dict, path: str = ""):
@@ -60,6 +64,7 @@ def test_default_arguments():
         "algorithm",
         "debug_record_dir",
         "project_name",
+        "enable_recording",
     }
     for f in fields(args):
         if f.name not in excluded:
@@ -70,6 +75,12 @@ def test_default_arguments():
     assert args.control_type == Control.SIM
     assert args.algorithm == Algorithm.RL
     assert str(args.debug_record_dir).startswith("/tmp/")
+    assert args.enable_recording is None
+
+
+def test_record_launch_arg():
+    assert parse_arguments(argv=["", "--record"]).enable_recording is True
+    assert parse_arguments(argv=["", "--no-record"]).enable_recording is False
 
 
 def test_get_config_before_setup_raises():
@@ -146,6 +157,40 @@ def test_env_specific_dict_defaults_are_resolved():
     env_dict = cm.get_config().env_cfg.env_specific_dict
 
     assert env_dict == cm._resolve_env_specific_dict(env_name="reacher", given=None)
+
+
+def test_episode_length_defaults_to_the_selected_env():
+    cm.setup_config(argv=["", "--env", "push_t"])
+    env_cfg = cm.get_config().env_cfg
+
+    assert env_cfg.episode_length_s == PushTEnv.DEFAULT_EPISODE_LENGTH_S
+    assert env_cfg.max_steps == int(env_cfg.episode_length_s / env_cfg.policy_dt)
+
+
+def test_episode_length_launch_arg_overrides_env_default():
+    cm.setup_config(argv=["", "--env", "push_t", "--episode-length-s", "12.0"])
+
+    assert cm.get_config().env_cfg.episode_length_s == 12.0
+
+
+def test_push_t_preset_config_is_applied():
+    preset = Path(__file__).parent.parent / "aegis_gym/config/presets/push_t.yaml"
+    cm.setup_config(argv=["", "--env", "push_t", "-c", str(preset)])
+    rl_cfg = cm.get_config().rl_cfg
+
+    assert rl_cfg.algorithm.gamma == 0.995
+    assert rl_cfg.policy.actor_obs_normalization is True
+    assert rl_cfg.policy.noise_std_type == "log"
+
+
+def test_reacher_preset_config_is_applied():
+    preset = Path(__file__).parent.parent / "aegis_gym/config/presets/reacher.yaml"
+    cm.setup_config(argv=["", "--env", "reacher", "-c", str(preset)])
+    rl_cfg = cm.get_config().rl_cfg
+
+    assert rl_cfg.algorithm.gamma == 0.99
+    assert rl_cfg.num_steps_per_env == 24
+    assert rl_cfg.policy.actor_hidden_dims == [128, 128, 64]
 
 
 def test_env_specific_dict_override_is_applied():
@@ -250,3 +295,103 @@ def test_resolve_source_task_id(monkeypatch):
     assert cm.resolve_source_task_id(task_id="task", model_id="model") == "task"
     assert cm.resolve_source_task_id(task_id=None, model_id="model") == "task_of_model"
     assert cm.resolve_source_task_id(task_id=None, model_id=None) is None
+
+
+def _write_logger_cfg_file(tmp_path, enable_policy_preview: bool):
+    path = tmp_path / "cfg.yaml"
+    path.write_text(
+        yaml.safe_dump({"logger": {"enable_policy_preview": enable_policy_preview}})
+    )
+    return str(path)
+
+
+def test_policy_preview_disabled_by_default():
+    cm.setup_config(argv=[""])
+    assert cm.get_config().logger_cfg.enable_policy_preview is False
+
+
+def test_policy_preview_enabled_from_config_file(tmp_path):
+    cfg_path = _write_logger_cfg_file(tmp_path, enable_policy_preview=True)
+    cm.setup_config(argv=["", "-c", cfg_path])
+    assert cm.get_config().logger_cfg.enable_policy_preview is True
+
+
+@pytest.mark.parametrize(
+    "file_value, launch_arg, expected",
+    [
+        (False, "--record", True),
+        (True, "--no-record", False),
+    ],
+)
+def test_policy_preview_launch_arg_overrides_config_file(
+    tmp_path, file_value, launch_arg, expected
+):
+    cfg_path = _write_logger_cfg_file(tmp_path, enable_policy_preview=file_value)
+    cm.setup_config(argv=["", "-c", cfg_path, launch_arg])
+    assert cm.get_config().logger_cfg.enable_policy_preview is expected
+
+
+def test_config_file_is_deep_merged_with_defaults(tmp_path):
+    defaults = cm._get_default_config_dict()
+    path = tmp_path / "cfg.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "logger": {"policy_preview_interval": 7},
+                "env": {"env_specific_dict": {"box_fixed": False}},
+            }
+        )
+    )
+    cm.setup_config(argv=["", "-c", str(path)])
+    cfg = cm.get_config()
+    assert cfg.logger_cfg.policy_preview_interval == 7
+    # The entries absent in the file keep their default values
+    assert (
+        cfg.logger_cfg.policy_preview_resolution
+        == defaults["logger"]["policy_preview_resolution"]
+    )
+    assert cfg.env_cfg.num_envs == defaults["env"]["num_envs"]
+    assert cfg.env_cfg.env_specific_dict["box_fixed"] is False
+
+
+class _FakeAgentTask:
+    """A task run by the ClearML agent: the connected config is the remote one, read-only."""
+
+    task_id = "agent_task"
+
+    def connect_configuration(self, configuration: dict, name: str) -> dict:
+        remote = dict(configuration)
+        if name == "env":
+            # derived by the run the task was cloned from
+            remote.update(episode_length_s=30.0, max_steps=750)
+        return ProxyDictPreWrite(False, False, **remote)
+
+
+def test_launch_args_are_applied_without_warnings(caplog):
+    cm.setup_config(argv=["", "--num-envs", "8", "--no-record", "--env", "push_t"])
+
+    assert cm.get_config().env_cfg.num_envs == 8
+    assert "is ignored" not in caplog.text
+
+
+def test_launch_args_ignored_by_read_only_config_are_reported(caplog):
+    cm.setup_config(
+        argv=[
+            "",
+            "--num-envs",
+            "8",
+            "--max-iterations",
+            "7",
+            "--env-dict",
+            '{"friction": 0.9}',
+        ],
+        task=_FakeAgentTask(),
+    )
+    cfg = cm.get_config()
+
+    # The config of the task applies, the dropped overrides are reported
+    assert cfg.env_cfg.num_envs != 8
+    assert "`--num-envs` (8) is ignored" in caplog.text
+    assert "`--max-iterations` (7) is ignored" in caplog.text
+    assert "`--env-dict` (0.9) is ignored" in caplog.text
+    assert "env.env_specific_dict.friction" in caplog.text
