@@ -22,3 +22,13 @@ class RosGrpcBox(BaseBox):
         self, pose: th.Tensor, envs_idx: th.Tensor | int | None = None
     ) -> None:
         self.pose = pose.squeeze(0)
+
+
+class RosGrpcMesh(RosGrpcBox):
+    def __init__(self, properties: ObjectProperties, device: th.device):
+        super().__init__(properties=properties, device=device)
+
+
+class RosGrpcURDF(RosGrpcBox):
+    def __init__(self, properties: ObjectProperties, device: th.device):
+        super().__init__(properties=properties, device=device)
