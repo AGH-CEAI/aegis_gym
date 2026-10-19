@@ -33,6 +33,19 @@ from aegis_gym.config.types import CameraName, RobotCfg
 
 from ..base_manipulator import BaseManipulator, CameraModality
 
+# Kinematic order, which is what this project uses everywhere for arm joints
+# (`RobotCfg.default_arm_dof`, the Genesis DOF order). Neither `AegisJointName` nor the
+# /joint_states topic is in this order, so anything crossing the bridge is paired by
+# name rather than by position.
+_ARM_JOINT_NAMES = (
+    AegisJointName.SHOULDER_PAN_JOINT,
+    AegisJointName.SHOULDER_LIFT_JOINT,
+    AegisJointName.ELBOW_JOINT,
+    AegisJointName.WRIST_1_JOINT,
+    AegisJointName.WRIST_2_JOINT,
+    AegisJointName.WRIST_3_JOINT,
+)
+
 
 class PoseTransformUtils:
     @staticmethod
@@ -96,6 +109,9 @@ class RosGrpcManipulator(BaseManipulator):
 
         self._robot_client = AegisRobotClient(server_address=server_address)
         self._run_coro(self._robot_client.connect())
+
+        self._ft_bias_active = False
+        self.set_ft_payload(robot_cfg.fts_payload_mass, robot_cfg.fts_payload_com)
 
         self._gripper_last_action = False  # Forcing first opening
         self.ctrl_gripper_open()
@@ -301,6 +317,30 @@ class RosGrpcManipulator(BaseManipulator):
             )
         )
 
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        joints = joints.reshape(-1)
+        if joints.numel() != len(_ARM_JOINT_NAMES):
+            raise ValueError(
+                f"Expected {len(_ARM_JOINT_NAMES)} arm joint positions, "
+                f"got {joints.numel()}"
+            )
+
+        self._servo_disable()
+        # Paired by name rather than by position: the bridge's joint enum is not in
+        # kinematic order, and neither is the /joint_states topic.
+        success, msg = self._run_coro(
+            self._robot_client.goto_joints(
+                names=_ARM_JOINT_NAMES,
+                positions=tuple(joints.detach().cpu().tolist()),
+            )
+        )
+        if not success:
+            raise RuntimeError(
+                f"The planner did not accept the joint goal {joints.tolist()}: {msg}"
+            )
+
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         if self._gripper_last_action:
             return
@@ -333,9 +373,37 @@ class RosGrpcManipulator(BaseManipulator):
         return self._state[StateModality.JOINTS][:, :, 2]
 
     def get_ft_wrench(self) -> th.Tensor:
+        """The F/T sensor measurement as the bridge reports it.
+
+        Nothing is computed here: the robot owns the sensor, applies its own tare when
+        one is set, and this only hands the value on. `read_state()` refreshes it.
+        """
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
         return self._state[StateModality.WRENCH]
+
+    def set_ft_bias(self) -> None:
+        """Tares the sensor in hardware, through the bridge (`wrench_bias_set`)."""
+        success, msg = self._run_coro(self._robot_client.wrench_bias_set())
+        if not success:
+            raise RuntimeError(f"Failed to set the F/T sensor bias: {msg}")
+        self._ft_bias_active = True
+        self.read_state()  # so the next getter sees the tared measurement
+        self.note_ft_bias_pose()
+        self.logger.info("F/T sensor tared in hardware")
+
+    def clear_ft_bias(self) -> None:
+        """Clears the tare in hardware, through the bridge (`wrench_bias_clear`)."""
+        success, msg = self._run_coro(self._robot_client.wrench_bias_clear())
+        if not success:
+            raise RuntimeError(f"Failed to clear the F/T sensor bias: {msg}")
+        self._ft_bias_active = False
+        self._ft_gravity_at_bias = None
+        self.read_state()
+        self.logger.info("F/T sensor bias cleared in hardware")
+
+    def is_ft_biased(self) -> bool:
+        return self._ft_bias_active
 
     def get_tcp_pose(self) -> th.Tensor:
         if self._state is None:

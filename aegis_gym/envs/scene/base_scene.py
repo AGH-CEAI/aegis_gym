@@ -161,9 +161,13 @@ class BaseScene(ABC):
         # TODO(issue#55) Enable orientation logging
 
         wrench = manip.get_ft_wrench()[0].tolist()
+        # Gravity removed, so it is comparable with a tared sensor
+        comp = manip.get_ft_wrench_compensated()[0].tolist()
         for i, axis in enumerate("xyz"):
             data[f"ft_sensor/force/{axis}"] = wrench[i]
             data[f"ft_sensor/torque/{axis}"] = wrench[i + 3]
+            data[f"ft_sensor/compensated/force/{axis}"] = comp[i]
+            data[f"ft_sensor/compensated/torque/{axis}"] = comp[i + 3]
         return data
 
     def _collect_pj_extra_data(self) -> dict[str, float]:
