@@ -12,7 +12,7 @@ from tensordict import TensorDict
 
 from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import CameraName, RobotCfg
+from aegis_gym.config.types import CameraName, DomainRandomizationCfg, RobotCfg
 from aegis_gym.envs.manipulator.base_manipulator import BaseManipulator, CameraModality
 
 RigidLink = TypeVar
@@ -35,6 +35,7 @@ class GenesisManipulator(BaseManipulator):
         cameras_obs_getter: Callable[[CameraName, CameraModality], th.Tensor],
         available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
+        cfg_dr: DomainRandomizationCfg,
         show_cell: bool,
         policy_dt: float,
         max_linear_speed: float,
@@ -50,6 +51,24 @@ class GenesisManipulator(BaseManipulator):
         self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
         self._policy_dt = policy_dt
+        self._ft_residual_bias = th.zeros(
+            (num_envs, 6), dtype=th.float32, device=self.device
+        )
+
+        cfg_noise = cfg_dr.ft_sensor_noise if cfg_dr.enabled else None
+        self._ft_noise_std: th.Tensor | None = None
+        self._ft_noise_limit: th.Tensor | None = None
+        if cfg_noise is not None and cfg_noise.enabled:
+            self._ft_noise_std = th.tensor(
+                [[*cfg_noise.force_std, *cfg_noise.torque_std]],
+                dtype=th.float32,
+                device=self.device,
+            )
+            self._ft_noise_limit = th.tensor(
+                [[*cfg_noise.force_limit, *cfg_noise.torque_limit]],
+                dtype=th.float32,
+                device=self.device,
+            )
 
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
@@ -496,7 +515,36 @@ class GenesisManipulator(BaseManipulator):
         force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
-        return th.cat([force_local, torque_local], dim=-1)
+        wrench = self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
+        return wrench + self._ft_residual_bias
+
+    def set_ft_residual_bias(
+        self, bias: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """Sets the post-tare residual offset, [len(envs_idx), 6] or [6].
+
+        Simulation only: on the real robot this offset is a physical property of the
+        sensor, not something that can be dialled in.
+        """
+        idx = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        self._ft_residual_bias[idx] = bias.to(
+            dtype=th.float32, device=self.device
+        ).reshape(len(idx), 6)
+
+    def get_ft_residual_bias(self) -> th.Tensor:
+        """Simulation only: the current post-tare residual offset, [num_envs, 6]."""
+        return self._ft_residual_bias.clone()
+
+    def _add_ft_noise(self, wrench: th.Tensor) -> th.Tensor:
+        """Gaussian measurement noise, drawn fresh per read and truncated per axis."""
+        if self._ft_noise_std is None:
+            return wrench
+        noise = th.randn_like(wrench) * self._ft_noise_std
+        return wrench + noise.clamp(-self._ft_noise_limit, self._ft_noise_limit)
 
     def _contact_wrench_world(self) -> th.Tensor:
         """Wrench at the sensor (world frame) from the contacts on the links past it."""
