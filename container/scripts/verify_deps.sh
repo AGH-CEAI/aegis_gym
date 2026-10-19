@@ -25,7 +25,7 @@ set -euo pipefail
 # PyPI build of the same name. Reinstalling them from the lock would put a
 # +cu128 torch over the +cu129 one and mismatch the whole CUDA stack. Kept as
 # a regex rather than a list so it keeps up as nvidia-* packages come and go.
-readonly OWNED_ELSEWHERE_RE='nvidia-[a-z0-9.-]*|torch|torchvision|triton|rsl-rl-lib'
+readonly OWNED_ELSEWHERE_RE='nvidia-[a-z0-9.-]*|torch|torchvision|triton'
 
 REPO=""
 DO_INSTALL=0
@@ -36,8 +36,8 @@ Usage: verify_deps.sh REPO [--install]
 
 Compares the installed packages against REPO's uv.lock and reports every
 package whose version differs, plus anything the lock asks for that is not
-installed at all. torch, torchvision, triton, the nvidia-* runtimes and
-rsl-rl-lib are excluded -- they are owned by the image, not by the lock.
+installed at all. torch, torchvision, triton and the nvidia-* runtimes are
+excluded -- they are owned by the image, not by the lock.
 
 Options:
       --install   Offer nothing, just install the lock's versions for the
@@ -132,7 +132,7 @@ skip = re.compile(r"^(%s)$" % os.environ["OWNED_RE"])
 def parse(path):
     """name -> version, for plain `name==version` pins only.
 
-    Anything installed from source -- the rsl_rl fork, the aegis_grpc client,
+    Anything installed from source -- the aegis_grpc client,
     the editable checkout itself -- appears as a URL or `-e` line with no
     version to compare, so it is skipped rather than reported as missing.
 
@@ -231,7 +231,7 @@ if ((!DO_INSTALL)); then
     exit 3
 fi
 
-echo ">>> torch, torchvision, triton, nvidia-* and rsl-rl-lib are excluded" \
+echo ">>> torch, torchvision, triton and nvidia-* are excluded" \
     "and will not be touched."
 echo ">>> Installing the lock's versions..."
 

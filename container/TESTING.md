@@ -70,7 +70,7 @@ asks whether to rebuild; answer **n** (default), the slow layer is then kept:
 aegis_gym_build_image
 ```
 
-**Expect:** prompts for version `[v0.1.0]`, gym ref `[devel]`, rsl_rl `[v3.3.2]`,
+**Expect:** prompts for version `[v0.1.0]`, gym ref `[devel]`,
 aegis_ros `[humble-devel]`; `>>> ceai/aegis_gym_torch:v0.1.0 already exists.`;
 then a cached build of the dependency tier in seconds; finally a push prompt —
 answer **n**.
@@ -256,6 +256,6 @@ layers, so the real cost is the base chain, not the sum of what
 | `--ipc host` and `--shm-size`   | never both in one podman line             |
 | prod image `Entrypoint`         | `[]`                                      |
 | base image torch / torchvision  | both `+cu129`                             |
-| base image `rsl_rl`             | `direct_url.json` -> `file:///tmp/rsl_rl` |
+| base image `rsl-rl-lib`         | `5.5.1` from PyPI (lock-pinned)           |
 | base image `import aegis_gym`   | ModuleNotFoundError (deps-only by design) |
 | toolbx `torch.__version__`      | `2.8.0+cu129`, not cu128                  |

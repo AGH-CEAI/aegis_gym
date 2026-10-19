@@ -19,7 +19,6 @@ DEFAULT_REGISTRY="geonosis:5000"
 
 IMAGE_VERSION="v0.2.0"
 AEGIS_GYM_TAG="devel"
-CEAI_RSL_RL_TAG="v3.3.2"
 AEGIS_ROS_TAG="humble-devel"
 
 UBUNTU_VERSION="22.04"
@@ -40,7 +39,7 @@ Usage: aegis_gym_build_image [options]
 
 Builds the two base image tiers:
   ceai/aegis_gym_torch:<ver>   ubuntu + torch/torchvision (CUDA wheels)
-  ceai/aegis_gym:<ver>         graphics stack, rsl_rl, aegis_gym deps, gRPC client
+  ceai/aegis_gym:<ver>         graphics stack, aegis_gym deps, gRPC client
 
 The torch tier is kept separate so a --no-cache rebuild of the dependency
 tier does not redo the multi-GB CUDA wheel install.
@@ -49,7 +48,6 @@ Options:
   -v, --version VER      Image version (default: v0.2.0)
   -y, --yes              Accept all defaults, no prompts (for CI)
       --gym-ref REF      aegis_gym branch/tag for the dependency lock (default: devel)
-      --rsl-ref REF      AGH-CEAI/rsl_rl tag (default: v3.3.2)
       --ros-ref REF      aegis_ros branch/tag for the gRPC client (default: humble-devel)
       --no-cache         Build the dependency tier ignoring the layer cache
       --rebuild-torch    Rebuild the torch tier from scratch (implies --no-cache
@@ -70,7 +68,6 @@ while [[ $# -gt 0 ]]; do
         -v | --version)   IMAGE_VERSION="${2:?-v/--version requires a value}"; shift ;;
         -y | --yes)       ASSUME_YES=1 ;;
         --gym-ref)        AEGIS_GYM_TAG="${2:?--gym-ref requires a value}"; shift ;;
-        --rsl-ref)        CEAI_RSL_RL_TAG="${2:?--rsl-ref requires a value}"; shift ;;
         --ros-ref)        AEGIS_ROS_TAG="${2:?--ros-ref requires a value}"; shift ;;
         --no-cache)       NO_CACHE=1 ;;
         --rebuild-torch)  REBUILD_TORCH=1 ;;
@@ -117,9 +114,6 @@ if ((ASSUME_YES == 0)); then
 
     read -r -p ">>> aegis_gym ref (locks the dependencies) [${AEGIS_GYM_TAG}]: " reply
     AEGIS_GYM_TAG="${reply:-${AEGIS_GYM_TAG}}"
-
-    read -r -p ">>> rsl_rl tag [${CEAI_RSL_RL_TAG}]: " reply
-    CEAI_RSL_RL_TAG="${reply:-${CEAI_RSL_RL_TAG}}"
 
     read -r -p ">>> aegis_ros ref [${AEGIS_ROS_TAG}]: " reply
     AEGIS_ROS_TAG="${reply:-${AEGIS_ROS_TAG}}"
@@ -198,7 +192,6 @@ BUILD_CMD=(podman build "${SCRIPT_DIR}"
     --build-arg "TORCH_REF=${TORCH_REF}"
     --build-arg "AEGIS_GYM_TAG=${AEGIS_GYM_TAG}"
     --build-arg "AEGIS_GYM_REV=${REV}"
-    --build-arg "CEAI_RSL_RL_TAG=${CEAI_RSL_RL_TAG}"
     --build-arg "AEGIS_ROS_TAG=${AEGIS_ROS_TAG}"
     --build-arg "AEGIS_ROS_REV=${ROS_REV}"
     --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
