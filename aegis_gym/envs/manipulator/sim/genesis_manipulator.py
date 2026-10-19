@@ -505,8 +505,7 @@ class GenesisManipulator(BaseManipulator):
 
     def get_ft_wrench(self) -> th.Tensor:
         """Simulated F/T reading (untared): the contact forces and the weight of the
-        links past the sensor, in the sensor's output frame, plus the randomized
-        measurement noise and residual bias."""
+        links past the sensor, in the sensor's output frame."""
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
