@@ -453,7 +453,6 @@ class GenesisManipulator(BaseManipulator):
             joints = joints.expand(len(idx), self._arm_dof_dim)
 
         # Only the arm DOFs are driven; the fingers keep whatever target they hold, so
-        # this cannot disturb the gripper mid-test.
         self._robot_entity.control_dofs_position(
             position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
         )
@@ -534,11 +533,7 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([force, torque], dim=-1)
 
     def get_ft_wrench(self) -> th.Tensor:
-        """The simulated F/T measurement, tared when `set_ft_bias()` has been called.
-
-        Counterpart of the real sensor's reading. Unlike the real robot, which tares in
-        hardware, the offset is subtracted here.
-        """
+        """The simulated F/T measurement, tared when `set_ft_bias()` has been called."""
         wrench = self.get_ft_wrench_raw()
         if self._ft_bias is not None:
             wrench = wrench - self._ft_bias
@@ -556,17 +551,11 @@ class GenesisManipulator(BaseManipulator):
         return self._ft_bias is not None
 
     def get_ft_bias(self) -> th.Tensor | None:
-        """Simulation only: the stored offset, [num_envs, 6], or None when untared.
-        The real robot keeps its tare inside the sensor and cannot answer this."""
+        """Simulation only: the stored offset, [num_envs, 6], or None when untared."""
         return None if self._ft_bias is None else self._ft_bias.clone()
 
     def get_ft_wrench_raw(self) -> th.Tensor:
-        """Simulation only: the modelled wrench before the software tare.
-
-        There is no real-robot counterpart -- the hardware reports one measurement and
-        the tare is applied inside it. This exists to check the simulated model against
-        real data, where the untared term is what a sign or frame error shows up in.
-        """
+        """Simulation only: the modelled wrench before the software tare."""
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
