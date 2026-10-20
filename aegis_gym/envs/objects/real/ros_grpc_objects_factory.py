@@ -1,8 +1,8 @@
 import torch as th
 
-from ..base_objects import BaseMesh, BaseURDF, ObjectProperties
+from ..base_objects import ObjectProperties
 from ..base_objects_factory import BaseObjectsFactory
-from .ros_grpc_objects import RosGrpcBox
+from .ros_grpc_objects import RosGrpcBox, RosGrpcMesh, RosGrpcURDF
 
 
 class RosGrpcObjectsFactory(BaseObjectsFactory):
@@ -13,12 +13,14 @@ class RosGrpcObjectsFactory(BaseObjectsFactory):
         return RosGrpcBox(properties=properties, device=self.device)
 
     # TODO(issue#151): Implement mesh/URDF object support on the real ROS/gRPC hardware bridge
-    def create_mesh(self, properties: ObjectProperties) -> BaseMesh:
+    def create_mesh(self, properties: ObjectProperties) -> RosGrpcMesh:
+        return RosGrpcMesh(properties=properties, device=self.device)
         raise NotImplementedError(
             "Mesh objects are not supported on the real ROS/gRPC hardware bridge."
         )
 
-    def create_urdf(self, properties: ObjectProperties) -> BaseURDF:
-        raise NotImplementedError(
-            "URDF objects are not supported on the real ROS/gRPC hardware bridge."
-        )
+    def create_urdf(self, properties: ObjectProperties) -> RosGrpcURDF:
+        return RosGrpcURDF(properties=properties, device=self.device)
+        # raise NotImplementedError(
+        #     "URDF objects are not supported on the real ROS/gRPC hardware bridge."
+        # )

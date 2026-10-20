@@ -21,7 +21,7 @@ RigidLink = TypeVar
 # The ATI Axia80 output frame is `tool_mount_link` rotated by this angle about its Z.
 # Measured by matching a simulated and a real 90 deg sweep (direction cosine 0.9998).
 # Re-measure if the sensor or its adapter is remounted.
-_FTS_OUTPUT_YAW_DEG = 90.0
+_FT_OUTPUT_YAW_DEG = 90.0
 
 
 class GenesisManipulator(BaseManipulator):
@@ -107,27 +107,8 @@ class GenesisManipulator(BaseManipulator):
         # robot has no counterpart -- its sensor tares itself.
         self._ft_bias: th.Tensor | None = None
 
-        self._fts_payload_mass: th.Tensor | None = None
-        self._fts_payload_com: th.Tensor | None = None
-        if cfg_robot.fts_payload_mass is not None:
-            if cfg_robot.fts_payload_com is None:
-                raise ValueError(
-                    "fts_payload_mass is set but fts_payload_com is not; both are "
-                    "needed to place the measured payload."
-                )
-            self._fts_payload_mass = th.tensor(
-                cfg_robot.fts_payload_mass, dtype=th.float32, device=self.device
-            )
-            self._fts_payload_com = th.tensor(
-                [cfg_robot.fts_payload_com], dtype=th.float32, device=self.device
-            )
-            logger.info(
-                f"F/T payload calibration: {cfg_robot.fts_payload_mass:.4f} kg at "
-                f"{cfg_robot.fts_payload_com} m (sensor frame)"
-            )
-
-        half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
-        self._fts_output_offset = th.tensor(
+        half = math.radians(_FT_OUTPUT_YAW_DEG) / 2.0
+        self._ft_output_offset = th.tensor(
             [[math.cos(half), 0.0, 0.0, math.sin(half)]],
             dtype=th.float32,
             device=self.device,
@@ -146,7 +127,7 @@ class GenesisManipulator(BaseManipulator):
         self._servo_delay_s = float(cfg_robot.servo_command_delay_s)
         self._servo_queue: deque[th.Tensor] = deque()
 
-        self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
+        self.set_ft_payload(cfg_robot.ft_payload_mass, cfg_robot.ft_payload_com)
 
         self._ik_method = cfg_robot.ik_method
 
@@ -204,8 +185,8 @@ class GenesisManipulator(BaseManipulator):
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
-        self._fts_link = self._robot_entity.get_link("tool_mount_link")
-        self._gravity_links = self._get_downstream_links(self._fts_link)
+        self._ft_link = self._robot_entity.get_link("tool_mount_link")
+        self._gravity_links = self._get_downstream_links(self._ft_link)
         self._gravity_link_idx = th.tensor(
             [link.idx for link in self._gravity_links],
             dtype=th.int32,
@@ -604,7 +585,7 @@ class GenesisManipulator(BaseManipulator):
             # Per env ([num_envs, n_links] and [num_envs, n_links, 3]), as
             # `batch_links_info` is on.
             links_idx = [link.idx for link in self._gravity_links]
-            solver = self._fts_link.solver
+            solver = self._ft_link.solver
             self._gravity_link_masses = solver.get_links_mass(links_idx=links_idx).to(
                 dtype=th.float32, device=self.device
             )
@@ -612,15 +593,15 @@ class GenesisManipulator(BaseManipulator):
                 links_idx=links_idx
             ).to(dtype=th.float32, device=self.device)
 
-        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
-        gravity = self._fts_link.solver.get_gravity().expand_as(
+        sensor_pos = self._ft_link.get_pos()  # [num_envs, 3]
+        gravity = self._ft_link.solver.get_gravity().expand_as(
             sensor_pos
         )  # [num_envs, 3]
 
-        if self._fts_payload_mass is not None:
-            weight = self._fts_payload_mass * gravity  # [num_envs, 3]
+        if self._ft_payload_mass is not None:
+            weight = self._ft_payload_mass * gravity  # [num_envs, 3]
             lever = transform_by_quat(
-                self._fts_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
+                self._ft_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
             )
             return th.cat([weight, th.linalg.cross(lever, weight)], dim=-1)
 
@@ -701,7 +682,7 @@ class GenesisManipulator(BaseManipulator):
 
     def _contact_wrench_world(self) -> th.Tensor:
         """Wrench at the sensor (world frame) from the contacts on the links past it."""
-        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        sensor_pos = self._ft_link.get_pos()  # [num_envs, 3]
         contacts = self._robot_entity.get_contacts(
             exclude_self_contact=True, is_padded=True
         )
@@ -726,9 +707,9 @@ class GenesisManipulator(BaseManipulator):
 
     def get_ft_frame_quat(self) -> th.Tensor:
         """World orientation [num_envs, 4] (WXYZ) of the frame `get_ft_wrench()` reports
-        in: `tool_mount_link` rotated by `_FTS_OUTPUT_YAW_DEG` about its Z."""
-        quat = self._fts_link.get_quat()
-        return transform_quat_by_quat(quat, self._fts_output_offset.expand_as(quat))
+        in: `tool_mount_link` rotated by `_FT_OUTPUT_YAW_DEG` about its Z."""
+        quat = self._ft_link.get_quat()
+        return transform_quat_by_quat(quat, self._ft_output_offset.expand_as(quat))
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()

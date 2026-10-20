@@ -973,7 +973,7 @@ def _contact_lever(manipulator: BaseManipulator) -> th.Tensor | None:
     total = float(weight.sum())
     if total <= 1e-9:
         return None
-    lever = contacts["position"][0] - manipulator._fts_link.get_pos()[0]
+    lever = contacts["position"][0] - manipulator._ft_link.get_pos()[0]
     centroid_world = (lever * weight.unsqueeze(-1)).sum(dim=0) / total
 
     quat = sensor_quat(manipulator)

@@ -11,10 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - [PR-173](https://github.com/AGH-CEAI/aegis_gym/pull/173) - Simulated arm servo matched to the real robot: an integrating joint setpoint bounded by `servo_follow_error_max_rad`, command delay (`servo_command_delay_s`), arm stiffness scaling (`servo_stiffness_scale`), servo following error in PlotJuggler and the `scripts/ft_sensor/stiffness_probe.py` script for measuring the effective stiffness in the simulation and on the real robot.
 - [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
-- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode.
-- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
+- [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
+- [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
 - [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode, with the `scripts/ft_sensor/dr_test.py` check.
-- [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler.
 - [PR-169](https://github.com/AGH-CEAI/aegis_gym/pull/169) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler, with the `scripts/ft_sensor/touch_test.py` sanity check.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T episode terminates when the T-block leaves the table top.
@@ -53,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-181](https://github.com/AGH-CEAI/aegis_gym/pull/181) - Renamed the `robot` config entries `fts_payload_mass` and `fts_payload_com` to `ft_payload_mass` and `ft_payload_com`. Also `_FTS_OUTPUT_YAW_DEG`, `_fts_output_offset`, `_fts_link` into `_FT_OUTPUT_YAW_DEG`, `_ft_output_offset`, `_ft_link`.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The `Episode/*` metrics (RL and BC) are of the episodes reset on each step only: `BaseEnv.step()` clears the `extras["episode"]` of the earlier resets, which the envs kept until their next reset and the rsl_rl logger counted again on every step without a reset (repeating the last reset's metrics, also into the next iteration).
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T task uses planar XY TCP velocity actions (`num_actions=2`), with the TCP held above the table at `tcp_height_ratio` of the T-block height, in a fixed downward orientation and within the `tcp_workspace_x/y` limits.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Genesis manipulator tracks the velocity action with a stiff joint position-velocity PD (like the real servo), instead of the pure velocity control, so contacts don't deflect the TCP.
