@@ -404,10 +404,6 @@ class GenesisScene(BaseScene):
             max_angular_speed=self._max_angular_speed,
             device=self.device,
         )
-        self.manipulator.max_linear_speed = self._max_linear_speed
-        self.manipulator.max_angular_speed = self._max_angular_speed
-        # Each action is held for one policy step.
-        self.manipulator.servo_dt = self.policy_dt
 
     def _build(self) -> None:
         for obj in self._entity_registry.values():
