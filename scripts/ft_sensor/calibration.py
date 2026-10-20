@@ -13,7 +13,7 @@ F/T sensor payload calibration, for both the simulation and the real robot.
 
 Run it on both backends; the difference between the two fits is the sim-to-real gap
 in the two numbers that cause it. Paste the printed values into `robot.yaml`
-(`fts_payload_mass`, `fts_payload_com`).
+(`ft_payload_mass`, `ft_payload_com`).
 
     python -m scripts.ft_sensor.calibration --env reacher -B 1 --vis      # simulation
     python -m scripts.ft_sensor.calibration --env reacher --control ros   # real robot
@@ -392,7 +392,7 @@ def main() -> None:
     go_to(home)
 
     # --- Report ----------------------------------------------------------------------
-    cfg_mass, cfg_com = cfg.robot_cfg.fts_payload_mass, cfg.robot_cfg.fts_payload_com
+    cfg_mass, cfg_com = cfg.robot_cfg.ft_payload_mass, cfg.robot_cfg.ft_payload_com
     logger.info("=" * 78)
     logger.info(f"Payload identification over {len(rots)} poses")
     logger.info(f"  mass            = {float(mass):8.4f} kg")
@@ -423,8 +423,8 @@ def main() -> None:
         "(~0 when the configured payload is right)"
     )
     logger.info("  robot.yaml:")
-    logger.info(f"    fts_payload_mass: {float(mass):.4f}")
-    logger.info(f"    fts_payload_com: [{', '.join(f'{v:.4f}' for v in com.tolist())}]")
+    logger.info(f"    ft_payload_mass: {float(mass):.4f}")
+    logger.info(f"    ft_payload_com: [{', '.join(f'{v:.4f}' for v in com.tolist())}]")
     logger.info("=" * 78)
 
 

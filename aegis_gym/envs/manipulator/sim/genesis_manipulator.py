@@ -115,7 +115,7 @@ class GenesisManipulator(BaseManipulator):
         self.max_linear_speed = max_linear_speed
         self.max_angular_speed = max_angular_speed
 
-        self.set_ft_payload(cfg_robot.fts_payload_mass, cfg_robot.fts_payload_com)
+        self.set_ft_payload(cfg_robot.ft_payload_mass, cfg_robot.ft_payload_com)
 
         self._ik_method = cfg_robot.ik_method
 
