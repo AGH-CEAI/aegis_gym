@@ -17,5 +17,5 @@ class RobotCfg(BaseCfg):
     urdf_id_cell_no_leds_collision: str
     urdf_id_no_cell: str
 
-    fts_payload_mass: float | None
-    fts_payload_com: list[float] | None
+    ft_payload_mass: float | None
+    ft_payload_com: list[float] | None
