@@ -95,7 +95,7 @@ def _log_gravity_links(manipulator: BaseManipulator) -> None:
     manipulator._gravity_wrench_world()
 
     logger.info(
-        f"Links counted past '{manipulator._fts_link.name}' for gravity compensation "
+        f"Links counted past '{manipulator._ft_link.name}' for gravity compensation "
         f"({len(manipulator._gravity_links)} total):"
     )
     # Both tensors are [num_envs, n_links(, 3)], so they are indexed per link on
@@ -241,7 +241,7 @@ def _frame_test(manipulator: BaseManipulator, scene, device: th.device, dt: floa
     """Checks the sensor frame and the gravity term: tares at home, moves to a
     configuration ~90 deg away and reports both readings. Run on both backends -- the
     rotated readings must match between the simulation and the real robot; a rotation
-    between them is an error in the sensor frame (`_FTS_OUTPUT_YAW_DEG`)."""
+    between them is an error in the sensor frame (`_FT_OUTPUT_YAW_DEG`)."""
     manipulator.ctrl_go_to_home()
     for _ in range(5):
         step(scene)
