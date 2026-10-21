@@ -5,13 +5,12 @@ from typing import Any
 import torch as th
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
 
-from aegis_gym.config.types import ExpConfig, LoggerCfg
+from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
 
 from .base_runner import BasePolicyRunner
 from .training_logger import TrainingLogger
-
-CLEARML_WRITER = "aegis_gym.aux.logging.clearml_writer:ClearMLLogWriter"
+from .writer_cfg import resolve_log_writer_cfg
 
 
 class OnPolicyRunner(BasePolicyRunner):
@@ -20,7 +19,7 @@ class OnPolicyRunner(BasePolicyRunner):
 
         rsl_rl_cfg = cfg.rl_cfg.as_dict()
         rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
-        rsl_rl_cfg["logger"] = _resolve_log_writer_cfg(cfg.logger_cfg)
+        rsl_rl_cfg["logger"] = resolve_log_writer_cfg(cfg.logger_cfg)
         log_dir = cfg.logger_cfg.local_log_dir
         self.runner = RslRlOnPolicyRunner(
             env=env,
@@ -130,25 +129,3 @@ class OnPolicyRunner(BasePolicyRunner):
         if filename.endswith(".onnx"):
             return self.runner.export_policy_to_onnx(path=str(path), filename=filename)
         raise NotImplementedError(f"Unsupported export format: {filename}")
-
-
-def _resolve_log_writer_cfg(logger_cfg: LoggerCfg) -> str | dict[str, Any]:
-    match logger_cfg.logger:
-        case "clearml":
-            return {
-                "class_name": CLEARML_WRITER,
-                "project_name": logger_cfg.clearml_project,
-                "log_cfg_as_hyperparams": logger_cfg.clearml_log_cfg_as_hyperparams,
-            }
-        case "wandb":
-            return {
-                "class_name": "WandbLogWriter",
-                "project_name": logger_cfg.wandb_project,
-            }
-        case "neptune":
-            return {
-                "class_name": "NeptuneLogWriter",
-                "project_name": logger_cfg.neptune_project,
-            }
-        case other:
-            return other

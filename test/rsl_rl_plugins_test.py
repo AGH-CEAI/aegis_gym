@@ -9,8 +9,9 @@ from rsl_rl.utils import LogWriter, resolve_callable
 from tensordict import TensorDict
 
 from aegis_gym.aux.logging.clearml_writer import ClearMLLogWriter
+from aegis_gym.runners import bc_runner, on_policy_runner
 from aegis_gym.runners.models import AegisMLPModel
-from aegis_gym.runners.on_policy_runner import CLEARML_WRITER
+from aegis_gym.runners.writer_cfg import CLEARML_WRITER
 
 CONFIG_DIR = Path(__file__).parent.parent / "aegis_gym/config"
 
@@ -135,3 +136,14 @@ def test_store_config_honours_the_disable_flag():
     writer.store_config({"num_envs": 4}, TRAIN_CFG)
 
     assert connected == {}
+
+
+def test_both_runners_translate_the_logger_config():
+    for module in (on_policy_runner, bc_runner):
+        source = inspect.getsource(module)
+        assert "resolve_log_writer_cfg(" in source, module.__name__
+
+
+def test_behavior_cloning_initializes_the_logging_writer():
+    source = inspect.getsource(bc_runner.BehaviorCloningRunner.__init__)
+    assert "init_logging_writer()" in source

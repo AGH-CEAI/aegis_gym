@@ -25,6 +25,7 @@ from aegis_gym.envs import BaseEnv, BaseManipulator
 
 from .base_runner import BasePolicyRunner
 from .bc_policy import ExperienceBuffer, Policy, ResetLastLayerTarget
+from .writer_cfg import resolve_log_writer_cfg
 
 
 class BehaviorCloningRunner(BasePolicyRunner):
@@ -47,6 +48,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         # TODO(issue#111) simplify config
         rsl_rl_bc_cfg = cfg.bc_cfg.as_dict()
         rsl_rl_bc_cfg.update(cfg.logger_cfg.as_dict())
+        rsl_rl_bc_cfg["logger"] = resolve_log_writer_cfg(cfg.logger_cfg)
         self.logger = Logger(
             log_dir=str(self._log_dir),
             cfg=rsl_rl_bc_cfg,
@@ -57,6 +59,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             gpu_global_rank=0,
             device=str(self.device),
         )
+        self.logger.init_logging_writer()
 
         # Training state
         self._current_iter = 0
