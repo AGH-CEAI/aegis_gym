@@ -12,7 +12,7 @@ from tensordict import TensorDict
 
 from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import CameraName, RobotCfg
+from aegis_gym.config.types import CameraName, DomainRandomizationCfg, RobotCfg
 from aegis_gym.envs.manipulator.base_manipulator import BaseManipulator, CameraModality
 
 RigidLink = TypeVar
@@ -20,7 +20,7 @@ RigidLink = TypeVar
 # The ATI Axia80 output frame is `tool_mount_link` rotated by this angle about its Z.
 # Measured by matching a simulated and a real 90 deg sweep (direction cosine 0.9998).
 # Re-measure if the sensor or its adapter is remounted.
-_FTS_OUTPUT_YAW_DEG = 90.0
+_FT_OUTPUT_YAW_DEG = 90.0
 
 
 class GenesisManipulator(BaseManipulator):
@@ -35,6 +35,7 @@ class GenesisManipulator(BaseManipulator):
         cameras_obs_getter: Callable[[CameraName, CameraModality], th.Tensor],
         available_cameras: dict[CameraName, tuple[CameraModality]],
         cfg_robot: RobotCfg,
+        cfg_dr: DomainRandomizationCfg,
         show_cell: bool,
         policy_dt: float,
         max_linear_speed: float,
@@ -50,6 +51,24 @@ class GenesisManipulator(BaseManipulator):
         self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
         self._policy_dt = policy_dt
+        self._ft_residual_bias = th.zeros(
+            (num_envs, 6), dtype=th.float32, device=self.device
+        )
+
+        cfg_noise = cfg_dr.ft_sensor_noise if cfg_dr.enabled else None
+        self._ft_noise_std: th.Tensor | None = None
+        self._ft_noise_limit: th.Tensor | None = None
+        if cfg_noise is not None and cfg_noise.enabled:
+            self._ft_noise_std = th.tensor(
+                [[*cfg_noise.force_std, *cfg_noise.torque_std]],
+                dtype=th.float32,
+                device=self.device,
+            )
+            self._ft_noise_limit = th.tensor(
+                [[*cfg_noise.force_limit, *cfg_noise.torque_limit]],
+                dtype=th.float32,
+                device=self.device,
+            )
 
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
@@ -83,8 +102,8 @@ class GenesisManipulator(BaseManipulator):
         )
         self._robot_entity = gs_scene.add_entity(material=material, morph=morph)
 
-        half = math.radians(_FTS_OUTPUT_YAW_DEG) / 2.0
-        self._fts_output_offset = th.tensor(
+        half = math.radians(_FT_OUTPUT_YAW_DEG) / 2.0
+        self._ft_output_offset = th.tensor(
             [[math.cos(half), 0.0, 0.0, math.sin(half)]],
             dtype=th.float32,
             device=self.device,
@@ -95,6 +114,8 @@ class GenesisManipulator(BaseManipulator):
         # calibrated on the real robot, may be scaled by the domain randomization
         self.max_linear_speed = max_linear_speed
         self.max_angular_speed = max_angular_speed
+
+        self.set_ft_payload(cfg_robot.ft_payload_mass, cfg_robot.ft_payload_com)
 
         self._ik_method = cfg_robot.ik_method
 
@@ -152,8 +173,8 @@ class GenesisManipulator(BaseManipulator):
         self._left_finger_dof = self._fingers_dof[0]
         self._right_finger_dof = self._fingers_dof[1]
         self._ee_link = self._robot_entity.get_link(self._cfg_robot.ee_link_name)
-        self._fts_link = self._robot_entity.get_link("tool_mount_link")
-        self._gravity_links = self._get_downstream_links(self._fts_link)
+        self._ft_link = self._robot_entity.get_link("tool_mount_link")
+        self._gravity_links = self._get_downstream_links(self._ft_link)
         self._gravity_link_idx = th.tensor(
             [link.idx for link in self._gravity_links],
             dtype=th.int32,
@@ -416,6 +437,26 @@ class GenesisManipulator(BaseManipulator):
             position=default_joint_angles, envs_idx=idx
         )
 
+    def ctrl_go_to_joints(
+        self, joints: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+
+        joints = joints.reshape(-1, self._arm_dof_dim).to(
+            dtype=th.float32, device=self.device
+        )
+        if joints.shape[0] == 1:
+            joints = joints.expand(len(idx), self._arm_dof_dim)
+
+        # Only the arm DOFs are driven; the fingers keep whatever target they hold, so
+        self._robot_entity.control_dofs_position(
+            position=joints, dofs_idx_local=self._arm_dof_idx, envs_idx=idx
+        )
+
     def ctrl_gripper_open(self, envs_idx: th.Tensor | None = None) -> None:
         idx: th.Tensor = (
             envs_idx
@@ -459,7 +500,7 @@ class GenesisManipulator(BaseManipulator):
             # Per env ([num_envs, n_links] and [num_envs, n_links, 3]), as
             # `batch_links_info` is on.
             links_idx = [link.idx for link in self._gravity_links]
-            solver = self._fts_link.solver
+            solver = self._ft_link.solver
             self._gravity_link_masses = solver.get_links_mass(links_idx=links_idx).to(
                 dtype=th.float32, device=self.device
             )
@@ -467,10 +508,17 @@ class GenesisManipulator(BaseManipulator):
                 links_idx=links_idx
             ).to(dtype=th.float32, device=self.device)
 
-        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
-        gravity = self._fts_link.solver.get_gravity().expand_as(
+        sensor_pos = self._ft_link.get_pos()  # [num_envs, 3]
+        gravity = self._ft_link.solver.get_gravity().expand_as(
             sensor_pos
         )  # [num_envs, 3]
+
+        if self._ft_payload_mass is not None:
+            weight = self._ft_payload_mass * gravity  # [num_envs, 3]
+            lever = transform_by_quat(
+                self._ft_payload_com.expand_as(sensor_pos), self.get_ft_frame_quat()
+            )
+            return th.cat([weight, th.linalg.cross(lever, weight)], dim=-1)
 
         force = th.zeros_like(sensor_pos)
         torque = th.zeros_like(sensor_pos)
@@ -485,8 +533,29 @@ class GenesisManipulator(BaseManipulator):
         return th.cat([force, torque], dim=-1)
 
     def get_ft_wrench(self) -> th.Tensor:
-        """Simulated F/T reading (untared): the contact forces and the weight of the
-        links past the sensor, in the sensor's output frame."""
+        """The simulated F/T measurement, tared when `set_ft_bias()` has been called."""
+        wrench = self.get_ft_wrench_raw()
+        if self._ft_bias is not None:
+            wrench = wrench - self._ft_bias
+        return wrench + self._ft_residual_bias
+
+    def set_ft_bias(self) -> None:
+        self._ft_bias = self.get_ft_wrench_raw().detach().clone()
+        self.note_ft_bias_pose()
+
+    def clear_ft_bias(self) -> None:
+        self._ft_bias = None
+        self._ft_gravity_at_bias = None
+
+    def is_ft_biased(self) -> bool:
+        return self._ft_bias is not None
+
+    def get_ft_bias(self) -> th.Tensor | None:
+        """Simulation only: the stored offset, [num_envs, 6], or None when untared."""
+        return None if self._ft_bias is None else self._ft_bias.clone()
+
+    def get_ft_wrench_raw(self) -> th.Tensor:
+        """Simulation only: the modelled wrench before the software tare."""
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
@@ -496,11 +565,39 @@ class GenesisManipulator(BaseManipulator):
         force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
-        return th.cat([force_local, torque_local], dim=-1)
+        return self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
+
+    def set_ft_residual_bias(
+        self, bias: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """Sets the post-tare residual offset, [len(envs_idx), 6] or [6].
+
+        Simulation only: on the real robot this offset is a physical property of the
+        sensor, not something that can be dialled in.
+        """
+        idx = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        self._ft_residual_bias[idx] = bias.to(
+            dtype=th.float32, device=self.device
+        ).reshape(len(idx), 6)
+
+    def get_ft_residual_bias(self) -> th.Tensor:
+        """Simulation only: the current post-tare residual offset, [num_envs, 6]."""
+        return self._ft_residual_bias.clone()
+
+    def _add_ft_noise(self, wrench: th.Tensor) -> th.Tensor:
+        """Gaussian measurement noise, drawn fresh per read and truncated per axis."""
+        if self._ft_noise_std is None:
+            return wrench
+        noise = th.randn_like(wrench) * self._ft_noise_std
+        return wrench + noise.clamp(-self._ft_noise_limit, self._ft_noise_limit)
 
     def _contact_wrench_world(self) -> th.Tensor:
         """Wrench at the sensor (world frame) from the contacts on the links past it."""
-        sensor_pos = self._fts_link.get_pos()  # [num_envs, 3]
+        sensor_pos = self._ft_link.get_pos()  # [num_envs, 3]
         contacts = self._robot_entity.get_contacts(
             exclude_self_contact=True, is_padded=True
         )
@@ -525,9 +622,9 @@ class GenesisManipulator(BaseManipulator):
 
     def get_ft_frame_quat(self) -> th.Tensor:
         """World orientation [num_envs, 4] (WXYZ) of the frame `get_ft_wrench()` reports
-        in: `tool_mount_link` rotated by `_FTS_OUTPUT_YAW_DEG` about its Z."""
-        quat = self._fts_link.get_quat()
-        return transform_quat_by_quat(quat, self._fts_output_offset.expand_as(quat))
+        in: `tool_mount_link` rotated by `_FT_OUTPUT_YAW_DEG` about its Z."""
+        quat = self._ft_link.get_quat()
+        return transform_quat_by_quat(quat, self._ft_output_offset.expand_as(quat))
 
     def get_tcp_pose(self) -> th.Tensor:
         pos, quat = self._ee_link.get_pos(), self._ee_link.get_quat()

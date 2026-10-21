@@ -181,6 +181,10 @@ def test_push_t_preset_config_is_applied():
     assert rl_cfg.algorithm.gamma == 0.995
     assert rl_cfg.actor.obs_normalization is True
     assert rl_cfg.actor.distribution_cfg["std_type"] == "log"
+    _assert_robot_domain_randomization_enabled()
+    goal_rand = cm.get_config().env_cfg.env_specific_dict["goal_randomization"]
+    assert goal_rand["enabled"] is True
+    assert goal_rand["z_rot_range_deg"] == [-180.0, 180.0]
 
 
 def test_reacher_preset_config_is_applied():
@@ -191,6 +195,21 @@ def test_reacher_preset_config_is_applied():
     assert rl_cfg.algorithm.gamma == 0.99
     assert rl_cfg.num_steps_per_env == 24
     assert rl_cfg.actor.hidden_dims == [128, 128, 64]
+    _assert_robot_domain_randomization_enabled()
+
+
+def _assert_robot_domain_randomization_enabled() -> None:
+    dr_cfg = cm.get_config().dr_cfg
+    assert dr_cfg.enabled
+    for rand_cfg in (
+        dr_cfg.image_aug,
+        dr_cfg.pd_gains,
+        dr_cfg.max_speed,
+        dr_cfg.cameras_extrinsics,
+    ):
+        assert rand_cfg.enabled, rand_cfg
+    assert dr_cfg.image_aug.brightness_jitter == 0.4
+    assert dr_cfg.cameras_extrinsics.tool_cams.rotation_std_deg == 0.6
 
 
 def test_env_specific_dict_override_is_applied():

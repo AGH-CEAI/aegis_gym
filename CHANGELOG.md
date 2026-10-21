@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
+- [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
+- [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
+- [PR-170](https://github.com/AGH-CEAI/aegis_gym/pull/170) - F/T sensor domain randomization in Genesis: measurement noise and a residual bias resampled per episode, with the `scripts/ft_sensor/dr_test.py` check.
 - [PR-169](https://github.com/AGH-CEAI/aegis_gym/pull/169) - Simulated F/T sensor (contact forces + weight of the links past the sensor) and joint efforts in Genesis, both logged to PlotJuggler, with the `scripts/ft_sensor/touch_test.py` sanity check.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Added `ctrl_reset_to_pose()` to the `BaseManipulator` for placing the TCP at a given pose during the episode reset.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T episode terminates when the T-block leaves the table top.
@@ -47,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-181](https://github.com/AGH-CEAI/aegis_gym/pull/181) - Renamed the `robot` config entries `fts_payload_mass` and `fts_payload_com` to `ft_payload_mass` and `ft_payload_com`. Also `_FTS_OUTPUT_YAW_DEG`, `_fts_output_offset`, `_fts_link` into `_FT_OUTPUT_YAW_DEG`, `_ft_output_offset`, `_ft_link`.
 - [PR-180](https://github.com/AGH-CEAI/aegis_gym/pull/180) - The reinforcement learning library is upgraded to the upstream `rsl-rl-lib` 5.5.1, replacing the internal fork 3.3.2. Logging to the experiment tracker, gradient detaching, last layer reset and best checkpoint tracking moved into this repository.
 - [PR-180](https://github.com/AGH-CEAI/aegis_gym/pull/180) - The reinforcement learning config splits the former policy section into separate actor and critic sections, and renames the actor observation set. Existing configs have to be updated.
 - [PR-180](https://github.com/AGH-CEAI/aegis_gym/pull/180) - Models saved by earlier runs no longer load, since the library changed the saved format.
