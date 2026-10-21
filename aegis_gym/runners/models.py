@@ -26,4 +26,4 @@ class AegisMLPModel(MLPModel):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
                 return
-        raise RuntimeError("MLP does not contain any Linear layers to reset.")
+        raise RuntimeError("Model does not contain any linear layers to reset.")

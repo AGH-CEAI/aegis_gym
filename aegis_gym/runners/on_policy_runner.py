@@ -61,11 +61,6 @@ class OnPolicyRunner(BasePolicyRunner):
         on_chunk_end: Callable[[int], None],
         init_at_random_ep_len: bool = False,
     ) -> None:
-        """
-        Runs `learn()` in chunks of `chunk_iterations`, calling `on_chunk_end(iteration)` between
-        them (not after the last one). `learn()` fetches fresh observations on every call, so the
-        callback may step and reset the env.
-        """
         remaining = num_learning_iterations
         while remaining > 0:
             chunk = min(chunk_iterations, remaining)
@@ -81,11 +76,6 @@ class OnPolicyRunner(BasePolicyRunner):
                 self.runner.current_learning_iteration += 1
 
     def _discard_interrupted_episodes(self) -> None:
-        """
-        Drops the running episode statistics after the env was stepped or reset outside of
-        `learn()`. The rsl_rl logger clears them only on the `dones` it gets, so otherwise the
-        interrupted episodes would be merged with the next ones in the mean reward and length.
-        """
         logger = self.runner.logger
         for name in (
             "cur_reward_sum",
@@ -101,11 +91,10 @@ class OnPolicyRunner(BasePolicyRunner):
         alg.critic.reset()
 
     def _reset_last_layer_weights(self) -> None:
-        """Reinitialize the last layer of the actor and/or the critic, per the config."""
         part = self._reset_last_layer_part
         if part not in {"actor", "critic", "both"}:
             raise ValueError(
-                f"reset_last_layer_weights.part must be 'actor', 'critic' or 'both', got {part!r}"
+                f"Last layer reset target must be actor, critic or both, got {part!r}"
             )
 
         alg = self.runner.alg
@@ -114,8 +103,8 @@ class OnPolicyRunner(BasePolicyRunner):
             if part in {name, "both"}:
                 if not hasattr(model, "reset_last_layer_weights"):
                     raise AttributeError(
-                        f"The {name} model does not support reset_last_layer_weights(). "
-                        f"Set its `class_name` to a model that does, e.g. AegisMLPModel."
+                        f"The {name} model cannot reset its last layer. Select a model "
+                        f"class that supports it in the configuration."
                     )
                 model.reset_last_layer_weights()
 
@@ -144,7 +133,6 @@ class OnPolicyRunner(BasePolicyRunner):
 
 
 def _resolve_log_writer_cfg(logger_cfg: LoggerCfg) -> str | dict[str, Any]:
-    """Translate this project's `logger` name into the writer configuration rsl_rl expects."""
     match logger_cfg.logger:
         case "clearml":
             return {

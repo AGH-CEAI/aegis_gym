@@ -1,8 +1,3 @@
-"""
-These classes are loaded by name from the YAML configs, so nothing else imports them and a typo
-would only surface mid-training.
-"""
-
 import inspect
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,7 +47,6 @@ def test_clearml_writer_implements_the_log_writer_interface():
 
 
 def test_clearml_writer_drops_the_time_scalars():
-    """These series would report elapsed seconds where ClearML expects an iteration."""
     source = inspect.getsource(ClearMLLogWriter.add_scalar)
     assert '"/time"' in source
 
@@ -95,14 +89,12 @@ def test_reset_last_layer_weights_only_touches_the_last_layer():
 
 
 def test_clearml_writer_stop_keeps_the_task_and_the_writer_open():
-    """Training calls this once per chunk, so closing here would silence every later chunk."""
     source = inspect.getsource(ClearMLLogWriter.stop)
     assert "close()" not in source
     assert "flush()" in source
 
 
 def _writer_with_fake_task(log_cfg_as_hyperparams: bool):
-    """Built without the constructor, which would open a real ClearML task."""
     writer = object.__new__(ClearMLLogWriter)
     writer._log_cfg_as_hyperparams = log_cfg_as_hyperparams
     connected: dict[str, object] = {}
