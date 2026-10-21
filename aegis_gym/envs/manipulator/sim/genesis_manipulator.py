@@ -224,7 +224,7 @@ class GenesisManipulator(BaseManipulator):
         """Cache default PD tensors; call once after the entity is ready."""
         # TODO(issue#98) Move the robot calibration data into the URDF-dataset
         KP_GAINS = [4500.0, 4500.0, 3500.0, 3500.0, 3500.0, 3500.0, 5000.0, 5000.0]
-        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 100.0, 100.0]
+        KV_GAINS = [350.0, 350.0, 250.0, 250.0, 250.0, 250.0, 30.0, 30.0]
         FORCE_LOWER = [-87.0, -87.0, -87.0, -87.0, -87.0, -87.0, -100.0, -100.0]
         FORCE_UPPER = [87.0, 87.0, 87.0, 87.0, 87.0, 87.0, 100.0, 100.0]
 
@@ -318,13 +318,14 @@ class GenesisManipulator(BaseManipulator):
         self._servo_arm(q_vel[:, self._arm_dof_idx])
 
     def _delay_command(self, action: th.Tensor) -> th.Tensor:
-        """Delays the command by `servo_command_delay_s`; the arm holds still until
-        the first command arrives."""
+        """Delays the command by `servo_command_delay_s`. The first command after an
+        empty queue acts at once (the queue is prefilled with it); `servo_stiffness_scale`
+        was calibrated against the robot with this behaviour."""
         steps = round(self._servo_delay_s / max(self.servo_dt, 1e-9))
         if steps <= 0:
             return action
         if not self._servo_queue:
-            self._servo_queue.extend(th.zeros_like(action) for _ in range(steps))
+            self._servo_queue.extend(action.clone() for _ in range(steps))
         self._servo_queue.append(action.clone())
         return self._servo_queue.popleft()
 
@@ -332,7 +333,7 @@ class GenesisManipulator(BaseManipulator):
         """Re-anchors the servo setpoint at the pose of the next velocity command and
         drops the delayed commands, of the `envs_idx` envs only (all if None).
         Call after moving the arm by any non-velocity command."""
-        if envs_idx is None:
+        if envs_idx is None or len(envs_idx) == self._num_envs:
             self._servo_resync[:] = True
             self._servo_queue.clear()
             return

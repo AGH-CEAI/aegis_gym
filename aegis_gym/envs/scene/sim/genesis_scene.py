@@ -143,6 +143,7 @@ class GenesisScene(BaseScene):
             rigid_options=gs.options.RigidOptions(
                 dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
+                noslip_iterations=5,
                 enable_collision=True,
                 enable_joint_limit=True,
                 batch_dofs_info=True,  # Enables (n_evs, n_dofs) shape
