@@ -143,7 +143,7 @@ class GenesisScene(BaseScene):
             rigid_options=gs.options.RigidOptions(
                 dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
-                noslip_iterations=5,
+                noslip_iterations=5,  # Extra friction iterations, so static friction holds without slip
                 enable_collision=True,
                 enable_joint_limit=True,
                 batch_dofs_info=True,  # Enables (n_evs, n_dofs) shape
@@ -193,7 +193,10 @@ class GenesisScene(BaseScene):
                 fixed=True,
             ),
             surface=gs.surfaces.Default(color=(1.0, 0.96, 0.92)),
-            material=gs.materials.Rigid(friction=0.6, coup_friction=0.6),
+            material=gs.materials.Rigid(
+                friction=self._cfg_env.contact_friction,
+                coup_friction=self._cfg_env.contact_friction,
+            ),
         )
 
     def _setup_create_cameras(
@@ -400,6 +403,7 @@ class GenesisScene(BaseScene):
             cfg_robot=cfg,
             cfg_dr=self._cfg_dr,
             show_cell=self.show_cell,
+            contact_friction=self._cfg_env.contact_friction,
             policy_dt=self.policy_dt,
             max_linear_speed=self._max_linear_speed,
             max_angular_speed=self._max_angular_speed,
