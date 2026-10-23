@@ -19,3 +19,8 @@ class RobotCfg(BaseCfg):
 
     ft_payload_mass: float | None
     ft_payload_com: list[float] | None
+
+    # Max joint following error [rad]; acts as the force limit.
+    servo_follow_error_max_rad: float
+    servo_stiffness_scale: float
+    servo_command_delay_s: float
