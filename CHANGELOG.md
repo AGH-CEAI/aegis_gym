@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-182](https://github.com/AGH-CEAI/aegis_gym/pull/182) - Changed error handling in `go_to_goal()` in `ros_grpc_manipulator.py`: ignoring the "Already at target pose." error.
 - [PR-181](https://github.com/AGH-CEAI/aegis_gym/pull/181) - Renamed the `robot` config entries `fts_payload_mass` and `fts_payload_com` to `ft_payload_mass` and `ft_payload_com`. Also `_FTS_OUTPUT_YAW_DEG`, `_fts_output_offset`, `_fts_link` into `_FT_OUTPUT_YAW_DEG`, `_ft_output_offset`, `_ft_link`.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The `Episode/*` metrics (RL and BC) are of the episodes reset on each step only: `BaseEnv.step()` clears the `extras["episode"]` of the earlier resets, which the envs kept until their next reset and the rsl_rl logger counted again on every step without a reset (repeating the last reset's metrics, also into the next iteration).
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T task uses planar XY TCP velocity actions (`num_actions=2`), with the TCP held above the table at `tcp_height_ratio` of the T-block height, in a fixed downward orientation and within the `tcp_workspace_x/y` limits.
