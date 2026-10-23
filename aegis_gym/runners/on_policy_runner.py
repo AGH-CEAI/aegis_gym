@@ -4,13 +4,17 @@ from typing import Any
 
 import torch as th
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
+from torch import nn
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
 
 from .base_runner import BasePolicyRunner
 from .training_logger import TrainingLogger
 from .writer_cfg import resolve_log_writer_cfg
+
+logger = get_logger(__name__)
 
 
 class OnPolicyRunner(BasePolicyRunner):
@@ -20,6 +24,7 @@ class OnPolicyRunner(BasePolicyRunner):
         rsl_rl_cfg = cfg.rl_cfg.as_dict()
         rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
         rsl_rl_cfg["logger"] = resolve_log_writer_cfg(cfg.logger_cfg)
+        rsl_rl_cfg.update(rsl_rl_cfg.pop("policy"))
         log_dir = cfg.logger_cfg.local_log_dir
         self.runner = RslRlOnPolicyRunner(
             env=env,
@@ -28,7 +33,11 @@ class OnPolicyRunner(BasePolicyRunner):
             device=str(cfg.get_device()),
         )
 
-        reset_cfg = cfg.rl_cfg.reset_last_layer_weights
+        if cfg.rl_cfg.policy.detach_actor_grad:
+            self.runner.alg.get_policy().mlp.register_forward_pre_hook(_detach_inputs)
+            logger.info("Actor gradient is detached from its inputs")
+
+        reset_cfg = cfg.rl_cfg.policy.reset_last_layer_weights
         self._reset_last_layer_part = reset_cfg.get("part", "both")
         self.runner.logger = TrainingLogger(
             log_dir=str(log_dir),
@@ -100,12 +109,7 @@ class OnPolicyRunner(BasePolicyRunner):
         models = {"actor": alg.get_policy(), "critic": alg._raw_critic}
         for name, model in models.items():
             if part in {name, "both"}:
-                if not hasattr(model, "reset_last_layer_weights"):
-                    raise AttributeError(
-                        f"The {name} model cannot reset its last layer. Select a model "
-                        f"class that supports it in the configuration."
-                    )
-                model.reset_last_layer_weights()
+                _reinit_last_linear(model)
 
     def save(self, path: Path, infos: dict | None = None) -> None:
         self.runner.save(path=str(path), infos=infos)
@@ -129,3 +133,17 @@ class OnPolicyRunner(BasePolicyRunner):
         if filename.endswith(".onnx"):
             return self.runner.export_policy_to_onnx(path=str(path), filename=filename)
         raise NotImplementedError(f"Unsupported export format: {filename}")
+
+
+def _reinit_last_linear(model: nn.Module) -> None:
+    for module in reversed(list(model.mlp)):
+        if isinstance(module, nn.Linear):
+            nn.init.orthogonal_(module.weight, gain=1.0)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+            return
+    raise RuntimeError("Model does not contain any linear layers to reset.")
+
+
+def _detach_inputs(_module: nn.Module, args: tuple) -> tuple:
+    return (args[0].detach(), *args[1:])

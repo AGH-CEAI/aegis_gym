@@ -27,7 +27,14 @@ from .enum_types import (
 from .env import EnvCfg
 from .exp_config import ExpConfig
 from .logger import POLICY_PREVIEW_SEEDS, LoggerCfg
-from .rl import ActorCfg, AlgorithmCfg, CriticCfg, RLCfg
+from .rl import (
+    ActorCfg,
+    AlgorithmCfg,
+    CriticCfg,
+    DistributionCfg,
+    PolicyCfg,
+    RLCfg,
+)
 from .robot import RobotCfg
 
 __all__ = [
@@ -53,6 +60,7 @@ __all__ = [
     "CriticCfg",
     "CutoutCfg",
     "DebugCfg",
+    "DistributionCfg",
     "DomainRandomizationCfg",
     "EnvCfg",
     "ExpConfig",
@@ -63,6 +71,7 @@ __all__ = [
     "Modality",
     "PDGainCfg",
     "PolicyBCCfg",
+    "PolicyCfg",
     "RLCfg",
     "RobotCfg",
     "ToggleCfg",

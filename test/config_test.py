@@ -179,8 +179,8 @@ def test_push_t_preset_config_is_applied():
     rl_cfg = cm.get_config().rl_cfg
 
     assert rl_cfg.algorithm.gamma == 0.995
-    assert rl_cfg.actor.obs_normalization is True
-    assert rl_cfg.actor.distribution_cfg["std_type"] == "log"
+    assert rl_cfg.policy.actor.obs_normalization is True
+    assert rl_cfg.policy.actor.distribution_cfg.std_type == "log"
     _assert_robot_domain_randomization_enabled()
     goal_rand = cm.get_config().env_cfg.env_specific_dict["goal_randomization"]
     assert goal_rand["enabled"] is True
@@ -194,7 +194,7 @@ def test_reacher_preset_config_is_applied():
 
     assert rl_cfg.algorithm.gamma == 0.99
     assert rl_cfg.num_steps_per_env == 24
-    assert rl_cfg.actor.hidden_dims == [128, 128, 64]
+    assert rl_cfg.policy.actor.hidden_dims == [128, 128, 64]
     _assert_robot_domain_randomization_enabled()
 
 
@@ -264,7 +264,7 @@ def _get_source_sections() -> dict:
     defaults = cm._get_default_config_dict()
     env = {**defaults["env"], "env_name": "push_t", "num_envs": 4096, "max_steps": 750}
     rl = defaults["rl"]
-    rl["actor"]["hidden_dims"] = [256, 256, 128]
+    rl["policy"]["actor"]["hidden_dims"] = [256, 256, 128]
     bc = {**defaults["bc"], "learning_rate": 0.123}
     return {"env": env, "rl": rl, "bc": bc}
 
@@ -275,7 +275,7 @@ def test_source_task_config_is_applied(monkeypatch):
     cfg = cm.get_config()
 
     assert cfg.env_cfg.env_name == "push_t"
-    assert cfg.rl_cfg.actor.hidden_dims == [256, 256, 128]
+    assert cfg.rl_cfg.policy.actor.hidden_dims == [256, 256, 128]
     # runtime entries come from the current run
     assert cfg.env_cfg.num_envs == 10
     assert cfg.env_cfg.max_steps == int(10.0 / cfg.env_cfg.policy_dt)
@@ -298,7 +298,7 @@ def test_source_task_teacher_sections_keep_the_current_bc_config(monkeypatch):
     cfg = cm.get_config()
 
     assert cfg.env_cfg.env_name == "push_t"
-    assert cfg.rl_cfg.actor.hidden_dims == [256, 256, 128]
+    assert cfg.rl_cfg.policy.actor.hidden_dims == [256, 256, 128]
     assert (
         cfg.bc_cfg.learning_rate == cm._get_default_config_dict()["bc"]["learning_rate"]
     )

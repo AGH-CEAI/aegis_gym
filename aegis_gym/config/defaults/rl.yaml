@@ -34,22 +34,24 @@ algorithm:
   rnd_cfg: null
   # Symmetry augmentation
   symmetry_cfg: null
-# reset_last_layer_weights_interval: 0 # Set above 0 to enable
-# reset_last_layer_weights_part: part # `actor`, `critic` or `both`
-reset_last_layer_weights: {"interval": 0, "part": "both"}
 init_member_classes: {}
-actor:
-  class_name: "aegis_gym.runners.models:AegisMLPModel"
-  hidden_dims: [128, 128, 64]
-  activation: "elu"  # original: "relu"
-  obs_normalization: False
+policy:
+  actor:
+    class_name: "MLPModel"
+    hidden_dims: [128, 128, 64]
+    activation: "elu"  # original: "relu"
+    obs_normalization: False
+    distribution_cfg:
+      class_name: "GaussianDistribution"  # state-dependent std: HeteroscedasticGaussianDistribution
+      init_std: 1.0
+      std_type: "scalar"  # scalar, log
+  critic:
+    class_name: "MLPModel"
+    hidden_dims: [128, 128, 64]
+    activation: "elu"
+    obs_normalization: False
+  # Reinitialize the last layer every `interval` iterations: `actor`, `critic` or `both`.
+  # An interval of 0 disables it.
+  reset_last_layer_weights: {"interval": 0, "part": "both"}
+  # Stop the gradient at the actor inputs, so the actor does not shape their representation.
   detach_actor_grad: False
-  distribution_cfg:
-    class_name: "GaussianDistribution"  # state-dependent std: HeteroscedasticGaussianDistribution
-    init_std: 1.0
-    std_type: "scalar"  # 'scalar' or 'log'
-critic:
-  class_name: "aegis_gym.runners.models:AegisMLPModel"
-  hidden_dims: [128, 128, 64]
-  activation: "elu"
-  obs_normalization: False

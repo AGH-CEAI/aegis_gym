@@ -5,12 +5,13 @@ from types import SimpleNamespace
 import pytest
 import torch as th
 import yaml
+from rsl_rl.models import MLPModel
 from rsl_rl.utils import LogWriter, resolve_callable
 from tensordict import TensorDict
 
 from aegis_gym.aux.logging.clearml_writer import ClearMLLogWriter
 from aegis_gym.runners import bc_runner, on_policy_runner
-from aegis_gym.runners.models import AegisMLPModel
+from aegis_gym.runners.on_policy_runner import _detach_inputs, _reinit_last_linear
 from aegis_gym.runners.writer_cfg import CLEARML_WRITER
 
 CONFIG_DIR = Path(__file__).parent.parent / "aegis_gym/config"
@@ -27,8 +28,8 @@ RL_CONFIGS = ["defaults/rl.yaml", "presets/push_t.yaml", "presets/reacher.yaml"]
 @pytest.mark.parametrize("config", RL_CONFIGS)
 @pytest.mark.parametrize("model", ["actor", "critic"])
 def test_model_class_name_in_config_resolves(config, model):
-    resolved = resolve_callable(_rl_section(config)[model]["class_name"])
-    assert issubclass(resolved, AegisMLPModel)
+    resolved = resolve_callable(_rl_section(config)["policy"][model]["class_name"])
+    assert issubclass(resolved, MLPModel)
 
 
 @pytest.mark.parametrize("config", RL_CONFIGS)
@@ -52,9 +53,9 @@ def test_clearml_writer_drops_the_time_scalars():
     assert '"/time"' in source
 
 
-def _make_model(**kwargs) -> AegisMLPModel:
+def _make_model(**kwargs) -> MLPModel:
     obs = TensorDict({"policy": th.zeros(2, 4)}, batch_size=[2])
-    return AegisMLPModel(
+    return MLPModel(
         obs,
         {"actor": ["policy"], "critic": ["policy"]},
         "actor",
@@ -65,8 +66,10 @@ def _make_model(**kwargs) -> AegisMLPModel:
 
 
 @pytest.mark.parametrize("detach", [True, False])
-def test_detach_actor_grad_cuts_the_gradient_to_the_observations(detach):
-    model = _make_model(detach_actor_grad=detach)
+def test_detach_hook_cuts_the_gradient_to_the_observations(detach):
+    model = _make_model()
+    if detach:
+        model.mlp.register_forward_pre_hook(_detach_inputs)
     obs = TensorDict({"policy": th.zeros(2, 4, requires_grad=True)}, batch_size=[2])
 
     model(obs).sum().backward()
@@ -75,14 +78,14 @@ def test_detach_actor_grad_cuts_the_gradient_to_the_observations(detach):
     assert reached_obs is not detach
 
 
-def test_reset_last_layer_weights_only_touches_the_last_layer():
+def test_reset_only_touches_the_last_layer():
     model = _make_model()
     linears = [m for m in model.mlp if isinstance(m, th.nn.Linear)]
     first_before = linears[0].weight.clone()
     last_before = linears[-1].weight.clone()
     linears[-1].bias.data.fill_(0.5)
 
-    model.reset_last_layer_weights()
+    _reinit_last_linear(model)
 
     assert th.equal(linears[0].weight, first_before), "an earlier layer was reset"
     assert not th.equal(linears[-1].weight, last_before), "the last layer was not reset"
