@@ -2,9 +2,10 @@
 Press sweep: quasi-static press staircase for matching the simulated servo stiffness
 to the real robot (`servo_stiffness_scale` = K_real / K_sim).
 
-Per pose the tool locates the table with a slow touch, backs off GAP_M and tares, then
-steps the commanded position down in small increments, holding each until the force
-settles (longer than the command delay), up to MAX_FORCE_N. Steady force against
+Per pose the tool locates the table with a slow touch, rises to GAP_M and tares, moves
+back down to the surface, then presses in LOAD_STEPS large steps to 1/3, 2/3 and all of
+MAX_FORCE_N (the rubber fingertips swallow small ones), holding each until the force
+settles (longer than the command delay). Steady force against
 commanded penetration is the stiffness the policy sees, free of latency and damping.
 The flat pose gives the scale; the tilted ones check that one scale fits other wrist
 loadings. Every sample goes to `logs/ft_stiffness/` as CSV.
@@ -16,11 +17,13 @@ Run on both backends and compare:
 
 SAFETY: the start, the touch and its forces are those of `stiffness_probe.py`: descent
 at 1.5 mm/s until 0.3 N, after which the delayed commands (~1.2 s) press on to ~13 N
-(16 N seen on the robot), abort at 30 N. The staircase then moves only in small
-commanded steps and waits out the delay after each, so at most one step (<= 0.3 mm) is
-pending when a limit is seen. On top of that: the staircase never exceeds MAX_FORCE_N, the
-commanded penetration is capped at MAX_PRESS_M past the surface (the bound if the
-sensor stops reporting), and nothing is tared or zeroed while loaded. Abort and Ctrl+C both lift the tool by velocity first.
+(16 N seen on the robot), abort at 30 N. The staircase then moves in commanded
+steps and waits out the delay after each, so at most one step (<= MAX_STEP_M = 1 mm) is
+pending when a limit is seen. Each step is sized from the stiffness measured so far
+(the first from a stiffer guess, so it falls short), the commanded penetration is
+capped at MAX_PRESS_M past the surface (the bound if the sensor stops reporting), and
+nothing is tared or zeroed while loaded. Abort and Ctrl+C lift the tool by velocity
+first.
 On the robot: speed slider at 100 % (it scales the commanded steps), hand on the
 e-stop.
 """
@@ -118,18 +121,25 @@ def ft_sensor_press_sweep(env: BaseEnv, cfg: ExpConfig) -> None:
     MAX_FORCE_N = 5.0  # press target, as in `stiffness_probe.py`
     ABORT_FORCE_N = 30.0
     MAX_APPROACH_M = 0.20
-    GAP_M = 0.0005  # start of each staircase above the located surface
-    FREE_STEP_M = 0.00025  # increments before contact
-    FORCE_STEP_N = 0.6  # target force increment, ~8 points up to MAX_FORCE_N
-    MAX_STEP_M = 0.0003
+    # Start of each staircase above the located surface. Reached by velocity, not the
+    # planner: on the robot the planner's goal tolerance and the pose latency at the
+    # touch are each ~0.5 mm, which ended a 0.5 mm gap in contact (3.5 N).
+    GAP_M = 0.0015
+    GAP_RETRY_M = 0.0005  # extra lift per retry when the gap is still in contact
+    GAP_RETRIES = 3
+    LOAD_STEPS = 3  # large steps to 1/3, 2/3 and all of MAX_FORCE_N
+    # Stiffness assumed for the first step, above the ~7 kN/m measured, so it falls
+    # short rather than overshoots; the next steps use the measured one.
+    K_GUESS_N_M = 10000.0
+    MAX_STEP_M = 0.001
     # Commanded penetration budget past the surface: the bound on force even if the
     # sensor stops reporting (~10 N at 7 kN/m).
-    MAX_PRESS_M = 0.0015
+    MAX_PRESS_M = 0.0025
     LOCATE_HOLD_S = 3.0
     ZERO_S = 0.5  # force zero averaged before the locate and each staircase
     ZERO_MAX_N = 1.0  # a larger zero means the tool is already loaded
-    HOLD_MIN_S = 2.5  # longer than servo_command_delay_s + the pulse
-    HOLD_MAX_S = 6.0
+    HOLD_MIN_S = 3.0  # longer than servo_command_delay_s + the step
+    HOLD_MAX_S = 8.0  # rubber creeps, so it may take longer to settle
     AVG_S = 0.8  # averaging window at the end of a hold
     SETTLED_RATE_N_S = 0.2
     SETTLE_SECONDS = 1.0
@@ -339,47 +349,71 @@ def ft_sensor_press_sweep(env: BaseEnv, cfg: ExpConfig) -> None:
         wait(HOLD_MIN_S)
         return contact
 
-    def staircase(gap_pos: th.Tensor, quat: th.Tensor) -> None:
+    def move_to_height(z: float) -> None:
+        """World-vertical velocity move to TCP height `z`, then waits out the delay."""
         ctx["phase"] = "backoff"
-        go_to(gap_pos, quat)
-        wait(SETTLE_SECONDS)
-        # Taring in contact would hide that load; the zero from the locate still holds.
-        if raw_rows[-1]["fn"] >= TOUCH_FORCE_N:
-            raise RuntimeError(
-                f"{raw_rows[-1]['fn']:.2f} N at the gap -- the move ended in contact. "
-                f"Not taring over it."
+        d = float(manipulator.get_tcp_position()[0, 2]) - z  # + is downward
+        if abs(d) >= pulse_m / 2:
+            pulse(d)
+        wait(HOLD_MIN_S)
+
+    def staircase(contact: th.Tensor) -> None:
+        # Taring in contact would hide that load, so the gap must be clear; the zero
+        # from the locate (or the last staircase) still holds for this check.
+        target = float(contact[2]) + GAP_M
+        for attempt in range(GAP_RETRIES + 1):
+            move_to_height(target)
+            if raw_rows[-1]["fn"] < TOUCH_FORCE_N:
+                break
+            if attempt == GAP_RETRIES:
+                raise RuntimeError(
+                    f"{raw_rows[-1]['fn']:.2f} N at {(target - float(contact[2])) * 1000:.1f} "
+                    f"mm above the touch -- still in contact. Not taring over it."
+                )
+            logger.warning(
+                f"  {raw_rows[-1]['fn']:.2f} N at the gap -- lifting "
+                f"{GAP_RETRY_M * 1000:.1f} mm more"
             )
+            target += GAP_RETRY_M
+        gap = target - float(contact[2])
         manipulator.set_ft_bias()
         ctx["cmd"] = 0.0
         zero_force()
         ref["pos"] = manipulator.get_tcp_position()[0].clone()
         rows = [hold("start", 0)]
-        while rows[-1]["fn"] < MAX_FORCE_N:
-            if ctx["cmd"] + pulse_m > GAP_M + MAX_PRESS_M:
-                logger.warning(
-                    f"  only {rows[-1]['fn']:.2f} N after {ctx['cmd'] * 1000:.2f} mm "
-                    f"commanded -- penetration budget used up"
-                )
-                break
+        # Down to the located surface in one move; still free, so its travel/cmd
+        # checks that the robot executes the commanded motion.
+        pulse(gap)
+        rows.append(hold("surface", len(rows)))
+        # LOAD_STEPS large steps to equal shares of MAX_FORCE_N: the rubber
+        # fingertips swallow small ones.
+        for i in range(1, LOAD_STEPS + 1):
+            f_now = rows[-1]["fn"]
+            f_target = MAX_FORCE_N * i / LOAD_STEPS
+            if f_now >= f_target:
+                continue
             loaded = [r for r in rows if r["fn"] >= TOUCH_FORCE_N]
+            depth = ctx["cmd"] - gap
             if len(loaded) >= 2:
+                # Tangent: rubber stiffens as it compresses.
                 d_x = (loaded[-1]["cmd_mm"] - loaded[-2]["cmd_mm"]) / 1000.0
                 k = (loaded[-1]["fn"] - loaded[-2]["fn"]) / d_x if d_x > 0 else 0.0
-                inc = MAX_STEP_M if k <= 0 else FORCE_STEP_N / k
-                inc = max(pulse_m, min(MAX_STEP_M, inc))
-                # Stop before a step that would cross MAX_FORCE_N.
-                if (
-                    k > 0
-                    and rows[-1]["fn"] + k * pulse_m * round(inc / pulse_m)
-                    > MAX_FORCE_N
-                ):
-                    break
-            elif loaded:
-                inc = pulse_m  # stiffness unknown yet
+            elif loaded and depth > 0:
+                k = f_now / depth
             else:
-                inc = FREE_STEP_M
+                k = K_GUESS_N_M
+            inc = MAX_STEP_M if k <= 0 else (f_target - f_now) / k
+            inc = max(pulse_m, min(MAX_STEP_M, inc, gap + MAX_PRESS_M - ctx["cmd"]))
+            if ctx["cmd"] + pulse_m > gap + MAX_PRESS_M:
+                logger.warning(
+                    f"  only {f_now:.2f} N after {depth * 1000:.2f} mm past the surface "
+                    f"-- penetration budget used up"
+                )
+                break
             pulse(inc)
             rows.append(hold("load", len(rows)))
+            if rows[-1]["fn"] >= MAX_FORCE_N:
+                break
         if is_modelled(manipulator):
             _log_contacts(manipulator, f"{ctx['pose']} top step")
         top = rows[-1]
@@ -392,7 +426,9 @@ def ft_sensor_press_sweep(env: BaseEnv, cfg: ExpConfig) -> None:
         ]
         k_cmd = _slope([r["cmd_mm"] / 1000.0 for r in load], [r["fn"] for r in load])
         k_lag = _slope([r["lag_mm"] / 1000.0 for r in load], [r["fn"] for r in load])
-        free = [r for r in rows if r["direction"] == "load" and r["fn"] < TOUCH_FORCE_N]
+        free = [
+            r for r in rows if r["direction"] == "surface" and r["fn"] < TOUCH_FORCE_N
+        ]
         gain = (
             free[-1]["travel_mm"] / free[-1]["cmd_mm"]
             if free and free[-1]["cmd_mm"] > 0
@@ -443,12 +479,11 @@ def ft_sensor_press_sweep(env: BaseEnv, cfg: ExpConfig) -> None:
                     logger.warning("  no contact within reach -- skipping this pose")
                     continue
                 quat_tcp = manipulator.get_tcp_orientation()[0].clone()
-                gap_pos = contact + up_t * GAP_M
                 for rep in range(PRESS_REPEATS):
                     ctx["repeat"] = rep
-                    staircase(gap_pos, quat_tcp)
+                    staircase(contact)
                 ctx["phase"] = "backoff"
-                go_to(gap_pos + up_t * RETRACT_M, quat_tcp)
+                go_to(contact + up_t * (GAP_M + RETRACT_M), quat_tcp)
     finally:
         _stop(env, manipulator, device)
         ctx["abort"] = False  # the lift must run even when overloaded
