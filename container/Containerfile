@@ -8,7 +8,6 @@ ARG TORCH_REF=ceai/aegis_gym_torch:latest
 FROM ${TORCH_REF} AS simulation
 
 ARG AEGIS_GYM_TAG=devel
-ARG CEAI_RSL_RL_TAG=v3.3.2
 # Cache buster: changes whenever the branch points at a new commit.
 ARG AEGIS_GYM_REV=unknown
 
@@ -23,8 +22,7 @@ COPY scripts/install_simulation.sh /tmp/install_simulation.sh
 # The echo puts AEGIS_GYM_REV into this layer's cache key, so the dependency
 # install is redone when the branch moves even though the tag is unchanged.
 RUN echo ">>> aegis_gym @ ${AEGIS_GYM_REV}" \
-    && CEAI_RSL_RL_TAG="${CEAI_RSL_RL_TAG}" \
-        AEGIS_GYM_TAG="${AEGIS_GYM_TAG}" \
+    && AEGIS_GYM_TAG="${AEGIS_GYM_TAG}" \
         bash /tmp/install_simulation.sh \
     && rm -f /tmp/install_simulation.sh
 
@@ -50,7 +48,6 @@ RUN echo ">>> aegis_ros @ ${AEGIS_ROS_REV}" \
 ARG TORCH_REF
 ARG AEGIS_GYM_TAG
 ARG AEGIS_GYM_REV
-ARG CEAI_RSL_RL_TAG
 ARG BUILD_DATE=unknown
 
 LABEL org.opencontainers.image.authors="ceai@agh.edu.pl"
@@ -61,7 +58,6 @@ LABEL aegis.base.ref=${TORCH_REF}
 LABEL aegis.gym.tag=${AEGIS_GYM_TAG}
 LABEL aegis.gym.rev=${AEGIS_GYM_REV}
 LABEL aegis.ros.tag=${AEGIS_ROS_TAG}
-LABEL ceai.rsl_rl.tag=${CEAI_RSL_RL_TAG}
 LABEL aegis.build.date=${BUILD_DATE}
 
 CMD ["/bin/bash"]

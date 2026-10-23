@@ -12,7 +12,7 @@ class _FakeRslRunner:
 
     def __init__(self, num_envs: int, rnd: bool = False):
         self.current_learning_iteration = 0
-        self.alg = SimpleNamespace(policy=MagicMock())
+        self.alg = SimpleNamespace(actor=MagicMock(), critic=MagicMock())
         self.logger = SimpleNamespace(
             cur_reward_sum=th.zeros(num_envs),
             cur_episode_length=th.zeros(num_envs),
@@ -60,7 +60,8 @@ def test_learn_in_chunks_discards_interrupted_episodes():
     # The statistics accumulated before the preview are dropped, not carried into the next chunk
     assert all(s > 0 for s in sums_at_chunk_end)
     assert rsl_runner.sums_at_learn_start == [0.0, 0.0, 0.0]
-    assert rsl_runner.alg.policy.reset.call_count == 2
+    assert rsl_runner.alg.actor.reset.call_count == 2
+    assert rsl_runner.alg.critic.reset.call_count == 2
 
 
 def test_discard_interrupted_episodes_without_rnd():

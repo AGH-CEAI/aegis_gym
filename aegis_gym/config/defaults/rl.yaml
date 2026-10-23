@@ -4,7 +4,7 @@ max_iterations: 500
 seed: 1
 use_cameras: False
 # Observations mapping
-obs_groups: {"policy": ["policy"], "critic": ["policy"]}
+obs_groups: {"actor": ["policy"], "critic": ["policy"]}
 
 # Logging parameters
 save_interval: 100  # Check for potential saves every `save_interval` iterations
@@ -34,18 +34,24 @@ algorithm:
   rnd_cfg: null
   # Symmetry augmentation
   symmetry_cfg: null
-# reset_last_layer_weights_interval: 0 # Set above 0 to enable
-# reset_last_layer_weights_part: part # `actor`, `critic` or `both`
-reset_last_layer_weights: {"interval": 0, "part": "both"}
 init_member_classes: {}
 policy:
-  class_name: "ActorCritic"
-  activation: "elu"  # original: "relu"
-  actor_obs_normalization: False
-  critic_obs_normalization: False
-  init_noise_std: 1.0
-  actor_hidden_dims: [128, 128, 64]
-  critic_hidden_dims: [128, 128, 64]
-  noise_std_type: "scalar"  # 'scalar' or 'log'
-  state_dependent_std: False
+  actor:
+    class_name: "MLPModel"
+    hidden_dims: [128, 128, 64]
+    activation: "elu"  # original: "relu"
+    obs_normalization: False
+    distribution_cfg:
+      class_name: "GaussianDistribution"  # state-dependent std: HeteroscedasticGaussianDistribution
+      init_std: 1.0
+      std_type: "scalar"  # scalar, log
+  critic:
+    class_name: "MLPModel"
+    hidden_dims: [128, 128, 64]
+    activation: "elu"
+    obs_normalization: False
+  # Reinitialize the last layer every `interval` iterations: `actor`, `critic` or `both`.
+  # An interval of 0 disables it.
+  reset_last_layer_weights: {"interval": 0, "part": "both"}
+  # Stop the gradient at the actor inputs, so the actor does not shape their representation.
   detach_actor_grad: False

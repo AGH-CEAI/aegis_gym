@@ -4,11 +4,17 @@ from typing import Any
 
 import torch as th
 from rsl_rl.runners import OnPolicyRunner as RslRlOnPolicyRunner
+from torch import nn
 
+from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import ExpConfig
 from aegis_gym.envs import BaseEnv
 
 from .base_runner import BasePolicyRunner
+from .training_logger import TrainingLogger
+from .writer_cfg import resolve_log_writer_cfg
+
+logger = get_logger(__name__)
 
 
 class OnPolicyRunner(BasePolicyRunner):
@@ -17,6 +23,8 @@ class OnPolicyRunner(BasePolicyRunner):
 
         rsl_rl_cfg = cfg.rl_cfg.as_dict()
         rsl_rl_cfg.update(cfg.logger_cfg.as_dict())
+        rsl_rl_cfg["logger"] = resolve_log_writer_cfg(cfg.logger_cfg)
+        rsl_rl_cfg.update(rsl_rl_cfg.pop("policy"))
         log_dir = cfg.logger_cfg.local_log_dir
         self.runner = RslRlOnPolicyRunner(
             env=env,
@@ -24,10 +32,27 @@ class OnPolicyRunner(BasePolicyRunner):
             log_dir=str(log_dir),
             device=str(cfg.get_device()),
         )
-        # TODO(issue#176) move to the fork (https://github.com/AGH-CEAI/rsl_rl): log the `*/time`
-        # scalars only if `self.logger_type not in ("wandb", "clearml")` (rsl_rl/utils/logger.py)
-        if cfg.logger_cfg.logger == "clearml":
-            self._drop_time_scalars()
+
+        if cfg.rl_cfg.policy.detach_actor_grad:
+            self.runner.alg.get_policy().mlp.register_forward_pre_hook(_detach_inputs)
+            logger.info("Actor gradient is detached from its inputs")
+
+        reset_cfg = cfg.rl_cfg.policy.reset_last_layer_weights
+        self._reset_last_layer_part = reset_cfg.get("part", "both")
+        self.runner.logger = TrainingLogger(
+            log_dir=str(log_dir),
+            cfg=rsl_rl_cfg,
+            env_cfg=env.get_cfg_as_dict(),
+            num_envs=env.num_envs,
+            is_distributed=self.runner.is_distributed,
+            gpu_world_size=self.runner.gpu_world_size,
+            gpu_global_rank=self.runner.gpu_global_rank,
+            device=str(cfg.get_device()),
+            save_best_model=self.save,
+            best_model_skip_iters=cfg.rl_cfg.best_model_skip_iters,
+            reset_last_layer=self._reset_last_layer_weights,
+            reset_last_layer_interval=reset_cfg.get("interval", 0),
+        )
 
     def learn(
         self, num_learning_iterations: int, init_at_random_ep_len: bool = False
@@ -37,25 +62,6 @@ class OnPolicyRunner(BasePolicyRunner):
             init_at_random_ep_len=init_at_random_ep_len,
         )
 
-    def _drop_time_scalars(self) -> None:
-        """
-        rsl_rl logs the `*/time` scalars with the elapsed seconds as the step, which ClearML takes
-        as the iteration: e.g. 3000 iterations over 5 h would log up to "iteration" 18000, also
-        moving the task's last iteration (and its resource monitor) there. ClearML plots the scalars
-        against the wall time itself, so these duplicates are dropped.
-        """
-        writer = self.runner.logger.writer
-        if writer is None:
-            return
-        add_scalar = writer.add_scalar
-
-        def add_scalar_per_iteration(tag: str, *args: Any, **kwargs: Any) -> None:
-            if tag.endswith("/time"):
-                return
-            add_scalar(tag, *args, **kwargs)
-
-        writer.add_scalar = add_scalar_per_iteration
-
     def learn_in_chunks(
         self,
         num_learning_iterations: int,
@@ -63,11 +69,6 @@ class OnPolicyRunner(BasePolicyRunner):
         on_chunk_end: Callable[[int], None],
         init_at_random_ep_len: bool = False,
     ) -> None:
-        """
-        Runs `learn()` in chunks of `chunk_iterations`, calling `on_chunk_end(iteration)` between
-        them (not after the last one). `learn()` fetches fresh observations on every call, so the
-        callback may step and reset the env.
-        """
         remaining = num_learning_iterations
         while remaining > 0:
             chunk = min(chunk_iterations, remaining)
@@ -83,11 +84,6 @@ class OnPolicyRunner(BasePolicyRunner):
                 self.runner.current_learning_iteration += 1
 
     def _discard_interrupted_episodes(self) -> None:
-        """
-        Drops the running episode statistics after the env was stepped or reset outside of
-        `learn()`. The rsl_rl logger clears them only on the `dones` it gets, so otherwise the
-        interrupted episodes would be merged with the next ones in the mean reward and length.
-        """
         logger = self.runner.logger
         for name in (
             "cur_reward_sum",
@@ -98,8 +94,22 @@ class OnPolicyRunner(BasePolicyRunner):
             buffer = getattr(logger, name, None)
             if buffer is not None:
                 buffer.zero_()
-        # The recurrent policies drop the hidden state carried over from outside of `learn()`
-        self.runner.alg.policy.reset()
+        alg = self.runner.alg
+        alg.actor.reset()
+        alg.critic.reset()
+
+    def _reset_last_layer_weights(self) -> None:
+        part = self._reset_last_layer_part
+        if part not in {"actor", "critic", "both"}:
+            raise ValueError(
+                f"Last layer reset target must be actor, critic or both, got {part!r}"
+            )
+
+        alg = self.runner.alg
+        models = {"actor": alg.get_policy(), "critic": alg._raw_critic}
+        for name, model in models.items():
+            if part in {name, "both"}:
+                _reinit_last_linear(model)
 
     def save(self, path: Path, infos: dict | None = None) -> None:
         self.runner.save(path=str(path), infos=infos)
@@ -118,10 +128,22 @@ class OnPolicyRunner(BasePolicyRunner):
         return self.runner.get_inference_policy(device=str(device))
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
-        try:
-            if filename.endswith(".pt"):
-                return self.runner.export_policy_to_jit(path=path, filename=filename)
-            if filename.endswith(".onnx"):
-                return self.runner.export_policy_to_onnx(path=path, filename=filename)
-        except (ValueError, OSError) as e:
-            raise NotImplementedError("Export policy not implemented.") from e
+        if filename.endswith(".pt"):
+            return self.runner.export_policy_to_jit(path=str(path), filename=filename)
+        if filename.endswith(".onnx"):
+            return self.runner.export_policy_to_onnx(path=str(path), filename=filename)
+        raise NotImplementedError(f"Unsupported export format: {filename}")
+
+
+def _reinit_last_linear(model: nn.Module) -> None:
+    for module in reversed(list(model.mlp)):
+        if isinstance(module, nn.Linear):
+            nn.init.orthogonal_(module.weight, gain=1.0)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+            return
+    raise RuntimeError("Model does not contain any linear layers to reset.")
+
+
+def _detach_inputs(_module: nn.Module, args: tuple) -> tuple:
+    return (args[0].detach(), *args[1:])

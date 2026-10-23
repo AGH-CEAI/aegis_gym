@@ -132,9 +132,7 @@ def _best_model_runner(saved: list[int]) -> BehaviorCloningRunner:
     runner._best_model_iter = -1
     runner._log_dir = "/nonexistent"
     runner.save = lambda path: None
-    runner.logger = SimpleNamespace(
-        save_model=lambda path, it, custom_name: saved.append(it)
-    )
+    runner.logger = SimpleNamespace(save_model=lambda path, it: saved.append(it))
     return runner
 
 

@@ -27,13 +27,21 @@ from .enum_types import (
 from .env import EnvCfg
 from .exp_config import ExpConfig
 from .logger import POLICY_PREVIEW_SEEDS, LoggerCfg
-from .rl import AlgorithmCfg, PolicyCfg, RLCfg
+from .rl import (
+    ActorCfg,
+    AlgorithmCfg,
+    CriticCfg,
+    DistributionCfg,
+    PolicyCfg,
+    RLCfg,
+)
 from .robot import RobotCfg
 
 __all__ = [
     "CAMERAS_LINKS",
     "IMAGE_MODALITIES",
     "POLICY_PREVIEW_SEEDS",
+    "ActorCfg",
     "Algorithm",
     "AlgorithmCfg",
     "BCCfg",
@@ -49,8 +57,10 @@ __all__ = [
     "CamerasSetup",
     "Checkpoint",
     "Control",
+    "CriticCfg",
     "CutoutCfg",
     "DebugCfg",
+    "DistributionCfg",
     "DomainRandomizationCfg",
     "EnvCfg",
     "ExpConfig",

@@ -6,7 +6,7 @@
 > You should approach this directory as a fully vibe coded module for launching **production** (podman) and **development** (toolbx) containers.
 
 Everything `aegis_gym` needs — CUDA-built PyTorch, the Genesis simulator and
-its graphics stack, the AGH `rsl_rl` fork, and the gRPC client that talks to
+its graphics stack, and the gRPC client that talks to
 [`aegis_ros`](https://github.com/AGH-CEAI/aegis_ros) — packaged so you do not
 install any of it on your host.
 
@@ -86,7 +86,7 @@ For the Ubuntu 22.04 / 24.04 host packages needed to get a GPU inside toolbx
 ```
 ubuntu:22.04
  └─ ceai/aegis_gym_torch:<ver>      torch + torchvision, CUDA wheel index
-     └─ ceai/aegis_gym:<ver>        graphics stack, rsl_rl fork, deps, gRPC client
+     └─ ceai/aegis_gym:<ver>        graphics stack, deps, gRPC client
          ├─ ceai/aegis_gym_prod:<ver>       production  -> podman run
          └─ localhost/aegis_gym_dev:<ver>   development -> toolbx
 ```
@@ -102,7 +102,7 @@ the development container installs your working copy instead. That is the whole
 difference between the two paths.
 
 Packages that an earlier step already installed — `torch`, `torchvision`,
-`triton`, the `nvidia-*` runtimes and the `rsl_rl` fork — are deliberately
+`triton` and the `nvidia-*` runtimes — are deliberately
 excluded from the lock export. Without that, the lock's PyPI `torch==2.8.0`
 (a **cu128** build) would replace the cu129 one from the torch tier and leave a
 mismatched pair. See [`scripts/install_simulation.sh`](scripts/install_simulation.sh).
@@ -136,7 +136,7 @@ aegis_gym_build_image           # interactive, prompts for refs
 aegis_gym_build_image -y        # all defaults, no prompts (CI)
 ```
 
-It asks for the image version and the `aegis_gym` / `rsl_rl` / `aegis_ros`
+It asks for the image version and the `aegis_gym` / `aegis_ros`
 refs, builds `ceai/aegis_gym_torch:<ver>` (offering to skip it when it already
 exists — say yes to skip; it is the expensive one), then `ceai/aegis_gym:<ver>`,
 and finally offers to push both.
@@ -197,8 +197,8 @@ That is why every create, recreate and **join** now checks:
 ```
 
 Saying yes installs just those pins with `--no-deps`, so nothing else moves.
-`torch`, `torchvision`, `triton`, the `nvidia-*` runtimes and `rsl-rl-lib` are
-never touched — they come from the CUDA wheel index and from git, and the lock
+`torch`, `torchvision`, `triton` and the `nvidia-*` runtimes are
+never touched — they come from the CUDA wheel index, and the lock
 pins the PyPI build of the same name, so reinstalling them from the lock is
 exactly the `+cu128` over `+cu129` mismatch the image is built to avoid.
 `--no-verify` skips the check; run it by hand with
@@ -361,7 +361,6 @@ podman build . -f Containerfile.torch -t ceai/aegis_gym_torch:v0.2.0
 podman build . -f Containerfile \
     --build-arg TORCH_REF=ceai/aegis_gym_torch:v0.2.0 \
     --build-arg AEGIS_GYM_TAG=devel \
-    --build-arg CEAI_RSL_RL_TAG=v3.3.2 \
     --build-arg AEGIS_ROS_TAG=humble-devel \
     -t ceai/aegis_gym:v0.2.0
 
