@@ -288,7 +288,7 @@ class RosGrpcManipulator(BaseManipulator):
                 orientation=target_ori_np,
             )
         )
-        if not success:
+        if not self._handle_go_to_goal_error(success, msg):
             raise RuntimeError(
                 f"The planner did not accept the TCP goal {goal_pose.tolist()}: {msg}"
             )
@@ -299,6 +299,16 @@ class RosGrpcManipulator(BaseManipulator):
             self.ctrl_gripper_open()
         else:
             self.ctrl_gripper_close()
+    
+    def _handle_go_to_goal_error(self, success: bool, msg: str) -> bool:
+        if success:
+            return True
+        
+        if msg == "Already at target pose.":
+            self.logger.warning("Go-to-goal skipped: robot is already at the target pose. Treating as success.")
+            return True
+
+        return False
 
     def ctrl_reset_to_pose(
         self,

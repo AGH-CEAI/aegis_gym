@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-174](https://github.com/AGH-CEAI/aegis_gym/pull/174) - Configurable contact friction in Genesis (`contact_friction` in `env.yaml`, robot and table), tuned to the friction measured on the real robot, plus no-slip solver iterations.
+- [PR-173](https://github.com/AGH-CEAI/aegis_gym/pull/173) - Simulated arm servo matched to the real robot: an integrating joint setpoint bounded by `servo_follow_error_max_rad`, command delay (`servo_command_delay_s`), arm stiffness scaling (`servo_stiffness_scale`), servo following error in PlotJuggler and the `scripts/ft_sensor/stiffness_probe.py` script for measuring the effective stiffness in the simulation and on the real robot. `scripts/ft_sensor/stiffness_probe_MAX.py` adds the `press_sweep` test (its default), which presses the table in quasi-static steps at several tool tilts, with repeats, and saves CSV for the sim/real comparison.
 - [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
 - [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
 - [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
@@ -51,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-182](https://github.com/AGH-CEAI/aegis_gym/pull/182) - Changed error handling in `go_to_goal()` in `ros_grpc_manipulator.py`: ignoring the "Already at target pose." error.
 - [PR-181](https://github.com/AGH-CEAI/aegis_gym/pull/181) - Renamed the `robot` config entries `fts_payload_mass` and `fts_payload_com` to `ft_payload_mass` and `ft_payload_com`. Also `_FTS_OUTPUT_YAW_DEG`, `_fts_output_offset`, `_fts_link` into `_FT_OUTPUT_YAW_DEG`, `_ft_output_offset`, `_ft_link`.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The `Episode/*` metrics (RL and BC) are of the episodes reset on each step only: `BaseEnv.step()` clears the `extras["episode"]` of the earlier resets, which the envs kept until their next reset and the rsl_rl logger counted again on every step without a reset (repeating the last reset's metrics, also into the next iteration).
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Push-T task uses planar XY TCP velocity actions (`num_actions=2`), with the TCP held above the table at `tcp_height_ratio` of the T-block height, in a fixed downward orientation and within the `tcp_workspace_x/y` limits.
