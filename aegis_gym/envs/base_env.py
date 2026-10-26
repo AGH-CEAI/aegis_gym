@@ -7,6 +7,7 @@ import torch as th
 from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
+from aegis_gym.aux.action_preview import ActionSpec
 from aegis_gym.config.types import (
     CamerasSetup,
     DomainRandomizationCfg,
@@ -60,6 +61,9 @@ class BaseEnv(VecEnv):
         self.device = cfg.get_device()
         self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
         self._nominal_domain = False
+        # the normalized actions sent to the robot by the last step, after the env's clamping and
+        # limits; an instance attribute, so the wrappers delegate it to the env
+        self.applied_actions: th.Tensor | None = None
 
     def __del__(self):
         if self._scene:
@@ -115,6 +119,10 @@ class BaseEnv(VecEnv):
         supposed to be overridden by `env_cfg.env_specific_dict` in `_extract_config()`.
         """
         ...
+
+    def get_action_spec(self) -> ActionSpec:
+        """Describes the actions for their preview, see `ActionSpec`."""
+        return ActionSpec.default(self.num_actions)
 
     def get_num_envs(self) -> int:
         """Return the number of parallel environments."""

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-XXX](https://github.com/AGH-CEAI/aegis_gym/pull/XXX) - Added the live action preview (`--debug-action-preview`, `train.py` and `eval.py`, simulation and real robot): a window of its own process showing the actions of the env `debug.action_preview_env_idx` over the whole episode, the raw (policy) and the applied ones (after the env's clamping and limits, `BaseEnv.applied_actions`) in physical units, with the previous episode and a joystick panel (keys: space pause, s save, q close). The envs describe their actions with `get_action_spec()` (`ActionSpec`): the Push-T `vx, vy` and the Reacher `vx..wz`; an env without one gets the unitless `a0..aN`.
 - [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
 - [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
 - [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.

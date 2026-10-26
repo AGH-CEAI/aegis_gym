@@ -7,6 +7,7 @@ import torch as th
 import trimesh
 from tensordict import TensorDict
 
+from aegis_gym.aux.action_preview import ActionSpec
 from aegis_gym.aux.geom import (
     check_points_in_polygon,
     quat_to_rotvec_error,
@@ -138,6 +139,14 @@ class PushTEnv(BaseEnv):
         self.tcp_workspace_x = list(env_dict["tcp_workspace_x"])
         self.tcp_workspace_y = list(env_dict["tcp_workspace_y"])
         self.terminate_on_success = env_dict["terminate_on_success"]
+
+    def get_action_spec(self) -> ActionSpec:
+        return ActionSpec(
+            names=("vx", "vy"),
+            units=("m/s", "m/s"),
+            scales=(self.max_linear_speed, self.max_linear_speed),
+            joystick=(0, 1),
+        )
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -510,6 +519,8 @@ class PushTEnv(BaseEnv):
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
         tcp_twist = self._planar_action_to_tcp_twist(actions)
+        # a copy, the manipulator scales the twist in place
+        self.applied_actions = tcp_twist[:, :2].clone()
 
         self._scene.pre_step()
         self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
