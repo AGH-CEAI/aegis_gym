@@ -36,7 +36,12 @@ from aegis_gym.runners.policy_preview import (
     make_visual_bc_policy,
     preview_iteration,
 )
-from train import create_env, create_policy_preview_recorder, init_clearml_task
+from train import (
+    create_env,
+    create_policy_preview_recorder,
+    init_clearml_task,
+    wrap_action_preview,
+)
 
 
 def main():
@@ -72,6 +77,7 @@ def main():
     ):
         logger.info(">>> Wrapping env with ObsPreviewEnvWrapper")
         env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+    env = wrap_action_preview(env=env, cfg=cfg)
 
     logger.info(
         f"The episode length is defined as {cfg.env_cfg.episode_length_s} s, which corresponds to {cfg.env_cfg.max_steps}"

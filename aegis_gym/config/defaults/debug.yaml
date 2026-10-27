@@ -4,3 +4,5 @@ vis_preview_side: 256
 vis_preview_max_envs: 5
 enable_record_obs: False
 record_dir: "/tmp"
+enable_action_preview: False
+action_preview_env_idx: 0

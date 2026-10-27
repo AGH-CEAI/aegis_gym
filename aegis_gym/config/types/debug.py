@@ -12,3 +12,5 @@ class DebugCfg(BaseCfg):
     vis_preview_max_envs: int = 5
     enable_record_obs: bool = False
     record_dir: Path = Path("/tmp")
+    enable_action_preview: bool = False
+    action_preview_env_idx: int = 0

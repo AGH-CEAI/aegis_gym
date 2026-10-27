@@ -52,6 +52,7 @@ class LaunchArgs:
     debug_preview_vis_obs: bool | None
     debug_record_vis_obs: bool | None
     debug_record_dir: Path | None
+    debug_preview_actions: bool | None
 
     enable_recording: bool | None
     video_path: Path | None
@@ -209,6 +210,15 @@ def parse_arguments(
         help="Record visual observations to a given directory in '--debug-record-dir'.",
     )
     p.add_argument("--debug-record-dir", type=Path, default=Path("/tmp/aegis_vis_obs"))
+    p.add_argument(
+        "--debug-action-preview",
+        action="store_true",
+        default=False,
+        help=(
+            "Show a window with the live actions of the env `debug.action_preview_env_idx` "
+            "(enables the debugging tools)."
+        ),
+    )
 
     p.add_argument(
         "--record",
@@ -306,6 +316,7 @@ def parse_arguments(
         debug_preview_vis_obs=args.debug_vis_preview,
         debug_record_vis_obs=args.debug_record_vis_obs,
         debug_record_dir=args.debug_record_dir,
+        debug_preview_actions=args.debug_action_preview,
         enable_recording=args.record,
         video_path=args.video_path,
         load_from_pickle=args.load_from_pickle,

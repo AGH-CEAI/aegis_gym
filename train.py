@@ -21,7 +21,11 @@ from aegis_gym.config import (
 from aegis_gym.config.types import Algorithm, Control, ExpConfig
 from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
-from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
+from aegis_gym.envs.wrappers import (
+    ActionPreviewEnvWrapper,
+    ObsPreviewEnvWrapper,
+    VisionAugEnvWrapper,
+)
 from aegis_gym.runners import BasePolicyRunner, BehaviorCloningRunner, OnPolicyRunner
 from aegis_gym.runners.policy_preview import (
     PolicyPreviewRecorder,
@@ -165,6 +169,13 @@ def calibration_movment(env: BaseEnv, cfg: ExpConfig) -> None:
     logger.info(">>> Finished relative joints movement.")
 
 
+def wrap_action_preview(env: BaseEnv, cfg: ExpConfig) -> BaseEnv:
+    if not (cfg.debug_cfg.enabled and cfg.debug_cfg.enable_action_preview):
+        return env
+    get_logger("Train").info(">>> Wrapping env with ActionPreviewEnvWrapper")
+    return ActionPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+
+
 def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
     logger = get_logger("Train")
     args = cfg.args
@@ -190,6 +201,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             ):
                 logger.info(">>> (BC) Wrapping env with ObsPreviewEnvWrapper")
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+            env = wrap_action_preview(env=env, cfg=cfg)
 
             logger.info(">>> (BC) Preparing policy runner")
             runner = BehaviorCloningRunner(
@@ -237,6 +249,7 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             ):
                 logger.info(">>> (RL) Wrapping env with ObsPreviewEnvWrapper")
                 env = ObsPreviewEnvWrapper(env=env, cfg_debug=cfg.debug_cfg)
+            env = wrap_action_preview(env=env, cfg=cfg)
 
             logger.info(">>> (RL) Preparing policy runner")
             runner = OnPolicyRunner(env=env, cfg=cfg)

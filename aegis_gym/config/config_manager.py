@@ -243,11 +243,12 @@ class ConfigManager:
             cfg_dict["logger"]["enable_policy_preview"] = args.enable_recording
 
         # Apply the debug flags
-        if args.debug_enable:
-            cfg_dict["debug"]["enabled"] = args.debug_enable
+        if args.debug_enable or args.debug_preview_actions:
+            cfg_dict["debug"]["enabled"] = True
             cfg_dict["debug"]["enable_vis_preview"] = args.debug_preview_vis_obs
             cfg_dict["debug"]["enable_record_obs"] = args.debug_record_vis_obs
             cfg_dict["debug"]["record_dir"] = str(args.debug_record_dir)
+            cfg_dict["debug"]["enable_action_preview"] = args.debug_preview_actions
 
         # Confirm types of data
         cfg_dict["env"]["image_resolution"] = tuple(cfg_dict["env"]["image_resolution"])
@@ -285,6 +286,11 @@ class ConfigManager:
                 "logger.enable_policy_preview",
             ),
             ("--debug-enable", args.debug_enable or None, "debug.enabled"),
+            (
+                "--debug-action-preview",
+                args.debug_preview_actions or None,
+                "debug.enable_action_preview",
+            ),
         ]
         # A real robot is a single instance, `_patch_config()` sets it on purpose
         if args.control_type != Control.ROS:
