@@ -25,16 +25,42 @@ class AlgorithmCfg(BaseCfg):
 
 
 @dataclass(slots=True)
-class PolicyCfg(BaseCfg):
+class DistributionCfg(BaseCfg):
+    """How the actions are sampled around the actor output."""
+
+    # "GaussianDistribution" keeps one standard deviation per action, learned and independent of
+    # the state. "HeteroscedasticGaussianDistribution" makes the actor output it as well, so it
+    # varies with the state.
     class_name: str
+    # Standard deviation at the start of the training, in action units.
+    init_std: float
+    # "scalar" stores the standard deviation as it is, "log" stores its logarithm, which keeps it
+    # positive and makes the updates multiplicative. `init_std` is in action units either way.
+    std_type: Literal["scalar", "log"]
+
+
+@dataclass(slots=True)
+class ActorCfg(BaseCfg):
+    class_name: str
+    hidden_dims: list[int]
     activation: str
-    actor_obs_normalization: bool
-    critic_obs_normalization: bool
-    init_noise_std: float
-    actor_hidden_dims: list[int]
-    critic_hidden_dims: list[int]
-    noise_std_type: Literal["scalar", "log"]
-    state_dependent_std: bool
+    obs_normalization: bool
+    distribution_cfg: DistributionCfg
+
+
+@dataclass(slots=True)
+class CriticCfg(BaseCfg):
+    class_name: str
+    hidden_dims: list[int]
+    activation: str
+    obs_normalization: bool
+
+
+@dataclass(slots=True)
+class PolicyCfg(BaseCfg):
+    actor: ActorCfg
+    critic: CriticCfg
+    reset_last_layer_weights: dict
     detach_actor_grad: bool
 
 
@@ -51,8 +77,5 @@ class RLCfg(BaseCfg):
     experiment_name: str
     run_name: str
     algorithm: AlgorithmCfg
-    # reset_last_layer_weights_interval: int
-    # reset_last_layer_weights_part: Literal["actor", "critic", "both"]
-    reset_last_layer_weights: dict
     init_member_classes: dict
     policy: PolicyCfg

@@ -35,7 +35,7 @@ checkout is found from $PWD, so run this from inside your clone.
 Because that install is --no-deps, and the image's dependencies were fixed
 when it was built, every create, recreate and join then checks the installed
 packages against your checkout's uv.lock and offers to install whatever has
-drifted. torch, torchvision, triton, the nvidia-* runtimes and rsl-rl-lib are
+drifted. torch, torchvision, triton and the nvidia-* runtimes are
 never touched: they come from the CUDA wheel index and from git, not the lock.
 
 Options:
