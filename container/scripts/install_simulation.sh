@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
-: "${CEAI_RSL_RL_TAG:?CEAI_RSL_RL_TAG is required}"
 : "${AEGIS_GYM_TAG:?AEGIS_GYM_TAG is required}"
 
 export DEBIAN_FRONTEND=noninteractive
