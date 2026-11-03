@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-180](https://github.com/AGH-CEAI/aegis_gym/pull/180) - Moved the reinforcement learning library from a checkout of the fork to the dependency lock.
 - [PR-168](https://github.com/AGH-CEAI/aegis_gym/pull/168) - Bumped default version from `v0.1.0` to `v0.2.0`.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - The in-image `aegis-gym` dispatcher now reports an unrecognised command itself instead of letting `exec` fail, and `aegis_gym_run` warns about one before it builds or starts anything. Running a real command verbatim is unchanged; only the failure path is different.
 - [PR-155](https://github.com/AGH-CEAI/aegis_gym/pull/155) - Repo, branch and revision resolution moved into `lib/common.sh`, shared by all four commands. The three copies had already drifted apart: branch detection ran in `$PWD` in one and in the repo root in another, and warnings went to stdout in one and stderr in the others.
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- [PR-183](https://github.com/AGH-CEAI/aegis_gym/pull/183) - Removed a leftover check that blocked every base image build: it still demanded a build argument PR-180 had dropped.
 - [PR-160](https://github.com/AGH-CEAI/aegis_gym/pull/160) - `aegis_gym_toolbx` exiting at the "Install the lock-pinned versions now?" prompt when its answers came from a pipe. The dependency check's `toolbox run` consumed the rest of stdin, so `read` got end-of-input and `set -e` ended the script. The check now reads from `/dev/null`.
 - [PR-160](https://github.com/AGH-CEAI/aegis_gym/pull/160) - `scripts/verify_deps.sh` ignoring the environment markers in the lock export. `uv.lock` is universal, so a package can be pinned once per Python version (`av==17.1.0 ; python_full_version < '3.11'` and `av==18.1.0 ; python_full_version >= '3.11'`). With the markers stripped, the last line won, so on the image's Python 3.10 the check reported false drift and `--install` failed with `av==18.1.0 depends on Python>=3.11`. Markers are now evaluated against the container's interpreter.
 - [PR-160](https://github.com/AGH-CEAI/aegis_gym/pull/160) - `scripts/verify_deps.sh --install` offering to replace `protobuf`, `grpcio` and `grpcio-tools` with the lock's pins while the aegis_ros gRPC client is installed. The client pins `protobuf<3.21` and `grpcio<1.51`, so replacing them would break every `aegis_grpc` import. The script now lists those packages as held back and does not install them.
