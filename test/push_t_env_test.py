@@ -56,6 +56,19 @@ def _stepping_env(success: list[bool], off_table: list[bool]) -> PushTEnv:
     return env
 
 
+def test_push_t_step_keeps_the_applied_planar_actions():
+    env = _stepping_env(success=[False] * NUM_ENVS, off_table=[False] * NUM_ENVS)
+    # the workspace limit halves the actions
+    env._planar_action_to_tcp_twist = lambda actions: th.cat(
+        [actions / 2, th.ones(NUM_ENVS, 4)], dim=-1
+    )
+
+    env._step(th.tensor([[2.0, -0.5], [0.0, -3.0], [0.1, 0.2]]))
+
+    expected = th.tensor([[0.5, -0.25], [0.0, -0.5], [0.05, 0.1]])
+    assert th.allclose(env.applied_actions, expected)
+
+
 def test_push_t_step_reports_the_terminated_episodes():
     # env 0: times out, env 1: tee off the table, env 2: running
     env = _stepping_env(success=[False, False, False], off_table=[False, True, False])

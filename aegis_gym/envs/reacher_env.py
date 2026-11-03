@@ -4,6 +4,7 @@ from collections.abc import Sequence
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.action_preview import ActionSpec
 from aegis_gym.aux.geom import (
     quat_to_rotvec_error,
     transform_by_quat,
@@ -98,6 +99,14 @@ class ReacherEnv(BaseEnv):
         self.spawnbox_yoffset = env_dict["box_spawnbox_yoffset"]
         self.success_pos_thresh = env_dict["success_pos_thresh"]
         self.success_rot_thresh = math.radians(env_dict["success_rot_thresh_deg"])
+
+    def get_action_spec(self) -> ActionSpec:
+        return ActionSpec(
+            names=("vx", "vy", "vz", "wx", "wy", "wz"),
+            units=("m/s",) * 3 + ("rad/s",) * 3,
+            scales=(self.max_linear_speed,) * 3 + (self.max_angular_speed,) * 3,
+            joystick=(0, 1),
+        )
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -269,6 +278,8 @@ class ReacherEnv(BaseEnv):
         self.episode_length_buf += 1
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
+        # a copy, the manipulator scales the actions in place
+        self.applied_actions = actions.clone()
 
         self._scene.pre_step()
         self.manipulator.ctrl_apply_vel_action(actions, open_gripper=True)

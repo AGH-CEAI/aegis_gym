@@ -4,6 +4,7 @@ from typing import Any
 import torch as th
 from tensordict import TensorDict
 
+from aegis_gym.aux.action_preview import ActionSpec
 from aegis_gym.config.types import CamerasSetup
 
 from ..base_env import BaseEnv, Modality, ResetReturn, StepReturn
@@ -34,6 +35,9 @@ class BaseEnvWrapper(BaseEnv):
 
     def get_default_env_specific_dict(self) -> dict:  # type: ignore[override]
         return self._env.get_default_env_specific_dict()
+
+    def get_action_spec(self) -> ActionSpec:
+        return self._env.get_action_spec()
 
     def get_cameras_setup(self) -> CamerasSetup:
         return self._env.get_cameras_setup()
