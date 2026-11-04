@@ -37,7 +37,14 @@ class GenesisManipulator(BaseManipulator):
     # The pose target of the A1 mode trails the reference along its velocity by this much, so the
     # observed TCP lags the reference like on the robot (~17 ms at the observation, delta_pose_test
     # 2026-11-04); without it the stiff PD with velocity feedforward ends each step slightly ahead.
-    _A1_TRACKING_LAG_S = 0.033
+    _A1_TRACKING_LAG_S = 0.060
+    # Fraction of a step's motion the real JTC has not yet commanded when the policy observes (its
+    # segment is interpolated over the step); not integrated away by the Humble spring, because it
+    # is part of the reference the controller follows.
+    _A1_SEGMENT_REMAINDER = 0.37
+    # Adds the inertial load of the links past the sensor to the simulated F/T, as the real
+    # sensor reads it (a1_square*.csv: stop impulse = 1.25 kg * dv).
+    _FT_TOOL_INERTIA = True
 
     def __init__(
         self,
@@ -151,6 +158,10 @@ class GenesisManipulator(BaseManipulator):
 
         self._ik_method = cfg_robot.ik_method
         self._admittance = SimAdmittance(num_envs=num_envs, device=self.device)
+        self._a1_commanded = th.zeros(num_envs, 3, device=self.device)
+        self._tool_com_vel_prev: th.Tensor | None = None
+        self._tool_com_acc: th.Tensor | None = None
+        self._tool_acc_step = -1
 
         self._setup_config()
         self._add_joint_torque_sensor()
@@ -417,16 +428,20 @@ class GenesisManipulator(BaseManipulator):
         pos, quat = self.get_tcp_position(), self.get_tcp_orientation()
         force = transform_by_quat(self.get_ft_wrench()[:, :3], self.get_ft_frame_quat())
         adm = self._admittance
+        starting = ~adm.active
         adm.activate(pos, quat, force)
+        self._a1_commanded[starting] = pos[starting]
+        tracking_error = pos - self._a1_commanded
         clipped, applied_dp, applied_dr = adm.step_reference(
             delta[:, :3], delta[:, 3:6], pos, quat
         )
-        adm.step_spring(force, self._policy_dt)
+        adm.step_spring(force, self._policy_dt, tracking_error)
 
         lin_vel = applied_dp / self._policy_dt
         rot_vel = applied_dr / self._policy_dt
+        self._a1_commanded = adm.target_pos() - self._A1_SEGMENT_REMAINDER * applied_dp
         target_pos = (
-            adm.target_pos()
+            self._a1_commanded
             - lin_vel * self._A1_TRACKING_LAG_S
             + adm.step_velocity_memory(lin_vel, self._policy_dt)
         )
@@ -516,7 +531,7 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.set_qpos(q_pos, envs_idx=idx)
-        self._mark_teleported(idx)
+        self._tool_com_vel_prev = None
         self._robot_entity.control_dofs_position(position=q_pos, envs_idx=idx)
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
@@ -531,7 +546,7 @@ class GenesisManipulator(BaseManipulator):
             self._default_joint_angles, dtype=th.float32, device=self.device
         ).repeat(len(idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=idx)
-        self._mark_teleported(idx)
+        self._tool_com_vel_prev = None
         self._robot_entity.control_dofs_position(
             position=default_joint_angles, envs_idx=idx
         )
@@ -729,19 +744,12 @@ class GenesisManipulator(BaseManipulator):
             if self._tool_com_vel_prev is None:
                 self._tool_com_acc = th.zeros_like(com_vel)
             else:
-                # a teleport since the last update breaks the velocity difference
-                prev_teleported = self._teleport_step >= self._tool_acc_step
-                self._tool_com_acc = th.where(
-                    prev_teleported[:, None, None],
-                    0.0,
-                    (com_vel - self._tool_com_vel_prev) / self._policy_dt,
-                )
+                self._tool_com_acc = (
+                    com_vel - self._tool_com_vel_prev
+                ) / self._policy_dt
             self._tool_com_vel_prev = com_vel.clone()
             self._tool_acc_step = step
-        acc = th.where(
-            self._teleported_since_step()[:, None, None], 0.0, self._tool_com_acc
-        )
-        load = -self._gravity_link_masses.unsqueeze(-1) * acc
+        load = -self._gravity_link_masses.unsqueeze(-1) * self._tool_com_acc
         lever = com_pos - self._ft_link.get_pos().unsqueeze(1)
         return th.cat(
             [load.sum(dim=1), th.linalg.cross(lever, load, dim=-1).sum(dim=1)], dim=-1
