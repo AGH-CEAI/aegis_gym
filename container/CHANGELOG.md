@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- [PR-184](https://github.com/AGH-CEAI/aegis_gym/pull/184) - The README's training and evaluation examples pass `-c` with the environment's preset.
+- [PR-184](https://github.com/AGH-CEAI/aegis_gym/pull/184) - Bumped default version from `v0.2.0` to `v0.3.0`.
 - [PR-180](https://github.com/AGH-CEAI/aegis_gym/pull/180) - Moved the reinforcement learning library from a checkout of the fork to the dependency lock.
 
 ### Fixed

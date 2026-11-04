@@ -39,7 +39,8 @@ cd ~/ceai_ws/ros_ws/src/aegis_gym
 aegis_gym_toolbx
 
 # 3b. or production: run a training
-aegis_gym_run train --env reacher -a rl -B 4096 -e TEST_PLAYGROUND_run1
+aegis_gym_run train --env reacher -a rl -B 4096 -e TEST_PLAYGROUND_run1 \
+    -c /opt/aegis_gym/aegis_gym/config/presets/reacher.yaml
 ```
 
 **Budget for step 2.** The first build pulls roughly 3 GB of CUDA wheels plus
@@ -129,7 +130,7 @@ that actually point into this repo. Every command takes `-h`.
 
 ## Build the base images
 
-The default image version is **`v0.2.0`**; pass `-v` for another.
+The default image version is **`v0.3.0`**; pass `-v` for another.
 
 ```bash
 aegis_gym_build_image           # interactive, prompts for refs
@@ -165,7 +166,8 @@ Inside, your host edits are live — no reinstall, no rebuild:
 ```bash
 python3 -c "import aegis_gym; print(aegis_gym.__file__)"
 # -> /home/you/path/to/aegis_gym/aegis_gym/__init__.py   (your working copy)
-python3 train.py -a rl --env reacher -B 16 --max-iterations 10 -e TEST_PLAYGROUND_dev
+python3 train.py -a rl --env reacher -B 16 --max-iterations 10 -e TEST_PLAYGROUND_dev \
+    -c aegis_gym/config/presets/reacher.yaml
 python3 -m pytest -v .                 # pytest is already in the image
 ```
 
@@ -241,7 +243,8 @@ sets `PYOPENGL_PLATFORM=glx` and clears `PYGLET_HEADLESS`, the same pair
 over SSH with no `DISPLAY`, put it back per command:
 
 ```bash
-PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1 python3 train.py -a rl --env reacher
+PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1 python3 train.py -a rl --env reacher \
+    -c aegis_gym/config/presets/reacher.yaml
 ```
 
 ---
@@ -249,8 +252,10 @@ PYOPENGL_PLATFORM=egl PYGLET_HEADLESS=1 python3 train.py -a rl --env reacher
 ## Production — `aegis_gym_run`
 
 ```bash
-aegis_gym_run train -a rl --env reacher -e TEST_PLAYGROUND_run1 -B 4096
-aegis_gym_run eval --env reacher -e TEST_PLAYGROUND_run1
+aegis_gym_run train -a rl --env reacher -e TEST_PLAYGROUND_run1 -B 4096 \
+    -c /opt/aegis_gym/aegis_gym/config/presets/reacher.yaml
+aegis_gym_run eval --env reacher -e TEST_PLAYGROUND_run1 \
+    -c /opt/aegis_gym/aegis_gym/config/presets/reacher.yaml
 aegis_gym_run --gui eval --env reacher        # forward X11 for the viewer
 aegis_gym_run shell                           # bare shell in the image
 ```
@@ -260,6 +265,24 @@ ClearML experiment name, `-B/--num-envs` the parallel env count. Everything
 after the command goes to `train.py` / `eval.py` untouched, so their own flags —
 `--load-rl-model-id`, `--load-bc-model-id`, `--max-iterations`, `--control` —
 work as usual. Use `-h` on those scripts for the full list.
+
+`-c` is not optional in practice. The per-environment presets under
+`aegis_gym/config/presets/` are **not** selected by `--env`; nothing in the
+code looks at that directory, so a run without `-c` uses the bare defaults
+from `aegis_gym/config/defaults/` and silently ignores the tuned
+hyperparameters the preset carries. Pass the preset of the environment you
+asked for.
+
+Where to point it differs between the two ways of using this directory,
+because the code lives in a different place:
+
+| where | path to pass to `-c` |
+| ----- | -------------------- |
+| `aegis_gym_run` (production) | `/opt/aegis_gym/aegis_gym/config/presets/<env>.yaml` |
+| `aegis_gym_toolbx` (development) | `aegis_gym/config/presets/<env>.yaml`, relative to your checkout |
+
+The production image keeps its clone at `/opt/aegis_gym` and starts in an
+empty `/ws`, so a relative path resolves to nothing there.
 
 The first run builds `ceai/aegis_gym_prod:<ver>`, showing you what it is about
 to build and offering `[Y]es / [e]dit / [a]bort`. The branch comes from the
@@ -306,7 +329,7 @@ agent never sees it.
 Publish an image for a queue with:
 
 ```bash
-aegis_gym_run -b --no-run --push-as ghcr.io/agh-ceai/aegis_gym:v0.2.0
+aegis_gym_run -b --no-run --push-as ghcr.io/agh-ceai/aegis_gym:v0.3.0
 ```
 
 `--push` without `--push-as` uses the default registry
@@ -329,7 +352,7 @@ aegis_gym_run -y shell python3 -c \
   "import genesis as gs; gs.init(backend=gs.gpu, logging_level='warning'); print('genesis ok')"
 
 # the production image still satisfies the ClearML contract
-podman inspect ceai/aegis_gym_prod:v0.2.0 --format '{{.Config.Entrypoint}}'
+podman inspect ceai/aegis_gym_prod:v0.3.0 --format '{{.Config.Entrypoint}}'
 # -> []
 ```
 
@@ -357,31 +380,32 @@ Each command is a thin wrapper around podman. The equivalents:
 
 ```bash
 # base tiers (build context: this directory)
-podman build . -f Containerfile.torch -t ceai/aegis_gym_torch:v0.2.0
+podman build . -f Containerfile.torch -t ceai/aegis_gym_torch:v0.3.0
 podman build . -f Containerfile \
-    --build-arg TORCH_REF=ceai/aegis_gym_torch:v0.2.0 \
+    --build-arg TORCH_REF=ceai/aegis_gym_torch:v0.3.0 \
     --build-arg AEGIS_GYM_TAG=devel \
     --build-arg AEGIS_ROS_TAG=humble-devel \
-    -t ceai/aegis_gym:v0.2.0
+    -t ceai/aegis_gym:v0.3.0
 
 # production (build context: run/)
 podman build run -f run/Containerfile.prod \
-    --build-arg BASE_REF=ceai/aegis_gym:v0.2.0 \
+    --build-arg BASE_REF=ceai/aegis_gym:v0.3.0 \
     --build-arg AEGIS_GYM_TAG=devel \
-    -t ceai/aegis_gym_prod:v0.2.0
+    -t ceai/aegis_gym_prod:v0.3.0
 podman run --rm -it --network host --ipc host \
     --device nvidia.com/gpu=all --security-opt label=disable \
     -v ${HOME}/clearml.conf:/root/clearml.conf:ro \
-    ceai/aegis_gym_prod:v0.2.0 aegis-gym train -a rl --env reacher -e TEST_PLAYGROUND_manual
+    ceai/aegis_gym_prod:v0.3.0 aegis-gym train -a rl --env reacher \
+        -c /opt/aegis_gym/aegis_gym/config/presets/reacher.yaml -e TEST_PLAYGROUND_manual
 
 # development (build context: dev/)
 podman build dev -f dev/Containerfile.toolbx \
-    --build-arg BASE_REF=ceai/aegis_gym:v0.2.0 \
-    -t localhost/aegis_gym_dev:v0.2.0
-toolbox create --image localhost/aegis_gym_dev:v0.2.0 aegis_gym_dev-v0.2.0
-toolbox run --container aegis_gym_dev-v0.2.0 bash -lc \
+    --build-arg BASE_REF=ceai/aegis_gym:v0.3.0 \
+    -t localhost/aegis_gym_dev:v0.3.0
+toolbox create --image localhost/aegis_gym_dev:v0.3.0 aegis_gym_dev-v0.3.0
+toolbox run --container aegis_gym_dev-v0.3.0 bash -lc \
     "sudo uv pip install --system --no-deps --editable /path/to/aegis_gym"
-toolbox enter aegis_gym_dev-v0.2.0
+toolbox enter aegis_gym_dev-v0.3.0
 ```
 
 Note that `--ipc host` and `--shm-size` are mutually exclusive in podman: host

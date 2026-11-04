@@ -17,7 +17,7 @@ AEGIS_REPO_URL="https://github.com/AGH-CEAI/aegis_gym.git"
 AEGIS_ROS_REPO_URL="https://github.com/AGH-CEAI/aegis_ros.git"
 DEFAULT_REGISTRY="geonosis:5000"
 
-IMAGE_VERSION="v0.2.0"
+IMAGE_VERSION="v0.3.0"
 AEGIS_GYM_TAG="devel"
 AEGIS_ROS_TAG="humble-devel"
 
@@ -45,7 +45,7 @@ The torch tier is kept separate so a --no-cache rebuild of the dependency
 tier does not redo the multi-GB CUDA wheel install.
 
 Options:
-  -v, --version VER      Image version (default: v0.2.0)
+  -v, --version VER      Image version (default: v0.3.0)
   -y, --yes              Accept all defaults, no prompts (for CI)
       --gym-ref REF      aegis_gym branch/tag for the dependency lock (default: devel)
       --ros-ref REF      aegis_ros branch/tag for the gRPC client (default: humble-devel)
