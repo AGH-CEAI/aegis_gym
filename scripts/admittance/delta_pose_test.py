@@ -65,6 +65,12 @@ def extra_args(p) -> None:
     p.add_argument("--press-max-force", type=float, default=4.0, help="[N] stop")
     p.add_argument("--press-hold", type=float, default=2.0, help="[s] in contact")
     p.add_argument(
+        "--press-kick",
+        type=float,
+        default=0.0,
+        help="[N] sim: sideways (world x) push on the plate for one step, 0.5 s into the hold",
+    )
+    p.add_argument(
         "--press-drop",
         type=float,
         default=0.0,
@@ -77,10 +83,27 @@ def extra_args(p) -> None:
     p.add_argument("--plate-k", type=float, default=sim.normal_stiffness, help="[N/m]")
     p.add_argument("--plate-d", type=float, default=sim.normal_damping, help="[N*s/m]")
     p.add_argument(
-        "--plate-shear-k", type=float, default=sim.shear_stiffness, help="[N/m]"
+        "--plate-shear-k",
+        type=float,
+        nargs=2,
+        default=sim.shear_stiffness,
+        help="[N/m] world x y",
     )
     p.add_argument(
         "--plate-shear-d", type=float, default=sim.shear_damping, help="[N*s/m]"
+    )
+    p.add_argument(
+        "--plate-noise",
+        type=float,
+        nargs=2,
+        default=sim.surface_noise_std,
+        help="[N] sim: sideways surface noise std on the plate, world x y",
+    )
+    p.add_argument(
+        "--plate-noise-cutoff",
+        type=float,
+        default=sim.surface_noise_cutoff_hz,
+        help="[Hz] sim: low-pass corner of the surface noise",
     )
 
 
@@ -91,8 +114,10 @@ def create_sim_env_with_plate(cfg: ExpConfig, opts) -> tuple[BaseEnv, SpringPlat
     params = SpringPlateParams(
         normal_stiffness=opts.plate_k,
         normal_damping=opts.plate_d,
-        shear_stiffness=opts.plate_shear_k,
+        shear_stiffness=tuple(opts.plate_shear_k),
         shear_damping=opts.plate_shear_d,
+        surface_noise_std=tuple(opts.plate_noise),
+        surface_noise_cutoff_hz=opts.plate_noise_cutoff,
     )
     top = (
         SIM_HOME_TCP[0],
@@ -198,7 +223,12 @@ def main() -> None:
     def force_norm() -> float:
         return float(manip.get_ft_wrench()[0, :3].norm())
 
-    def act(phase: str, translation=(0.0, 0.0, 0.0), yaw: float = 0.0) -> None:
+    def act(
+        phase: str,
+        translation=(0.0, 0.0, 0.0),
+        yaw: float = 0.0,
+        push: th.Tensor | None = None,
+    ) -> None:
         nonlocal reference, ref_yaw
         delta = th.zeros(1, 6, device=device)
         delta[0, :3] = th.as_tensor(translation, device=device)
@@ -208,6 +238,15 @@ def main() -> None:
         periods.append(now - last[0])
         last[0] = now
         clipped = bool(manip.ctrl_apply_delta_pose_action(delta)[0])
+        if plate is not None:
+            plate.apply_surface_noise(dt)
+        if push is not None:
+            # On the plate, so it reaches the gripper through the contact and the simulated F/T
+            # sees it (a wrench applied to a robot link is not a contact). Acts over the whole
+            # scene.step(), i.e. one policy step (measured).
+            scene.gs_scene.sim.rigid_solver.apply_links_external_wrench(
+                force=push.reshape(1, 1, 3), links_idx=[plate.link.idx]
+            )
         scene.step()
         reference = manip.get_tcp_reference()[0, :3]
         ref_yaw += math.degrees(yaw)
@@ -303,8 +342,10 @@ def main() -> None:
             f"|F| {force_norm():.2f} N"
         )
         hold_forces = []
-        for _ in range(round(opts.press_hold / dt)):
-            act("hold")
+        kick_step = round(0.5 / dt) if plate is not None and opts.press_kick else -1
+        push = th.tensor([opts.press_kick, 0.0, 0.0], device=device)
+        for k in range(round(opts.press_hold / dt)):
+            act("hold", push=push if k == kick_step else None)
             hold_forces.append(force_norm())
         logger.info(
             f"[hold] |F| {hold_forces[0]:.2f} -> {hold_forces[-1]:.2f} N over {opts.press_hold:g} s"
