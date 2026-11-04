@@ -1,5 +1,6 @@
 """
-Real-robot check of `ctrl_apply_delta_pose_action` (A1 admittance control mode).
+Check of `ctrl_apply_delta_pose_action` (A1 admittance control mode), on the real robot or in
+Genesis (`--control sim -B 1`), so the two logs can be overlaid.
 
 Phases, all at the policy rate (`policy_dt`, must match the server's
 `admittance_step_duration_s`, 0.04 s):
@@ -12,8 +13,10 @@ Logs every step to <local_log_dir>/delta_pose_test.csv and prints a summary: loo
 (a step longer than `policy_dt` stalls the JTC between segments), tracking of the commanded
 reference by the measured TCP, and clipped steps.
 
-Run from the repo root, with bringup and the gRPC server up, e.g.:
+Run from the repo root, e.g.:
     python -m scripts.admittance.delta_pose_test --control ros --env reacher --disable-cameras -e a1_delta
+    python -m scripts.admittance.delta_pose_test --control sim --env reacher -B 1 -e a1_delta_sim
+(the real robot needs bringup and the gRPC server up; the hold phase has nobody to push in sim)
 """
 
 import csv
@@ -25,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import torch as th
 
-from aegis_gym.aux.logging import get_logger
+from aegis_gym.aux.logging import get_logger, setup_logger
 from aegis_gym.config import ConfigManager, parse_arguments
 from aegis_gym.config.types import Control
 from scripts.ft_sensor.common import rotation_since
@@ -49,10 +52,8 @@ def main() -> None:
     th.set_default_dtype(th.float32)
     args = parse_arguments(extra_argparser=extra_args)
     opts = args.get_raw_args()
-    if args.control_type != Control.ROS:
-        logger.error(
-            "The admittance mode exists only on the real robot (--control ros)."
-        )
+    if args.control_type == Control.SIM and args.num_envs != 1:
+        logger.error("Run the simulation with a single environment (-B 1).")
         sys.exit(1)
     task = init_clearml_task(
         project_name=args.project_name,
@@ -60,7 +61,9 @@ def main() -> None:
         control=args.control_type,
         exp_name=args.experiment_name,
     )
-    device = th.device("cpu")
+    device = th.device(
+        "cuda" if args.control_type == Control.SIM and th.cuda.is_available() else "cpu"
+    )
     ConfigManager.setup_config(argv=args, device=device, task=task)
     cfg = ConfigManager.get_config()
 
@@ -126,7 +129,7 @@ def main() -> None:
         last[0] = now
         clipped = bool(manip.ctrl_apply_delta_pose_action(delta)[0])
         scene.step()
-        reference = reference + delta[0, :3]
+        reference = manip.get_tcp_reference()[0, :3]
         ref_yaw += math.degrees(yaw)
         clipped_steps[phase] = clipped_steps.get(phase, 0) + int(clipped)
 
@@ -219,4 +222,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    setup_logger("INFO")
     main()

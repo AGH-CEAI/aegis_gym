@@ -123,6 +123,7 @@ class RosGrpcManipulator(BaseManipulator):
         self._servo_enabled = False
         # A previous run may have left the arm in the admittance chain; Disable is idempotent.
         self._admittance_enabled = True
+        self._admittance_reference: th.Tensor | None = None
         self._admittance_disable()
 
         # Prepare initial observation
@@ -181,6 +182,7 @@ class RosGrpcManipulator(BaseManipulator):
         if not success:
             raise RuntimeError(f"Failed to disable the admittance chain: {msg}")
         self._admittance_enabled = False
+        self._admittance_reference = None
         self.logger.info("Admittance disabled")
 
     def shutdown(self) -> None:
@@ -301,13 +303,16 @@ class RosGrpcManipulator(BaseManipulator):
         self._admittance_enable()
         delta_np = delta.reshape(-1).detach().cpu().numpy()
 
-        success, msg, clipped, _ = self._run_coro(
+        success, msg, clipped, reference = self._run_coro(
             self._robot_client.admittance_step(
                 translation=delta_np[:3], rotation=delta_np[3:6]
             )
         )
         if not success:
             self.logger.warning(f"Admittance step rejected: {msg}")
+        reference = th.from_numpy(reference).to(dtype=th.float32, device=self.device)
+        reference[3:] = self.pt.quat_xyzw_to_wxyz(reference[3:])
+        self._admittance_reference = reference.unsqueeze(dim=0)
 
         if open_gripper is not None:
             if open_gripper:
@@ -472,6 +477,11 @@ class RosGrpcManipulator(BaseManipulator):
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
         return self._state[StateModality.POSE]
+
+    def get_tcp_reference(self) -> th.Tensor:
+        if self._admittance_reference is None:
+            return self.get_tcp_pose()
+        return self._admittance_reference
 
     def get_base_pose(self) -> th.Tensor:
         return th.tensor([0, 0, 0, 1, 0, 0, 0], dtype=th.float32, device=self.device)

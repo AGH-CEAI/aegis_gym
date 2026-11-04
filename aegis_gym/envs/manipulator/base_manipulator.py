@@ -275,6 +275,16 @@ class BaseManipulator(ABC):
         """
         ...
 
+    @abstractmethod
+    def get_tcp_reference(self) -> th.Tensor:
+        """
+        The admittance TCP reference as [n_envs, 7]: [x, y, z, qw, qx, qy, qz], i.e. where
+        `ctrl_apply_delta_pose_action` has commanded the arm, after the limits. The measured pose
+        trails it by the loop delay and by the spring deflection under contact, so the policy can
+        tell its own command from the reaction. Outside admittance mode it is the measured pose.
+        """
+        ...
+
     def get_tcp_position(self) -> th.Tensor:
         return self.get_tcp_pose()[:, :3]
 

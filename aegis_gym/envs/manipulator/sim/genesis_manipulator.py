@@ -10,10 +10,17 @@ import torch as th
 from clearml import Dataset
 from tensordict import TensorDict
 
-from aegis_gym.aux.geom import transform_by_quat, transform_quat_by_quat
+from aegis_gym.aux.geom import (
+    quat_to_rotvec_error,
+    rotvec_to_quat,
+    transform_by_quat,
+    transform_quat_by_quat,
+)
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, DomainRandomizationCfg, RobotCfg
 from aegis_gym.envs.manipulator.base_manipulator import BaseManipulator, CameraModality
+
+from .sim_admittance import SimAdmittance
 
 RigidLink = TypeVar
 
@@ -27,6 +34,10 @@ class GenesisManipulator(BaseManipulator):
     # Fraction of the policy step the position target leads the joints; larger values overshoot
     # the calibrated speed on the action changes (0.3 measured at ~96% of the per-step limit)
     _SERVO_TARGET_LEAD = 0.3
+    # The pose target of the A1 mode trails the reference along its velocity by this much, so the
+    # observed TCP lags the reference like on the robot (~17 ms at the observation, delta_pose_test
+    # 2026-11-04); without it the stiff PD with velocity feedforward ends each step slightly ahead.
+    _A1_TRACKING_LAG_S = 0.033
 
     def __init__(
         self,
@@ -118,6 +129,7 @@ class GenesisManipulator(BaseManipulator):
         self.set_ft_payload(cfg_robot.ft_payload_mass, cfg_robot.ft_payload_com)
 
         self._ik_method = cfg_robot.ik_method
+        self._admittance = SimAdmittance(num_envs=num_envs, device=self.device)
 
         self._setup_config()
         self._add_joint_torque_sensor()
@@ -267,17 +279,11 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> None:
+        self._admittance.deactivate()
         action[:, :3] *= self.max_linear_speed
         action[:, 3:] *= self.max_angular_speed
 
-        # Compute joint velocities using inverse velocity kinematics
-        match self._ik_method:
-            case "gs_ikv":
-                q_vel = self._pseudoinverse_velocity_ik(action)
-            case "dls_ikv":
-                q_vel = self._dls_velocity_ik(action)
-            case _:
-                raise ValueError(f"Invalid IK method: {self._ik_method}")
+        q_vel = self._velocity_ik(action)
 
         # Emulates the real servo, which streams joint positions: the stiff PD tracks the commanded
         # velocity with a position target slightly ahead of the current joints, so the contacts can't
@@ -301,6 +307,16 @@ class GenesisManipulator(BaseManipulator):
             position=q_pos[:, self._fingers_dof],
             dofs_idx_local=self._fingers_dof,
         )
+
+    def _velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
+        """[num_envs, 6] end-effector twist -> [num_envs, n_dofs] joint velocities (fingers 0)."""
+        match self._ik_method:
+            case "gs_ikv":
+                return self._pseudoinverse_velocity_ik(ee_velocity)
+            case "dls_ikv":
+                return self._dls_velocity_ik(ee_velocity)
+            case _:
+                raise ValueError(f"Invalid IK method: {self._ik_method}")
 
     def _pseudoinverse_velocity_ik(self, ee_velocity: th.Tensor) -> th.Tensor:
         """
@@ -374,13 +390,60 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> th.Tensor:
-        raise NotImplementedError(
-            "The admittance (A1) control mode is not implemented in Genesis yet."
+        """Mirrors the real chain (see `SimAdmittance`): limited reference plus the spring offset,
+        tracked by the stiff joint PD like the UR tracks servoj. The joint target is the measured
+        joints plus the IK step to the target pose, so the PD lag does not wind up."""
+        pos, quat = self.get_tcp_position(), self.get_tcp_orientation()
+        force = transform_by_quat(self.get_ft_wrench()[:, :3], self.get_ft_frame_quat())
+        adm = self._admittance
+        adm.activate(pos, quat, force)
+        clipped, applied_dp, applied_dr = adm.step_reference(
+            delta[:, :3], delta[:, 3:6], pos, quat
+        )
+        adm.step_spring(force, self._policy_dt)
+
+        lin_vel = applied_dp / self._policy_dt
+        rot_vel = applied_dr / self._policy_dt
+        target_pos = (
+            adm.target_pos()
+            - lin_vel * self._A1_TRACKING_LAG_S
+            + adm.step_velocity_memory(lin_vel, self._policy_dt)
+        )
+        target_quat = transform_quat_by_quat(
+            rotvec_to_quat(-rot_vel * self._A1_TRACKING_LAG_S), adm.ref_quat
+        )
+        pose_error = th.cat(
+            [target_pos - pos, quat_to_rotvec_error(target_quat, quat)], dim=-1
+        )
+        feedforward = th.cat([lin_vel + adm.offset_vel, rot_vel], dim=-1)
+        q_pos = self._robot_entity.get_qpos()
+        arm = self._arm_dof_idx
+        self._robot_entity.control_dofs_position_velocity(
+            position=q_pos[:, arm] + self._velocity_ik(pose_error)[:, arm],
+            velocity=self._velocity_ik(feedforward)[:, arm],
+            dofs_idx_local=arm,
+        )
+
+        if open_gripper is not None:
+            q_pos[:, self._fingers_dof] = (
+                self._gripper_open_dof if open_gripper else self._gripper_close_dof
+            )
+            self._robot_entity.control_dofs_position(
+                position=q_pos[:, self._fingers_dof], dofs_idx_local=self._fingers_dof
+            )
+        return clipped
+
+    def get_tcp_reference(self) -> th.Tensor:
+        return th.where(
+            self._admittance.active.unsqueeze(-1),
+            th.cat([self._admittance.ref_pos, self._admittance.ref_quat], dim=-1),
+            self.get_tcp_pose(),
         )
 
     def ctrl_apply_joints_diff_action(
         self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
+        self._admittance.deactivate()
         q_pos = self._robot_entity.get_qpos() + joints_diff
         self._robot_entity.control_dofs_position(position=q_pos)
 
@@ -390,6 +453,7 @@ class GenesisManipulator(BaseManipulator):
         open_gripper: bool | None = None,
         envs_idx: th.Tensor | None = None,
     ) -> None:
+        self._admittance.deactivate()
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
             pos=goal_pose[:, :3],
@@ -415,6 +479,7 @@ class GenesisManipulator(BaseManipulator):
             if envs_idx is not None
             else th.arange(self._num_envs, device=self.device)
         )
+        self._admittance.deactivate(idx)
         # IK is seeded with the current joints, so reset to home beforehand to keep the arm configuration
         q_pos = self._robot_entity.inverse_kinematics(
             link=self._ee_link,
@@ -439,6 +504,7 @@ class GenesisManipulator(BaseManipulator):
             else th.arange(self._num_envs, device=self.device)
         )
 
+        self._admittance.deactivate(idx)
         default_joint_angles = th.tensor(
             self._default_joint_angles, dtype=th.float32, device=self.device
         ).repeat(len(idx), 1)
@@ -456,6 +522,7 @@ class GenesisManipulator(BaseManipulator):
             else th.arange(self._num_envs, device=self.device)
         )
 
+        self._admittance.deactivate(idx)
         joints = joints.reshape(-1, self._arm_dof_dim).to(
             dtype=th.float32, device=self.device
         )
@@ -550,10 +617,12 @@ class GenesisManipulator(BaseManipulator):
         return wrench + self._ft_residual_bias
 
     def set_ft_bias(self) -> None:
+        self._admittance.deactivate()
         self._ft_bias = self.get_ft_wrench_raw().detach().clone()
         self.note_ft_bias_pose()
 
     def clear_ft_bias(self) -> None:
+        self._admittance.deactivate()
         self._ft_bias = None
         self._ft_gravity_at_bias = None
 
