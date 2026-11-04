@@ -16,6 +16,10 @@ from aegis_gym.envs.objects import (
 
 from ..base_scene import BaseScene
 
+OVERRUN_TOLERANCE_S = 0.002
+# Longer than this between the observation and the next action is a pause (reset, MoveIt), not an overrun.
+PAUSE_S = 0.5
+
 
 class RosGrcpScene(BaseScene):
     def __init__(
@@ -24,6 +28,7 @@ class RosGrcpScene(BaseScene):
         device: th.device,
     ):
         logger = get_logger("RosGrpcScene")
+        self._logger = logger
         if cfg.env_cfg.num_envs > 1:
             raise ValueError("num_envs > 1 not supported for single robot station")
 
@@ -53,6 +58,7 @@ class RosGrcpScene(BaseScene):
 
     def _extract_config(self) -> None:
         self.last_step_ts: float = time.perf_counter()
+        self._obs_ts: float | None = None
 
         self.num_obs = self._cfg_env.num_obs
         self.num_privileged_obs = None
@@ -66,6 +72,8 @@ class RosGrcpScene(BaseScene):
 
         self.ctrl_dt = self._cfg_env.ctrl_dt
         self.policy_dt = self._cfg_env.policy_dt
+        self.obs_lead_s = min(max(self._cfg_env.obs_lead_s, 0.0), self.policy_dt)
+        self._overruns = 0
         self.sim_substeps = math.ceil(self._cfg_env.policy_dt / self._cfg_env.ctrl_dt)
         self.max_episode_length = math.ceil(
             self._cfg_env.episode_length_s / self.policy_dt
@@ -105,13 +113,41 @@ class RosGrcpScene(BaseScene):
     def _update_state(self) -> None:
         self.manipulator.read_state()
 
+    @staticmethod
+    def _sleep_until(deadline: float) -> None:
+        while (remaining := deadline - time.perf_counter()) > 0:
+            time.sleep(min(remaining, 0.0005))
+
     def pre_step(self) -> None:
-        while time.perf_counter() - self.last_step_ts < self.policy_dt:
-            time.sleep(0.0001)
-        self.last_step_ts = time.perf_counter()
+        """Paces the actions on a fixed `policy_dt` grid.
+
+        A late action means the previous trajectory segment has already ended and the arm
+        stood still in between; it is counted. After a late action or a pause the grid
+        restarts from now.
+        """
+        now = time.perf_counter()
+        deadline = self.last_step_ts + self.policy_dt
+        late = now - deadline
+        paused = self._obs_ts is None or now - self._obs_ts > PAUSE_S
+        if late > OVERRUN_TOLERANCE_S and not paused:
+            self._overruns += 1
+            if self._overruns == 1 or self._overruns % 100 == 0:
+                self._logger.warning(
+                    f"Action {late * 1e3:.1f} ms late ({self._overruns} so far): "
+                    f"read + inference exceed obs_lead_s = {self.obs_lead_s * 1e3:.0f} ms"
+                )
+        self._sleep_until(deadline)
+        self.last_step_ts = (
+            deadline if late <= OVERRUN_TOLERANCE_S else time.perf_counter()
+        )
 
     def step(self) -> None:
+        """Reads the state `obs_lead_s` before the next action is due rather than right after
+        this one, so the policy acts on a fresh observation; the arm executes the segment
+        meanwhile. This also matches the simulation, which observes after a full `policy_dt`."""
+        self._sleep_until(self.last_step_ts + self.policy_dt - self.obs_lead_s)
         self.update_state()
+        self._obs_ts = time.perf_counter()
 
     def _rand_scene_lighting(self, envs_idx: th.Tensor) -> None:
         raise NotImplementedError("TODO(issue#139) implement scene lighting")

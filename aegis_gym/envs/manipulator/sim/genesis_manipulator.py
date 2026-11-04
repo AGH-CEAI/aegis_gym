@@ -368,6 +368,16 @@ class GenesisManipulator(BaseManipulator):
         )
         return th.cat([q_vel, finger_zeros], dim=-1)
 
+    def ctrl_apply_delta_pose_action(
+        self,
+        delta: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> th.Tensor:
+        raise NotImplementedError(
+            "The admittance (A1) control mode is not implemented in Genesis yet."
+        )
+
     def ctrl_apply_joints_diff_action(
         self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:

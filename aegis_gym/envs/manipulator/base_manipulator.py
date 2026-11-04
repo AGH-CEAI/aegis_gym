@@ -67,6 +67,33 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
+    def ctrl_apply_delta_pose_action(
+        self,
+        delta: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> th.Tensor:
+        """
+        Move the compliant (admittance) TCP reference by a displacement.
+
+        The reference is integrated from the previous reference, not from the measured pose,
+        so contact deflects the arm like a spring instead of being absorbed. Each call is
+        limited per step and in its distance from the measured pose (force ceiling
+        ~ stiffness * max offset). The first call switches the arm into admittance mode;
+        any MoveIt motion or F/T tare leaves it.
+
+        Args:
+            delta: [num_envs, 6] tensor [dx, dy, dz, rx, ry, rz] in the world frame, where d is
+                   translation in metres and r is a rotation vector (axis * angle) in radians.
+                   Physical units: scaling a normalised policy action is the caller's job.
+            open_gripper: Optional bool to control gripper state
+
+        Returns:
+            [num_envs] bool tensor, True where the step was limited (clipped) or rejected.
+        """
+        ...
+
+    @abstractmethod
     def ctrl_apply_joints_diff_action(
         self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
