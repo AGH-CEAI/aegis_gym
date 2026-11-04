@@ -24,3 +24,4 @@ class EnvCfg(BaseCfg):
     table_size: list[float]
     workbench_size: list[float]
     env_specific_dict: dict
+    obs_lead_s: float = 0.01

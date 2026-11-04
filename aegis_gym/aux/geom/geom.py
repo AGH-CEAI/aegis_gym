@@ -83,6 +83,15 @@ def quat_to_rotvec_error(q_target: th.Tensor, q_current: th.Tensor) -> th.Tensor
     return vec * (angle / th.clamp(vec_norm, min=1e-8)).unsqueeze(-1)
 
 
+def rotvec_to_quat(rotvec: th.Tensor) -> th.Tensor:
+    """[N, 3] rotation vectors (axis * angle) to [N, 4] (w, x, y, z) quaternions."""
+    angle = th.linalg.vector_norm(rotvec, dim=-1, keepdim=True)
+    half = 0.5 * angle
+    # sin(a/2) / a -> 1/2 for a -> 0
+    scale = th.where(angle > 1e-8, th.sin(half) / th.clamp(angle, min=1e-8), 0.5)
+    return th.cat([th.cos(half), rotvec * scale], dim=-1)
+
+
 def quat_to_z_euler(quats: th.Tensor) -> th.Tensor:
     """
     Recovers the yaw angle from a quaternion representing a pure Z-axis rotation,
