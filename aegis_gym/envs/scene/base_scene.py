@@ -18,6 +18,7 @@ class RandomizationType(StrEnum):
     MANIPULATOR_PD_GAINS = auto()
     MANIPULATOR_MAX_SPEED = auto()
     FT_SENSOR_BIAS = auto()
+    FT_SENSOR_DRIFT = auto()
     CAMERAS_EXTRINSICS = auto()
     SCENE_LIGHTING = auto()
 
