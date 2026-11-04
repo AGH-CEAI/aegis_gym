@@ -72,6 +72,12 @@ class GenesisManipulator(BaseManipulator):
         self._ft_residual_bias = th.zeros(
             (num_envs, 6), dtype=th.float32, device=self.device
         )
+        # Software tare offset, [num_envs, 6]; None until `set_ft_bias()`.
+        self._ft_bias: th.Tensor | None = None
+        self._ft_drift = th.zeros((num_envs, 6), dtype=th.float32, device=self.device)
+        self._ft_drift_rate = th.zeros_like(self._ft_drift)
+        self._ft_drift_walk = th.zeros(6, dtype=th.float32, device=self.device)
+        self._ft_drift_step = -1
 
         cfg_noise = cfg_dr.ft_sensor_noise if cfg_dr.enabled else None
         self._ft_noise_std: th.Tensor | None = None
@@ -87,6 +93,11 @@ class GenesisManipulator(BaseManipulator):
                 dtype=th.float32,
                 device=self.device,
             )
+            self._ft_noise_corr = th.tensor(
+                [cfg_noise.correlation], dtype=th.float32, device=self.device
+            )
+        self._ft_noise: th.Tensor | None = None
+        self._ft_noise_step = -1
 
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
@@ -631,10 +642,42 @@ class GenesisManipulator(BaseManipulator):
         wrench = self.get_ft_wrench_raw()
         if self._ft_bias is not None:
             wrench = wrench - self._ft_bias
-        return wrench + self._ft_residual_bias
+        return wrench + self._ft_residual_bias + self._advance_ft_drift()
+
+    def set_ft_drift(
+        self, rate: th.Tensor, walk_std: th.Tensor, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """Simulation only: restarts the zero drift of `envs_idx` from zero with a linear `rate`
+        [len(envs_idx), 6] (N/s, Nm/s) plus a random walk of `walk_std` [6] (per sqrt(s))."""
+        idx = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        self._ft_drift[idx] = 0.0
+        self._ft_drift_rate[idx] = rate.to(dtype=th.float32, device=self.device)
+        self._ft_drift_walk = walk_std.to(dtype=th.float32, device=self.device)
+
+    def _advance_ft_drift(self) -> th.Tensor:
+        """The drift since the last tare, advanced once per `scene.step()`."""
+        step = self._gs_scene.sim.cur_step_global
+        if step != self._ft_drift_step:
+            if self._ft_drift_step >= 0:
+                steps = step - self._ft_drift_step
+                dt = steps * self._policy_dt
+                self._ft_drift = (
+                    self._ft_drift
+                    + self._ft_drift_rate * dt
+                    + th.randn_like(self._ft_drift)
+                    * self._ft_drift_walk
+                    * math.sqrt(dt)
+                )
+            self._ft_drift_step = step
+        return self._ft_drift
 
     def set_ft_bias(self) -> None:
         self._admittance.deactivate()
+        self._ft_drift.zero_()
         self._ft_bias = self.get_ft_wrench_raw().detach().clone()
         self.note_ft_bias_pose()
 
@@ -724,11 +767,23 @@ class GenesisManipulator(BaseManipulator):
         return self._ft_residual_bias.clone()
 
     def _add_ft_noise(self, wrench: th.Tensor) -> th.Tensor:
-        """Gaussian measurement noise, drawn fresh per read and truncated per axis."""
+        """Gaussian measurement noise, truncated per axis, advanced once per `scene.step()` as a
+        first-order process: rho = `correlation` between consecutive steps (0 is white), the
+        stationary std stays `force_std` / `torque_std`."""
         if self._ft_noise_std is None:
             return wrench
-        noise = th.randn_like(wrench) * self._ft_noise_std
-        return wrench + noise.clamp(-self._ft_noise_limit, self._ft_noise_limit)
+        step = self._gs_scene.sim.cur_step_global
+        if step != self._ft_noise_step:
+            fresh = th.randn_like(wrench) * self._ft_noise_std
+            if self._ft_noise is None or self._ft_noise.shape != wrench.shape:
+                self._ft_noise = fresh
+            else:
+                rho = self._ft_noise_corr
+                self._ft_noise = rho * self._ft_noise + th.sqrt(1.0 - rho * rho) * fresh
+            self._ft_noise_step = step
+        return wrench + self._ft_noise.clamp(
+            -self._ft_noise_limit, self._ft_noise_limit
+        )
 
     def _contact_wrench_world(self) -> th.Tensor:
         """Wrench at the sensor (world frame) from the contacts on the links past it."""
