@@ -35,9 +35,11 @@ class AdmittanceParams:
     max_step_rot: float = 0.02  # [rad] per call
     max_offset_lin: float = 0.02  # [m] reference to measured pose
     max_offset_rot: float = 0.1  # [rad]
-    # Measured response to the tool's own inertia (a1_square*.csv, 2026-11-04): after a velocity
-    # change the real TCP keeps this much of the previous velocity, fading with this time constant.
-    velocity_memory_s: float = 0.060  # [s]
+    # "Dark energy": the empirical residual of the real response that the modelled physics (the tool
+    # inertia in the simulated F/T + the configured M/D/K) does not explain, ~4/5 of it. Fitted on
+    # a1_square_payload.csv (2026-11-04): after a velocity change the target keeps this much of the
+    # previous velocity, fading with this time constant. Set velocity_memory_s to 0 to switch it off.
+    velocity_memory_s: float = 0.050  # [s]
     velocity_memory_fade_s: float = 0.18  # [s]
 
     @property
@@ -137,12 +139,12 @@ class SimAdmittance:
             self.offset = self.offset + h * self.offset_vel
 
     def step_velocity_memory(self, lin_vel: th.Tensor, dt: float) -> th.Tensor:
-        """Translation [N, 3] added to the target for the tool inertia seen by the real controller.
+        """Translation [N, 3] added to the target: the empirical "dark energy" term (see the params).
 
-        Humble's admittance spring position is FK(measured joints) - FK(reference), and the F/T
-        sensor reads the ~1.25 kg past it accelerating, so every velocity change of the reference
-        deflects the arm along the old velocity (start: extra lag, stop: overshoot). The configured
-        M/D/K law replayed on the measured force predicts ~0.3 of it, hence this empirical term.
+        Most likely origin: Humble's admittance spring position is FK(measured joints) - FK(reference),
+        so the controller integrates the UR's own tracking error on top of the tool's inertial load;
+        every velocity change of the reference then deflects the arm along the old velocity (start:
+        extra lag, stop: overshoot). The tool inertia alone, now in the simulated F/T, gives ~1/5.
         """
         p = self.params
         offset = p.velocity_memory_s * (self.vel_memory - lin_vel)

@@ -38,6 +38,9 @@ class GenesisManipulator(BaseManipulator):
     # observed TCP lags the reference like on the robot (~17 ms at the observation, delta_pose_test
     # 2026-11-04); without it the stiff PD with velocity feedforward ends each step slightly ahead.
     _A1_TRACKING_LAG_S = 0.033
+    # Adds the inertial load of the links past the sensor to the simulated F/T, as the real
+    # sensor reads it (a1_square*.csv: stop impulse = 1.25 kg * dv).
+    _FT_TOOL_INERTIA = True
 
     def __init__(
         self,
@@ -130,6 +133,9 @@ class GenesisManipulator(BaseManipulator):
 
         self._ik_method = cfg_robot.ik_method
         self._admittance = SimAdmittance(num_envs=num_envs, device=self.device)
+        self._tool_com_vel_prev: th.Tensor | None = None
+        self._tool_com_acc: th.Tensor | None = None
+        self._tool_acc_step = -1
 
         self._setup_config()
         self._add_joint_torque_sensor()
@@ -495,6 +501,7 @@ class GenesisManipulator(BaseManipulator):
                 q_pos[:, self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.set_qpos(q_pos, envs_idx=idx)
+        self._tool_com_vel_prev = None
         self._robot_entity.control_dofs_position(position=q_pos, envs_idx=idx)
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
@@ -509,6 +516,7 @@ class GenesisManipulator(BaseManipulator):
             self._default_joint_angles, dtype=th.float32, device=self.device
         ).repeat(len(idx), 1)
         self._robot_entity.set_qpos(default_joint_angles, envs_idx=idx)
+        self._tool_com_vel_prev = None
         self._robot_entity.control_dofs_position(
             position=default_joint_angles, envs_idx=idx
         )
@@ -633,9 +641,48 @@ class GenesisManipulator(BaseManipulator):
         """Simulation only: the stored offset, [num_envs, 6], or None when untared."""
         return None if self._ft_bias is None else self._ft_bias.clone()
 
+    def _tool_links_com(self) -> tuple[th.Tensor, th.Tensor]:
+        """World COM positions and velocities [num_envs, n_links, 3] of the links past the sensor."""
+        self._gravity_wrench_world()  # caches the link masses and local COMs
+        pos, vel = [], []
+        for i, link in enumerate(self._gravity_links):
+            lever = transform_by_quat(
+                self._gravity_link_local_coms[:, i], link.get_quat()
+            )
+            pos.append(link.get_pos() + lever)
+            vel.append(link.get_vel() + th.linalg.cross(link.get_ang(), lever))
+        return th.stack(pos, dim=1), th.stack(vel, dim=1)
+
+    def _inertial_wrench_world(self) -> th.Tensor:
+        """Load at the sensor (world frame) from accelerating the links past it: -sum m_i a_i.
+
+        `a_i` is the mean COM acceleration over the last policy step (velocity difference), not an
+        instantaneous sample: the admittance reads the wrench once per step, and what deflects the
+        real arm is the impulse m * dv of a velocity change. Updated once per `scene.step()`; zero
+        for the first step after a teleport (`set_qpos`).
+        """
+        com_pos, com_vel = self._tool_links_com()
+        step = self._gs_scene.sim.cur_step_global
+        if step != self._tool_acc_step:
+            if self._tool_com_vel_prev is None:
+                self._tool_com_acc = th.zeros_like(com_vel)
+            else:
+                self._tool_com_acc = (
+                    com_vel - self._tool_com_vel_prev
+                ) / self._policy_dt
+            self._tool_com_vel_prev = com_vel.clone()
+            self._tool_acc_step = step
+        load = -self._gravity_link_masses.unsqueeze(-1) * self._tool_com_acc
+        lever = com_pos - self._ft_link.get_pos().unsqueeze(1)
+        return th.cat(
+            [load.sum(dim=1), th.linalg.cross(lever, load, dim=-1).sum(dim=1)], dim=-1
+        )
+
     def get_ft_wrench_raw(self) -> th.Tensor:
         """Simulation only: the modelled wrench before the software tare."""
         wrench_world = self._contact_wrench_world() + self._gravity_wrench_world()
+        if self._FT_TOOL_INERTIA:
+            wrench_world = wrench_world + self._inertial_wrench_world()
 
         quat = self.get_ft_frame_quat()  # [num_envs, 4], WXYZ
         quat_conj = quat * th.tensor(
