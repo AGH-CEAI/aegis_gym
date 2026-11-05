@@ -79,8 +79,9 @@ class BaseManipulator(ABC):
         The reference is integrated from the previous reference, not from the measured pose,
         so contact deflects the arm like a spring instead of being absorbed. Each call is
         limited per step and in its distance from the measured pose (force ceiling
-        ~ stiffness * max offset). The first call switches the arm into admittance mode;
-        any MoveIt motion or F/T tare leaves it.
+        ~ stiffness * max offset). The first call tares the F/T sensor and switches the arm
+        into admittance mode, so it must come in free space (a contact force at that moment
+        would become the zero); any MoveIt motion or F/T tare leaves the mode.
 
         Args:
             delta: [num_envs, 6] tensor [dx, dy, dz, rx, ry, rz] in the world frame, where d is
