@@ -165,9 +165,16 @@ class RosGrpcManipulator(BaseManipulator):
         self.logger.info("Servo disabled")
 
     def _admittance_enable(self) -> None:
+        """Tares the F/T sensor (chain still off, so no jump) and switches to admittance."""
         if self._admittance_enabled:
             return
         self._servo_disable()
+        success, msg = self._run_coro(self._robot_client.wrench_bias_set())
+        if not success:
+            raise RuntimeError(f"Failed to tare before enabling admittance: {msg}")
+        self._ft_bias_active = True
+        self.read_state()
+        self.note_ft_bias_pose()
         success, msg = self._run_coro(self._robot_client.admittance_enable())
         if not success:
             raise RuntimeError(f"Failed to enable the admittance chain: {msg}")
