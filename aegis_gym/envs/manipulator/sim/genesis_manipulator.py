@@ -99,6 +99,16 @@ class GenesisManipulator(BaseManipulator):
         self._ft_noise: th.Tensor | None = None
         self._ft_noise_step = -1
 
+        cfg_impulses = cfg_dr.ft_sensor_impulses if cfg_dr.enabled else None
+        self._ft_impulse_prob: th.Tensor | None = None
+        if cfg_impulses is not None and cfg_impulses.enabled:
+            self._ft_impulse_prob = th.tensor(
+                cfg_impulses.rate, dtype=th.float32, device=self.device
+            ) * float(policy_dt)
+            self._ft_impulse_range = tuple(cfg_impulses.magnitude_range)
+        self._ft_impulse: th.Tensor | None = None
+        self._ft_impulse_step = -1
+
         # TODO(issue#99): Implement URDF model with cell collision handling
         if show_cell:
             self._urdf_model_id = cfg_robot.urdf_id_cell
@@ -773,7 +783,8 @@ class GenesisManipulator(BaseManipulator):
         force_local = transform_by_quat(wrench_world[:, :3], quat_conj)
         torque_local = transform_by_quat(wrench_world[:, 3:], quat_conj)
 
-        return self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
+        wrench = self._add_ft_noise(th.cat([force_local, torque_local], dim=-1))
+        return self._add_ft_impulses(wrench)
 
     def set_ft_residual_bias(
         self, bias: th.Tensor, envs_idx: th.Tensor | None = None
@@ -814,6 +825,21 @@ class GenesisManipulator(BaseManipulator):
         return wrench + self._ft_noise.clamp(
             -self._ft_noise_limit, self._ft_noise_limit
         )
+
+    def _add_ft_impulses(self, wrench: th.Tensor) -> th.Tensor:
+        """Single-step force kicks in the sensor frame, drawn once per `scene.step()`."""
+        if self._ft_impulse_prob is None:
+            return wrench
+        step = self._gs_scene.sim.cur_step_global
+        if step != self._ft_impulse_step:
+            n = wrench.shape[0]
+            hit = th.rand(n, 3, device=self.device) < self._ft_impulse_prob
+            low, high = self._ft_impulse_range
+            magnitude = low + (high - low) * th.rand(n, 3, device=self.device)
+            sign = th.where(th.rand(n, 3, device=self.device) < 0.5, -1.0, 1.0)
+            self._ft_impulse = th.where(hit, sign * magnitude, 0.0)
+            self._ft_impulse_step = step
+        return th.cat([wrench[:, :3] + self._ft_impulse, wrench[:, 3:]], dim=-1)
 
     def _contact_wrench_world(self) -> th.Tensor:
         """Wrench at the sensor (world frame) from the contacts on the links past it."""
