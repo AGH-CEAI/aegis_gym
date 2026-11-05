@@ -57,6 +57,11 @@ def extra_args(p) -> None:
     p.add_argument("--test", choices=("motion", "press"), default="motion")
     p.add_argument("--side", type=float, default=0.03, help="[m] square side")
     p.add_argument("--speed", type=float, default=0.025, help="[m/s] square speed")
+    p.add_argument(
+        "--mirror-y",
+        action="store_true",
+        help="square towards -y (the robot's right) instead of +y",
+    )
     p.add_argument("--yaw", type=float, default=10.0, help="[deg] yaw amplitude")
     p.add_argument("--yaw-speed", type=float, default=5.0, help="[deg/s]")
     p.add_argument("--hold", type=float, default=15.0, help="[s] hand-push window")
@@ -285,7 +290,8 @@ def main() -> None:
         step_len = opts.speed * dt
         n_side = max(1, round(opts.side / step_len))
         corner_errors = []
-        for direction in ((1, 0, 0), (0, 1, 0), (-1, 0, 0), (0, -1, 0)):
+        y = -1 if opts.mirror_y else 1
+        for direction in ((1, 0, 0), (0, y, 0), (-1, 0, 0), (0, -y, 0)):
             for _ in range(n_side):
                 act("square", tuple(step_len * c for c in direction))
             for _ in range(round(0.5 / dt)):
