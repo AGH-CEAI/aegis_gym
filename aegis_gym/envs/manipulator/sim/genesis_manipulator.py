@@ -20,7 +20,7 @@ from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import CameraName, DomainRandomizationCfg, RobotCfg
 from aegis_gym.envs.manipulator.base_manipulator import BaseManipulator, CameraModality
 
-from .sim_admittance import SimAdmittance
+from .sim_admittance import AdmittanceParams, SimAdmittance
 
 RigidLink = TypeVar
 
@@ -157,7 +157,17 @@ class GenesisManipulator(BaseManipulator):
         self.set_ft_payload(cfg_robot.ft_payload_mass, cfg_robot.ft_payload_com)
 
         self._ik_method = cfg_robot.ik_method
-        self._admittance = SimAdmittance(num_envs=num_envs, device=self.device)
+        accel = cfg_robot.admittance_max_accel_lin
+        self._admittance = SimAdmittance(
+            num_envs=num_envs,
+            device=self.device,
+            params=AdmittanceParams(
+                max_step_lin=cfg_robot.admittance_max_step_lin,
+                max_offset_lin=cfg_robot.admittance_max_offset_lin,
+                max_spring_offset=cfg_robot.admittance_max_offset_lin,
+                max_step_change_lin=accel * policy_dt**2 if accel > 0.0 else None,
+            ),
+        )
         self._a1_commanded = th.zeros(num_envs, 3, device=self.device)
         self._tool_com_vel_prev: th.Tensor | None = None
         self._tool_com_acc: th.Tensor | None = None
