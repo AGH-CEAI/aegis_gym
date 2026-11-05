@@ -15,3 +15,11 @@ urdf_id_no_cell: "621ea36225b943d48f51f151645ca2c5"
 # Re-measure after any change to the gripper, its cabling or the sensor adapter.
 ft_payload_mass: 1.3591
 ft_payload_com: [0.0007, 0.0003, 0.0591]
+
+# A1 (admittance) reference limits, mirrored by the simulation. They must match the gRPC server's
+# launch arguments of the same name (aegis_grpc/launch/start_server.launch.py) on the robot.
+# max_step_lin / policy_dt is the top speed (0.004 m = 0.1 m/s); max_offset_lin bounds the
+# reference-to-measured lag (and the contact force, ~K * offset); max_accel_lin 0 = off.
+admittance_max_step_lin: 0.004
+admittance_max_offset_lin: 0.02
+admittance_max_accel_lin: 0.0

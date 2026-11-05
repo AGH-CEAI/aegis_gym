@@ -185,7 +185,10 @@ class PushTEnv(BaseEnv):
             # workspace sideways and >= 4 cm away from the TCP start pose
             "spawnbox_xlength": 0.14,
             "spawnbox_ylength": 0.34,
-            "spawnbox_xoffset": -0.05,
+            # -0.03 (was -0.05, 2026-11-05): the table starts at x = 0.32, so a tee with its stem
+            # towards the base hung over the near edge in 14 % of the spawns (up to 7.7 cm); now 9 %
+            # (up to 5.7 cm). Further out (-0.01: 5 %) the far end leaves the TCP workspace more often.
+            "spawnbox_xoffset": -0.03,
             "spawnbox_yoffset": -0.17,
             "mask_resolution": 64,
             "mask_half_width": 0.15,
