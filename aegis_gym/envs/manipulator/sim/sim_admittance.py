@@ -38,6 +38,8 @@ class AdmittanceParams:
     max_step_rot: float = 0.02  # [rad] per call
     max_offset_lin: float = 0.02  # [m] reference to measured pose
     max_offset_rot: float = 0.1  # [rad]
+    # Max change of the translation step between calls (max_accel * dt^2) [m]; None = off.
+    max_step_change_lin: float | None = None
     # Spring displacement from the measured pose, as the Humble controller computes it.
     humble_spring: bool = True
     # Anti-windup: a blocked arm (contact, joint limit) must not grow the offset without bound.
@@ -75,6 +77,7 @@ class SimAdmittance:
         self.offset_vel = th.zeros(num_envs, 3, device=device)
         self.force = th.zeros(num_envs, 3, device=device)
         self.vel_memory = th.zeros(num_envs, 3, device=device)
+        self.last_step = th.zeros(num_envs, 3, device=device)
 
     def deactivate(self, envs_idx: th.Tensor | None = None) -> None:
         if envs_idx is None:
@@ -95,6 +98,7 @@ class SimAdmittance:
         self.offset_vel[new] = 0.0
         self.force[new] = force[new]
         self.vel_memory[new] = 0.0
+        self.last_step[new] = 0.0
         self.active[new] = True
 
     def step_reference(
@@ -104,12 +108,16 @@ class SimAdmittance:
         meas_pos: th.Tensor,
         meas_quat: th.Tensor,
     ) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
-        """`AdmittanceReference::Step`: rate limit, integrate from the previous reference, bound
-        the offset from the measured pose. Returns (clipped [N], applied translation, rotation)."""
+        """`AdmittanceReference::Step`: rate and acceleration limit, integrate from the previous
+        reference, bound the offset from the measured pose. Returns (clipped [N], applied translation, rotation)."""
         p = self.params
         dp, clipped_lin = _clip_norm(translation, p.max_step_lin)
         dr, clipped_rot = _clip_norm(rotation, p.max_step_rot)
         clipped = clipped_lin | clipped_rot
+        if p.max_step_change_lin is not None:
+            change, clipped_acc = _clip_norm(dp - self.last_step, p.max_step_change_lin)
+            dp = self.last_step + change
+            clipped = clipped | clipped_acc
 
         pos = self.ref_pos + dp
         quat = transform_quat_by_quat(rotvec_to_quat(dr), self.ref_quat)
@@ -128,6 +136,7 @@ class SimAdmittance:
 
         applied_dp = pos - self.ref_pos
         applied_dr = quat_to_rotvec_error(quat, self.ref_quat)
+        self.last_step = applied_dp
         self.ref_pos = pos
         self.ref_quat = quat
         return clipped, applied_dp, applied_dr
