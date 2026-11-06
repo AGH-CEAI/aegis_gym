@@ -188,7 +188,8 @@ class PushTEnv(BaseEnv):
             # -0.03 (was -0.05, 2026-11-05): the table starts at x = 0.32, so a tee with its stem
             # towards the base hung over the near edge in 14 % of the spawns (up to 7.7 cm); now 9 %
             # (up to 5.7 cm). Further out (-0.01: 5 %) the far end leaves the TCP workspace more often.
-            "spawnbox_xoffset": -0.03,
+            # Moved it a little bit further away from base
+            "spawnbox_xoffset": 0.03,
             "spawnbox_yoffset": -0.17,
             "mask_resolution": 64,
             "mask_half_width": 0.15,
