@@ -12,6 +12,7 @@ from aegis_gym.aux.geom import (
     quat_to_rotvec_error,
     quat_to_z_euler,
     quat_to_zrot,
+    transform_by_quat,
 )
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.aux.rand import rand_uniform
@@ -46,6 +47,9 @@ class PushTEnv(BaseEnv):
     _TEE_FALL_Z = 0.02
     # planar TCP velocity [vx, vy]; height and orientation are held by the env
     _ACTION_DIM = 2
+    control = "velocity"  # `env_specific_dict["control"]`
+    observe_reference = False
+    observe_force = False
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
@@ -138,6 +142,16 @@ class PushTEnv(BaseEnv):
         self.tcp_workspace_x = list(env_dict["tcp_workspace_x"])
         self.tcp_workspace_y = list(env_dict["tcp_workspace_y"])
         self.terminate_on_success = env_dict["terminate_on_success"]
+        self.control = env_dict["control"]
+        if self.control not in ("velocity", "admittance"):
+            raise ValueError(
+                f"Unknown push_t control `{self.control}`; use `velocity` or `admittance`."
+            )
+        self.observe_reference = (
+            self.control == "admittance" and env_dict["observe_reference"]
+        )
+        self.observe_force = env_dict["observe_force"]
+        self.force_obs_scale = env_dict["force_obs_scale"]
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -171,7 +185,11 @@ class PushTEnv(BaseEnv):
             # workspace sideways and >= 4 cm away from the TCP start pose
             "spawnbox_xlength": 0.14,
             "spawnbox_ylength": 0.34,
-            "spawnbox_xoffset": -0.05,
+            # -0.03 (was -0.05, 2026-11-05): the table starts at x = 0.32, so a tee with its stem
+            # towards the base hung over the near edge in 14 % of the spawns (up to 7.7 cm); now 9 %
+            # (up to 5.7 cm). Further out (-0.01: 5 %) the far end leaves the TCP workspace more often.
+            # Moved it a little bit further away from base
+            "spawnbox_xoffset": 0.03,
             "spawnbox_yoffset": -0.17,
             "mask_resolution": 64,
             "mask_half_width": 0.15,
@@ -186,6 +204,16 @@ class PushTEnv(BaseEnv):
             # [min, max] TCP position; the arm can't hold the height near its reach limit
             "tcp_workspace_x": [0.15, 0.7],
             "tcp_workspace_y": [-0.35, 0.35],
+            # `velocity`: TCP velocity servoing; `admittance`: compliant A1 mode, the action moves
+            # the TCP reference by up to `action_max_linear_speed * policy_dt` per step
+            "control": "velocity",
+            # admittance only: observe the reference-to-measured TCP offset (lag + deflection)
+            "observe_reference": True,
+            # observe the tared F/T force in world XY; the A1 spring state that the robot exposes
+            # (the internal offset is not sent over gRPC: in steady state it is F / K)
+            "observe_force": False,
+            # [m/N] the observed force is scaled to the static spring deflection, 1 / K of A1
+            "force_obs_scale": 0.002,
         }
 
     def _observe_tcp_pose(self) -> th.Tensor:
@@ -509,11 +537,16 @@ class PushTEnv(BaseEnv):
         self.episode_length_buf += 1
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
-        tcp_twist = self._planar_action_to_tcp_twist(actions)
-
-        self._scene.pre_step()
-        self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
-        self._scene.step()
+        if self.control == "admittance":
+            tcp_delta = self._planar_action_to_tcp_delta(actions)
+            self._scene.pre_step()
+            self.manipulator.ctrl_apply_delta_pose_action(tcp_delta, open_gripper=False)
+            self._scene.step()
+        else:
+            tcp_twist = self._planar_action_to_tcp_twist(actions)
+            self._scene.pre_step()
+            self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
+            self._scene.step()
 
         self.intersection_ratio = self._tee_projection_to_goal_intersection()
         self.success_buf = self.intersection_ratio >= self.success_thresh
@@ -558,6 +591,29 @@ class PushTEnv(BaseEnv):
         tcp_twist[:, 2] = self.tcp_hold_z_gain * z_err / self.max_linear_speed
         tcp_twist[:, 3:] = self.tcp_hold_rot_gain * rot_err / self.max_angular_speed
         return th.clamp(tcp_twist, min=-1.0, max=1.0)
+
+    def _planar_action_to_tcp_delta(self, actions: th.Tensor) -> th.Tensor:
+        """
+        Expands the planar [N, 2] action into the [N, 6] reference displacement of the admittance
+        mode (metres, rotation vector). The height and orientation are held on the reference, not
+        on the measured pose, so the hold doesn't push against the spring deflected by contact.
+        """
+        reference = self.manipulator.get_tcp_reference()
+        actions = self._limit_action_to_workspace(actions, tcp_xy=reference[:, :2])
+        max_lin = self.max_linear_speed * self.policy_dt
+        max_ang = self.max_angular_speed * self.policy_dt
+        z_err = self.tcp_height - reference[:, 2]
+        rot_err = quat_to_rotvec_error(self.tcp_start_pose[:, 3:], reference[:, 3:])
+
+        delta = th.zeros(self.num_envs, 6, device=self.device, dtype=th.float32)
+        delta[:, :2] = actions * max_lin
+        delta[:, 2] = th.clamp(
+            self.tcp_hold_z_gain * z_err * self.policy_dt, min=-max_lin, max=max_lin
+        )
+        rot = self.tcp_hold_rot_gain * rot_err * self.policy_dt
+        rot_norm = th.linalg.vector_norm(rot, dim=-1, keepdim=True)
+        delta[:, 3:] = rot * th.clamp(max_ang / th.clamp(rot_norm, min=1e-12), max=1.0)
+        return delta
 
     def _limit_action_to_workspace(
         self, actions: th.Tensor, tcp_xy: th.Tensor
@@ -673,6 +729,16 @@ class PushTEnv(BaseEnv):
                 [th.sin(tee_yaw), th.cos(tee_yaw)], dim=-1
             ),  # tee-yaw in world frame
         ]
+        if self.observe_reference:
+            # commanded minus measured TCP: the loop lag plus the spring deflection under contact
+            reference_xy = self.manipulator.get_tcp_reference()[:, :2]
+            obs_components.append(reference_xy - tcp_xy)
+        if self.observe_force:
+            force = transform_by_quat(
+                self.manipulator.get_ft_wrench()[:, :3],
+                obs[Modality.TCP_POSE][:, 3:],  # the sensor's output frame
+            )
+            obs_components.append(force[:, :2] * self.force_obs_scale)
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return obs_tensor
