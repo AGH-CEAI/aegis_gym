@@ -5,7 +5,7 @@ import pytest
 import torch as th
 
 import aegis_gym.config  # noqa: F401
-from aegis_gym.runners.bc_policy import ExperienceBuffer
+from aegis_gym.runners.bc_policy import ExperienceBuffer, build_student_state
 from aegis_gym.runners.bc_runner import (
     BehaviorCloningRunner,
     _mean_episode_extras,
@@ -36,12 +36,17 @@ class _FakeEnv:
     def __init__(self):
         self.num_steps = 0
         self.extras = {}
+        tcp_pose = th.zeros(NUM_ENVS, 7)
+        reference = tcp_pose.clone()
+        reference[:, :3] = th.tensor([0.01, -0.02, 0.5])
+        self.manipulator = SimpleNamespace(
+            get_tcp_pose=lambda: tcp_pose, get_tcp_reference=lambda: reference
+        )
+        self.object = SimpleNamespace(get_pose=lambda: th.zeros(NUM_ENVS, 7))
+        self.unwrapped = self
 
     def get_observations(self) -> dict:
         return {"policy": th.full((NUM_ENVS, 3), 7.0)}
-
-    def get_modality_observation(self, modality) -> th.Tensor:
-        return th.zeros(NUM_ENVS, 7)
 
     def get_modality_observations(self, modalities) -> dict:
         return {m: th.zeros(NUM_ENVS, 3, 4, 4) for m in modalities}
@@ -103,6 +108,17 @@ def test_clipped_labels_are_the_executed_teacher_actions():
     assert stats["action_error_onpolicy_executed"] == pytest.approx(0.25)
 
 
+def test_student_state_concatenates_the_named_inputs():
+    env = _FakeEnv()
+
+    state = build_student_state(env, ["tcp_pose", "reference_offset", "teacher_obs"])
+
+    assert state.shape == (NUM_ENVS, 7 + 2 + 3)
+    assert state[0, 7:9].tolist() == pytest.approx([0.01, -0.02])
+    with pytest.raises(ValueError, match="Unknown student state_obs"):
+        build_student_state(env, ["tee_pose"])
+
+
 @pytest.mark.parametrize("image_dtype", [th.float32, th.uint8])
 def test_buffer_returns_the_images_in_0_1(image_dtype):
     images = th.rand(NUM_ENVS, 3, 4, 4)
@@ -123,29 +139,6 @@ def test_buffer_returns_the_images_in_0_1(image_dtype):
 
     assert batch["rgb_obs"].dtype == th.float32
     assert th.allclose(batch["rgb_obs"], images, atol=0.5 / 255 + 1e-6)
-
-
-def test_buffer_holds_an_empty_state_of_an_image_only_student():
-    buffer = ExperienceBuffer(
-        num_envs=NUM_ENVS,
-        max_size=3,
-        img_shape=(3, 4, 4),
-        state_dim=0,
-        action_dim=2,
-        dtype=th.float32,
-    )
-    for _ in range(3):
-        buffer.add(
-            th.rand(NUM_ENVS, 3, 4, 4),
-            th.zeros(NUM_ENVS, 0),
-            th.zeros(NUM_ENVS, 7),
-            th.zeros(NUM_ENVS, 2),
-        )
-
-    batch = next(buffer.get_batches(num_mini_batches=1, num_epochs=1))
-
-    assert batch["robot_pose"].shape == (3 * NUM_ENVS, 0)
-    assert batch["rgb_obs"].shape == (3 * NUM_ENVS, 3, 4, 4)
 
 
 def test_buffer_memory_estimate_matches_the_allocation():

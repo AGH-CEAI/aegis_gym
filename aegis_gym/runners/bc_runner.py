@@ -30,6 +30,7 @@ from .bc_policy import (
     ExperienceBuffer,
     Policy,
     ResetLastLayerTarget,
+    build_student_state,
 )
 from .writer_cfg import resolve_log_writer_cfg
 
@@ -112,7 +113,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         cfg = ConfigManager.get_config()
         im_h, im_w = cfg.env_cfg.image_resolution
 
-        state_dim = self.env.get_state_obs(self._state_obs).shape[-1]
+        state_dim = build_student_state(self.env, self._state_obs).shape[-1]
 
         # Multi-task policy with action and pose heads
         self._policy = Policy(
@@ -447,8 +448,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 if self._clip_teacher_actions:
                     label = teacher_action.clamp(-1.0, 1.0)
 
-                state = self.env.get_state_obs(self._state_obs)
-                object_pose = self.env.get_modality_observation(Modality.OBJECT_POSE)
+                state = build_student_state(self.env, self._state_obs)
+                object_pose = self.env.object.get_pose()
                 self._buffer.add(rgb_obs, state, object_pose, label)
 
                 student_action = self._policy(rgb_obs.float(), state)
