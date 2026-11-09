@@ -211,7 +211,11 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             def record_preview(iteration: int) -> dict[str, float]:
                 student = runner.get_inference_policy(device=cfg.get_device()).eval()
                 metrics = preview.record(
-                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    policy=make_visual_bc_policy(
+                        env=env,
+                        bc_policy=student,
+                        state_obs=cfg.bc_cfg.policy.state_obs,
+                    ),
                     iteration=iteration,
                 )
                 # the same module keeps training (its BatchNorm and Dropout layers)

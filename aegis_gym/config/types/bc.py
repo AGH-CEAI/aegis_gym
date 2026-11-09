@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from .base_cfg import BaseCfg
@@ -36,9 +36,12 @@ class PolicyBCCfg(BaseCfg):
     linear_fusion: FusionCfg
     attention_vector_fusion: FusionCfg
     attention_spatial_fusion: FusionCfg
-    action_head_state_obs_dim: int
+    # None: taken from `state_obs`; a number is checked against it
+    action_head_state_obs_dim: int | None
     action_head_hidden_dims: list[int]
     pose_head_hidden_dims: list[int]
+    # the student's non-image inputs, concatenated in this order (see `STUDENT_STATE_OBS`)
+    state_obs: list[str] = field(default_factory=lambda: ["tcp_pose"])
 
 
 @dataclass(slots=True)
@@ -60,3 +63,7 @@ class BCCfg(BaseCfg):
     use_teacher_mixing: bool
     use_cameras: bool
     policy: PolicyBCCfg
+    # train on the teacher actions clipped to the env's [-1, 1], i.e. on what is executed
+    clip_teacher_actions: bool = False
+    # "uint8" stores the [0, 1] images in 1/255 steps, a quarter of the float32 memory
+    image_buffer_dtype: str = "float32"
