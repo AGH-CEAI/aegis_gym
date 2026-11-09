@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+import math
+from collections.abc import Callable, Iterator
 
 import torch as th
 from strenum import StrEnum
@@ -20,6 +21,32 @@ from .bc_fusions import (
     SpatialAttentionFusion,
     VectorAttentionFusion,
 )
+
+
+def _reference_offset(env) -> th.Tensor:
+    manipulator = env.manipulator
+    return manipulator.get_tcp_reference()[:, :2] - manipulator.get_tcp_pose()[:, :2]
+
+
+# The student's non-image inputs by name. `teacher_obs` is privileged (the true tee pose): a
+# sim-only sanity check of the distillation, not deployable.
+STUDENT_STATE_OBS: dict[str, Callable] = {
+    "tcp_pose": lambda env: env.manipulator.get_tcp_pose(),
+    "reference_offset": _reference_offset,
+    "teacher_obs": lambda env: env.get_observations()["policy"],
+}
+
+
+def build_student_state(env, names: list[str]) -> th.Tensor:
+    """[num_envs, D] the `names` inputs of `STUDENT_STATE_OBS`, concatenated."""
+    unknown = set(names) - STUDENT_STATE_OBS.keys()
+    if unknown:
+        raise ValueError(
+            f"Unknown student state_obs {sorted(unknown)}; use {list(STUDENT_STATE_OBS)}"
+        )
+    # unwrapped: the wrappers' observation calls augment (and resample) the images
+    env = env.unwrapped
+    return th.cat([STUDENT_STATE_OBS[n](env).float() for n in names], dim=-1)
 
 
 class ResetLastLayerTarget(StrEnum):
@@ -51,6 +78,7 @@ class Policy(nn.Module):
         self,
         cfg_policy: PolicyBCCfg,
         action_dim: int,
+        state_obs_dim: int,
         num_cameras: int,
         image_height: int,
         image_width: int,
@@ -77,7 +105,12 @@ class Policy(nn.Module):
         )
 
         vision_obs_dim = self.feature_fusion.output_dim
-        state_obs_dim = self._cfg.action_head_state_obs_dim
+        configured_dim = self._cfg.action_head_state_obs_dim
+        if configured_dim is not None and configured_dim != state_obs_dim:
+            raise ValueError(
+                f"action_head_state_obs_dim {configured_dim} doesn't match state_obs "
+                f"{self._cfg.state_obs} ({state_obs_dim}); set it to {state_obs_dim} or null"
+            )
 
         action_input_dim = vision_obs_dim + state_obs_dim
 
@@ -274,6 +307,7 @@ class ExperienceBuffer:
         action_dim: int,
         device: str = "cpu",
         dtype: th.dtype | None = None,
+        image_dtype: th.dtype | None = None,
     ):
         self._num_envs = num_envs
         self._max_size = max_size
@@ -283,10 +317,12 @@ class ExperienceBuffer:
         self._device = device
         self._ptr = 0
         self._size = 0
+        self._dtype = dtype or th.get_default_dtype()
+        self._image_dtype = image_dtype or self._dtype
 
         # Buffers for data
         self._rgb_obs = th.empty(
-            max_size, num_envs, *img_shape, dtype=dtype, device=device
+            max_size, num_envs, *img_shape, dtype=self._image_dtype, device=device
         )
         self._robot_pose = th.empty(
             max_size, num_envs, state_dim, dtype=dtype, device=device
@@ -305,7 +341,7 @@ class ExperienceBuffer:
     ) -> None:
         """Add experience to buffer."""
         self._ptr = (self._ptr + 1) % self._max_size
-        self._rgb_obs[self._ptr] = rgb_obs
+        self._rgb_obs[self._ptr] = self._encode_images(rgb_obs)
         self._robot_pose[self._ptr] = robot_pose
         self._object_poses[self._ptr] = object_poses
         self._actions[self._ptr] = actions
@@ -324,8 +360,8 @@ class ExperienceBuffer:
 
                 # Yield a mini-batch of data
                 yield {
-                    "rgb_obs": self._rgb_obs[batch_indices].reshape(
-                        -1, *self._img_shape
+                    "rgb_obs": self._decode_images(
+                        self._rgb_obs[batch_indices].reshape(-1, *self._img_shape)
                     ),
                     "robot_pose": self._robot_pose[batch_indices].reshape(
                         -1, self._state_dim
@@ -336,6 +372,36 @@ class ExperienceBuffer:
                     ),
                 }
 
+    def _encode_images(self, images: th.Tensor) -> th.Tensor:
+        if self._image_dtype != th.uint8:
+            return images
+        return images.clamp(0.0, 1.0).mul(255.0).round_().to(th.uint8)
+
+    def _decode_images(self, images: th.Tensor) -> th.Tensor:
+        if self._image_dtype != th.uint8:
+            return images
+        return images.to(self._dtype).div_(255.0)
+
+    @staticmethod
+    def estimate_bytes(
+        num_envs: int,
+        max_size: int,
+        img_shape: tuple[int, int, int],
+        state_dim: int,
+        action_dim: int,
+        dtype: th.dtype,
+        image_dtype: th.dtype,
+    ) -> int:
+        """Memory of the buffer tensors allocated in `__init__`."""
+        steps = max_size * num_envs
+        image_bytes = (
+            math.prod(img_shape) * th.empty(0, dtype=image_dtype).element_size()
+        )
+        other_bytes = (state_dim + 7 + action_dim) * th.empty(
+            0, dtype=dtype
+        ).element_size()
+        return steps * (image_bytes + other_bytes)
+
     def clear(self) -> None:
         """Clear the buffer."""
         self._rgb_obs.zero_()
@@ -344,6 +410,14 @@ class ExperienceBuffer:
         self._actions.zero_()
         self._ptr = 0
         self._size = 0
+
+    @property
+    def img_shape(self) -> tuple[int, int, int]:
+        return self._img_shape
+
+    @property
+    def state_dim(self) -> int:
+        return self._state_dim
 
     def is_full(self) -> bool:
         """Check if buffer is full."""

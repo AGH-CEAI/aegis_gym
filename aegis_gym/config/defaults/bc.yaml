@@ -7,6 +7,10 @@ max_grad_norm: 1.0
 save_recons: False
 save_recon_freq: 100
 use_teacher_mixing: False
+# train on the teacher actions clipped to the env's [-1, 1] (what the env executes)
+clip_teacher_actions: False
+# float32 or uint8 (the [0, 1] images in 1/255 steps, a quarter of the memory)
+image_buffer_dtype: "float32"
 use_cameras: True
 # algorithm parameters
 # TODO(issue#111) simplify config
@@ -97,7 +101,11 @@ policy:
   attention_spatial_fusion:
       fusion_output_dim: 256
       num_heads: 4
-  action_head_state_obs_dim: 7  # end-effector pose as additional state observation
+  # null: the sum of the `state_obs` dimensions; a number is checked against it
+  action_head_state_obs_dim: 7
+  # the non-image inputs: tcp_pose (7), reference_offset (2, admittance reference - TCP in XY),
+  # teacher_obs (the teacher's full observation, privileged: a sim-only sanity check)
+  state_obs: ["tcp_pose"]
   action_head_hidden_dims: [128, 128, 64]
   pose_head_hidden_dims: [64, 64]
 # training settings

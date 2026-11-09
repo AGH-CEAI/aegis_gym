@@ -1,3 +1,4 @@
+import copy
 import math
 import re
 import statistics
@@ -21,10 +22,15 @@ from aegis_gym.config.types import (
     CamerasSetup,
     ExpConfig,
 )
-from aegis_gym.envs import BaseEnv, BaseManipulator
+from aegis_gym.envs import BaseEnv
 
 from .base_runner import BasePolicyRunner
-from .bc_policy import ExperienceBuffer, Policy, ResetLastLayerTarget
+from .bc_policy import (
+    ExperienceBuffer,
+    Policy,
+    ResetLastLayerTarget,
+    build_student_state,
+)
 from .writer_cfg import resolve_log_writer_cfg
 
 
@@ -73,6 +79,12 @@ class BehaviorCloningRunner(BasePolicyRunner):
     def _extract_config(self) -> None:
         self._num_steps_per_env = self.cfg_train.num_steps_per_env
         self._use_teacher_mixing = self.cfg_train.use_teacher_mixing
+        self._clip_teacher_actions = self.cfg_train.clip_teacher_actions
+        self._state_obs = self.cfg_train.policy.state_obs
+        get_logger("BCRunner").info(
+            f"Student inputs {self._state_obs}, clipped teacher labels "
+            f"{self._clip_teacher_actions}, image buffer {self.cfg_train.image_buffer_dtype}"
+        )
 
         encoder_type = self.cfg_train.policy.encoder_type
         self._enable_recon = encoder_type == "autoencoder"
@@ -100,10 +112,13 @@ class BehaviorCloningRunner(BasePolicyRunner):
         cfg = ConfigManager.get_config()
         im_h, im_w = cfg.env_cfg.image_resolution
 
+        state_dim = build_student_state(self.env, self._state_obs).shape[-1]
+
         # Multi-task policy with action and pose heads
         self._policy = Policy(
             cfg_policy=self.cfg_train.policy,
             action_dim=action_dim,
+            state_obs_dim=state_dim,
             num_cameras=num_cameras,
             image_height=im_h,
             image_width=im_w,
@@ -116,15 +131,92 @@ class BehaviorCloningRunner(BasePolicyRunner):
         )
 
         # Experience buffer with pose data
-        self._buffer = ExperienceBuffer(
-            num_envs=self.env.num_envs,
-            max_size=self.cfg_train.buffer_size,
-            img_shape=rgb_shape,
-            state_dim=self.cfg_train.policy.action_head_state_obs_dim,
-            action_dim=action_dim,
-            device=str(self.device),
-            dtype=self._policy.dtype,
+        buffer_args = {
+            "num_envs": self.env.num_envs,
+            "max_size": self.cfg_train.buffer_size,
+            "img_shape": rgb_shape,
+            "state_dim": state_dim,
+            "action_dim": action_dim,
+            "dtype": self._policy.dtype,
+            "image_dtype": _IMAGE_BUFFER_DTYPES[self.cfg_train.image_buffer_dtype],
+        }
+        self._check_buffer_fits(ExperienceBuffer.estimate_bytes(**buffer_args))
+        self._buffer = ExperienceBuffer(device=str(self.device), **buffer_args)
+
+    def _check_update_fits(self) -> None:
+        """
+        One forward and backward pass on a dummy mini-batch of the size a full buffer gives, so a
+        GPU too small for the updates fails now, not after the buffer has filled up (~20 it).
+        """
+        if self.device.type != "cuda":
+            return
+        logger = get_logger("BCRunner")
+        gb = 1024**3
+        batch_size = (
+            self.cfg_train.buffer_size
+            * self.env.num_envs
+            // self.cfg_train.num_mini_batches
         )
+        rgb_shape = (batch_size, *self._buffer.img_shape)
+        batch = {
+            "rgb_obs": th.zeros(
+                rgb_shape, dtype=self._policy.dtype, device=self.device
+            ),
+            "robot_pose": th.zeros(
+                batch_size,
+                self._buffer.state_dim,
+                dtype=self._policy.dtype,
+                device=self.device,
+            ),
+        }
+        # the dummy batch must not move the BatchNorm statistics
+        state = copy.deepcopy(self._policy.state_dict())
+        th.cuda.reset_peak_memory_stats(self.device)
+        try:
+            loss = self._policy(batch["rgb_obs"], batch["robot_pose"]).sum()
+            for pred_pose in self._policy.predict_pose(batch["rgb_obs"]):
+                loss = loss + pred_pose.sum()
+            loss = loss + self._compute_recon_loss(batch)[0]
+            loss.backward()
+        except th.cuda.OutOfMemoryError as e:
+            free, total = th.cuda.mem_get_info(self.device)
+            raise RuntimeError(
+                f"A full mini-batch ({batch_size} samples = buffer_size "
+                f"{self.cfg_train.buffer_size} x {self.env.num_envs} envs / num_mini_batches "
+                f"{self.cfg_train.num_mini_batches}) doesn't fit into the GPU ({total / gb:.1f} "
+                "GB). Use fewer envs, a smaller `buffer_size` or more `num_mini_batches`."
+            ) from e
+        finally:
+            self._optimizer.zero_grad(set_to_none=True)
+            self._policy.load_state_dict(state)
+        peak = th.cuda.max_memory_allocated(self.device)
+        free, total = th.cuda.mem_get_info(self.device)
+        logger.info(
+            f"Update check: a full mini-batch of {batch_size} samples peaks at {peak / gb:.1f} GB "
+            f"of tensors; GPU in use {(total - free) / gb:.1f} of {total / gb:.1f} GB"
+        )
+        th.cuda.empty_cache()
+
+    def _check_buffer_fits(self, buffer_bytes: int) -> None:
+        """Fails before the allocation if the buffer can't fit into the free GPU memory."""
+        logger = get_logger("BCRunner")
+        gb = 1024**3
+        if self.device.type != "cuda":
+            logger.info(f"Experience buffer: {buffer_bytes / gb:.2f} GB")
+            return
+        free, total = th.cuda.mem_get_info(self.device)
+        logger.info(
+            f"Experience buffer: {buffer_bytes / gb:.2f} GB; GPU free {free / gb:.1f} of "
+            f"{total / gb:.1f} GB"
+        )
+        if buffer_bytes > free * _BUFFER_MAX_FREE_SHARE:
+            raise RuntimeError(
+                f"The experience buffer needs {buffer_bytes / gb:.2f} GB, but only "
+                f"{free / gb:.1f} GB of GPU memory is free (at most "
+                f"{_BUFFER_MAX_FREE_SHARE:.0%} of it for the buffer, the rest is for the "
+                "training). Lower `buffer_size` or the number of envs, or set "
+                "`image_buffer_dtype: uint8`."
+            )
 
     def learn(
         self,
@@ -134,6 +226,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         preview_interval: int = 0,
     ) -> None:
         self._buffer.clear()
+        self._check_update_fits()
         use_preview = preview is not None and preview_interval > 0
 
         start_iter = self._current_iter
@@ -337,6 +430,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         sums = dict.fromkeys(
             (
                 "action_error",
+                "action_error_executed",
                 "intervention",
                 "student_norm",
                 "teacher_norm",
@@ -348,36 +442,34 @@ class BehaviorCloningRunner(BasePolicyRunner):
             for _ in range(self._num_steps_per_env):
                 rgb_obs = get_obs_vis()
 
-                # Get teacher action
                 teacher_action = self._teacher(obs).detach()
+                label = teacher_action
+                if self._clip_teacher_actions:
+                    label = teacher_action.clamp(-1.0, 1.0)
 
-                # Get end-effector position
-                robot: BaseManipulator = self.env.manipulator
-                ee_pose = robot.get_tcp_pose()
-
-                # Get object pose in camera frame
-                # object_pose_camera = self._get_object_pose_in_camera_frame()
+                state = build_student_state(self.env, self._state_obs)
                 object_pose = self.env.object.get_pose()
+                self._buffer.add(rgb_obs, state, object_pose, label)
 
-                # Store in buffer
-                self._buffer.add(rgb_obs, ee_pose, object_pose, teacher_action)
-
-                # Step environment with student action
-                student_action = self._policy(rgb_obs.float(), ee_pose.float())
+                student_action = self._policy(rgb_obs.float(), state)
 
                 action = student_action
                 if self._use_teacher_mixing:
-                    # Simple Dagger: use student action if its difference with teacher action is less than 0.5
-                    action_diff = th.norm(student_action - teacher_action, dim=-1)
+                    # Simple DAgger: the teacher takes over when the student deviates too much
+                    action_diff = th.norm(student_action - label, dim=-1)
                     condition = (
                         (action_diff < 1.0).unsqueeze(-1).expand_as(student_action)
                     )
-                    action = th.where(condition, student_action, teacher_action)
+                    action = th.where(condition, student_action, label)
                     sums["intervention"] += (action_diff >= 1.0).float().mean().item()
 
                 # on the new states, unlike the action loss on the (trained on) buffer
                 sums["action_error"] += F.mse_loss(
                     student_action, teacher_action
+                ).item()
+                # what the env executes of both: comparable with and without the clipping
+                sums["action_error_executed"] += F.mse_loss(
+                    student_action.clamp(-1.0, 1.0), teacher_action.clamp(-1.0, 1.0)
                 ).item()
                 # the env clamps the actions to [-1, 1]
                 sums["student_norm"] += (
@@ -397,6 +489,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         n = self._num_steps_per_env
         stats = {
             "action_error_onpolicy": sums["action_error"] / n,
+            "action_error_onpolicy_executed": sums["action_error_executed"] / n,
             # < 1: the student moves less than the teacher, e.g. when its prediction is averaged
             "action_norm_ratio": sums["student_norm"] / max(sums["teacher_norm"], 1e-8),
             "teacher_action_saturation": sums["teacher_saturation"] / n,
@@ -502,6 +595,22 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self.logger.writer.add_scalar("Perf/fps", fps, it)
         self.logger.writer.add_scalar("Perf/forward_time", forward_time, it)
         self.logger.writer.add_scalar("Perf/backward_time", backward_time, it)
+        if self.device.type == "cuda":
+            gb = 1024**3
+            free, total = th.cuda.mem_get_info(self.device)
+            # all processes' use of the GPU vs this process' tensors (the rest: the simulator,
+            # the renderer and the allocator caches)
+            self.logger.writer.add_scalar("Perf/gpu_used_gb", (total - free) / gb, it)
+            self.logger.writer.add_scalar(
+                "Perf/gpu_torch_peak_gb",
+                th.cuda.max_memory_allocated(self.device) / gb,
+                it,
+            )
+            self.logger.writer.add_scalar(
+                "Perf/gpu_torch_reserved_gb",
+                th.cuda.memory_reserved(self.device) / gb,
+                it,
+            )
 
         for name, value in bc_stats.items():
             self.logger.writer.add_scalar(f"BC/{name}", value, it)
@@ -618,6 +727,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
         raise NotImplementedError()
+
+
+_IMAGE_BUFFER_DTYPES = {"float32": th.float32, "uint8": th.uint8}
+# the rest of the free GPU memory is left for the training (activations, optimizer)
+_BUFFER_MAX_FREE_SHARE = 0.7
 
 
 def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:

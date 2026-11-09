@@ -23,6 +23,8 @@ from aegis_gym.config.types import (
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
 
+from .bc_policy import build_student_state
+
 InferencePolicy = Callable[[TensorDict], th.Tensor]
 
 
@@ -260,14 +262,16 @@ def _camera_label(modality: Modality) -> str:
     return modality.name.lower().removeprefix("camera_").removesuffix("_rgb")
 
 
-def make_visual_bc_policy(env: BaseEnv, bc_policy: Callable) -> InferencePolicy:
-    """Adapts the BC student, acting on (camera images, TCP pose), to the preview's policy call."""
+def make_visual_bc_policy(
+    env: BaseEnv, bc_policy: Callable, state_obs: list[str]
+) -> InferencePolicy:
+    """Adapts the BC student, acting on (camera images, `state_obs`), to the preview's call."""
     env = env.unwrapped
 
     def policy(_obs: TensorDict) -> th.Tensor:
         images = env.get_modality_observations(modalities=IMAGE_MODALITIES)
         rgb = th.cat([images[m] for m in IMAGE_MODALITIES], dim=1).float()
-        return bc_policy(rgb, env.manipulator.get_tcp_pose().float())
+        return bc_policy(rgb, build_student_state(env, state_obs))
 
     return policy
 
