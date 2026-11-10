@@ -334,6 +334,9 @@ class GenesisScene(BaseScene):
         self.manipulator.max_angular_speed = self._max_angular_speed
         self.manipulator.set_joints_pd_gains()
         self._attach_cameras(offsets=self._dr_cam_base_offsets)
+        no_offset = th.zeros(self.num_envs, 6, device=self.device)
+        self.manipulator.set_ft_residual_bias(no_offset)
+        self.manipulator.set_ft_drift(rate=no_offset, walk_std=no_offset[0])
 
     def add_preview_camera(
         self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
