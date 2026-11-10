@@ -1,0 +1,82 @@
+# BC student B with one fixed goal (hypothesis 3, 2026-11-10, aegis_handoff.md): the nominal goal
+# pose (`goal_offset` [0.47, 0.0], `goal_z_rot_deg` 0) in every episode, as on the real table (one red
+# tee glued on it). B never gets the goal as an input, so this isolates the tee perception / memory
+# problem. The fixed goal is a subset of the teacher's random goals: the same teachers apply.
+# BC student B for the push_t A1 0.2 m/s teachers (`push_t_a1_02.yaml`): the A baseline
+# (2026-11-09, aegis_handoff.md) plus the clipped teacher labels, the reference offset input, the
+# uint8 image buffer and a student-only preview every 100 iterations (best model selection).
+# The env, rl and robot sections come from the teacher's ClearML task.
+bc:
+  # The grasp studies' optimizer settings (lr, steps, grad clip) are kept for the comparability
+  num_steps_per_env: 24
+  learning_rate: 0.001
+  # The samples of a 32k buffer (64 envs) in ~2k batches: 48 updates per iteration, as in the
+  # grasp studies (5 x 10), but with fewer passes over the rarely refreshed samples
+  num_epochs: 3
+  num_mini_batches: 16
+  # Push-T episodes are long (teacher ~6-9 s, timeout 15 s): the student-driven rollouts alone
+  # rarely reach the late, fine alignment phase, so the teacher takes over the large deviations
+  use_teacher_mixing: True
+  # the teacher's actions are outside [-1, 1] in ~45 % of the components; the env clips them
+  clip_teacher_actions: True
+  image_buffer_dtype: "uint8"
+  # Steps per env; the RGB buffer of 3 cameras at 64x64 takes ~1.2 GB as uint8 with 64 envs
+  buffer_size: 500
+  policy:
+    encoder_type: "shared_cnn"
+    # Keeps the image patches positions, which the tee pose precision relies on (the linear
+    # fusion averages each camera down to a 4x4 grid); the lowest action loss in the grasp studies
+    fusion_type: "attention_spatial"
+    # The tee pose as the auxiliary target, the main latent of the task
+    use_pose_head: True
+    action_head_state_obs_dim: null
+    # the TCP pose and the admittance reference - TCP offset (from the gRPC bridge on the robot)
+    state_obs: ["tcp_pose", "reference_offset"]
+    # The teacher's capacity: the Push-T actions depend on the contact geometry
+    action_head_hidden_dims: [256, 256, 128]
+    pose_head_hidden_dims: [64, 64]
+
+env:
+  # overrides the teacher task's env (loaded before this file): the task must be solved within 15 s
+  episode_length_s: 15.0
+  env_specific_dict:
+    goal_randomization:
+      enabled: False
+
+logger:
+  enable_policy_preview: True
+  policy_preview_interval: 100
+
+dr:
+  enabled: True
+  image_aug:
+    enabled: True
+    per_episode_aug: True
+    brightness_jitter: 0.4
+    contrast_jitter: 0.3
+    gaussian_noise_std: 0.025
+    gamma_range: 0.25
+    channel_jitter: 0.05
+    blur_prob: 0.30
+    blur_kernel_size: 3
+    blur_sigma: 0.8
+    cutout:
+      prob: 0.3
+      min_size: 4
+      max_size: 12
+  pd_gains:
+    enabled: True
+    kp_noise: 0.10
+    kv_noise: 0.10
+  max_speed:
+    enabled: True
+    linear_speed_noise: 0.03
+    angular_speed_noise: 0.03
+  cameras_extrinsics:
+    enabled: True
+    scene_cam:
+      translation_std: 0.0
+      rotation_std_deg: 1.0
+    tool_cams:
+      translation_std: 0.001
+      rotation_std_deg: 0.6

@@ -12,7 +12,7 @@ bc:
   # grasp studies (5 x 10), but with fewer passes over the rarely refreshed samples
   num_epochs: 3
   num_mini_batches: 16
-  # Push-T episodes are long (teacher ~9 s, timeout 30 s): the student-driven rollouts alone
+  # Push-T episodes are long (teacher ~6-9 s, timeout 15 s): the student-driven rollouts alone
   # rarely reach the late, fine alignment phase, so the teacher takes over the large deviations
   use_teacher_mixing: True
   # the teacher's actions are outside [-1, 1] in ~45 % of the components; the env clips them
@@ -33,6 +33,10 @@ bc:
     # The teacher's capacity: the Push-T actions depend on the contact geometry
     action_head_hidden_dims: [256, 256, 128]
     pose_head_hidden_dims: [64, 64]
+
+env:
+  # overrides the teacher task's env (loaded before this file): the task must be solved within 15 s
+  episode_length_s: 15.0
 
 logger:
   enable_policy_preview: True

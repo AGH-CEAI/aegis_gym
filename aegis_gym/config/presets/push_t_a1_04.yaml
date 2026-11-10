@@ -28,7 +28,7 @@ rl:
     # Surrogate loss
     desired_kl: 0.01
     entropy_coef: 0.005
-    gamma: 0.995  # ~200 steps (8 s at 25 Hz) horizon, the task takes 10-30 s
+    gamma: 0.995  # ~200 steps (8 s at 25 Hz) horizon, the task takes ~5-15 s
     lam: 0.95
     max_grad_norm: 1.0
     # Miscellaneous
@@ -66,7 +66,7 @@ bc:
   # grasp studies (5 x 10), but with fewer passes over the rarely refreshed samples
   num_epochs: 3
   num_mini_batches: 16
-  # Push-T episodes are long (teacher ~9 s, timeout 30 s): the student-driven rollouts alone
+  # Push-T episodes are long (teacher ~6-9 s, timeout 15 s): the student-driven rollouts alone
   # rarely reach the late, fine alignment phase, so the teacher takes over the large deviations
   use_teacher_mixing: True
   # Steps per env, the float32 RGB buffer of 3 cameras at 64x64 takes ~4.7 GB with 64 envs
@@ -122,6 +122,8 @@ dr:
       rotation_std_deg: 0.6
 
 env:
+  # the task must be solved within 15 s (375 steps at 25 Hz; was 30 s before 2026-11-09)
+  episode_length_s: 15.0
   # A1 at up to 0.4 m/s (measured on the robot 2026-11-05, see aegis_handoff.md, speed ladder):
   # just below max_step_lin / policy_dt, so a full action is not clipped once at speed.
   action_max_linear_speed: 0.392
