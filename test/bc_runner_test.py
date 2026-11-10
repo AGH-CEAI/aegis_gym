@@ -113,7 +113,25 @@ def test_student_state_concatenates_the_named_inputs():
     assert state.shape == (NUM_ENVS, 7 + 2 + 3)
     assert state[0, 7:9].tolist() == pytest.approx([0.01, -0.02])
     with pytest.raises(ValueError, match="Unknown student state_obs"):
-        build_student_state(env, ["tee_pose"])
+        build_student_state(env, ["tee_mesh"])
+
+
+def test_student_state_tee_and_goal_poses_are_planar():
+    env = _FakeEnv()
+    tee = th.zeros(NUM_ENVS, 7)
+    tee[:, :2] = th.tensor([0.4, 0.1])
+    tee[:, 3] = math.cos(math.pi / 4)  # wxyz, 90 deg about z
+    tee[:, 6] = math.sin(math.pi / 4)
+    env.object = SimpleNamespace(get_pose=lambda: tee)
+    env.goal_pose = th.zeros(NUM_ENVS, 7)
+    env.goal_pose[:, 0] = 0.47
+    env.goal_yaw = th.zeros(NUM_ENVS)
+
+    state = build_student_state(env, ["tee_pose", "goal_pose"])
+
+    assert state[0].tolist() == pytest.approx(
+        [0.4, 0.1, 1.0, 0.0, 0.47, 0.0, 0.0, 1.0], abs=1e-6
+    )
 
 
 @pytest.mark.parametrize("image_dtype", [th.float32, th.uint8])
