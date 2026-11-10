@@ -28,7 +28,8 @@ from .scene import BaseScene
 @register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
-    DEFAULT_EPISODE_LENGTH_S = 30.0
+    # the task must be solved within 15 s (2026-11-09; was 30 s)
+    DEFAULT_EPISODE_LENGTH_S = 15.0
     PREVIEW_CAMERA_POSE = ((0.95, 0.0, 1.25), (0.47, 0.0, 0.0))
 
     _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
@@ -126,6 +127,7 @@ class PushTEnv(BaseEnv):
         self.goal_rand_x = list(goal_rand["x_range"])
         self.goal_rand_y = list(goal_rand["y_range"])
         self.goal_rand_z_rot = [math.radians(a) for a in goal_rand["z_rot_range_deg"]]
+        self.goal_table_margin = goal_rand["table_margin"]
         self.spawnbox_xlength = env_dict["spawnbox_xlength"]
         self.spawnbox_ylength = env_dict["spawnbox_ylength"]
         self.spawnbox_xoffset = env_dict["spawnbox_xoffset"]
@@ -180,6 +182,10 @@ class PushTEnv(BaseEnv):
                 "x_range": [-0.05, 0.05],
                 "y_range": [-0.1, 0.1],
                 "z_rot_range_deg": [-180.0, 180.0],
+                # [m] the whole goal footprint stays this far inside the table top: the goal x/y
+                # range is narrowed per yaw (without it, 20 % of the goals hung over the near
+                # edge, by up to 7.7 cm)
+                "table_margin": 0.01,
             },
             # tee origin spawn box w.r.t. the goal; with any yaw the tee stays within the TCP
             # workspace sideways and >= 4 cm away from the TCP start pose
@@ -462,10 +468,8 @@ class PushTEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if not randomize_domain:
-            return
-        for rt in self._scene.get_available_randomizations():
-            self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
+        if randomize_domain:
+            self.apply_domain_randomization(envs_idx)
 
     def _randomize_goal(
         self, envs_idx: th.Tensor, seeds: Sequence[int] | None = None
@@ -481,11 +485,25 @@ class PushTEnv(BaseEnv):
             low, high = low_high
             return u[:, column] * (high - low) + low
 
-        goal_x = self.goal_offset_xy[0] + uniform(0, self.goal_rand_x)
-        goal_y = self.goal_offset_xy[1] + uniform(1, self.goal_rand_y)
         goal_yaw = th.remainder(
             self.goal_z_rot + uniform(2, self.goal_rand_z_rot), 2 * math.pi
         )
+        extent_min, extent_max = self._tee_footprint_extent(goal_yaw)
+
+        def on_table(column: int, axis: int, table: tuple[float, float]) -> th.Tensor:
+            offset_range = (self.goal_rand_x, self.goal_rand_y)[axis]
+            nominal = self.goal_offset_xy[axis]
+            margin = self.goal_table_margin
+            low = th.clamp(
+                table[0] + margin - extent_min[:, axis], min=nominal + offset_range[0]
+            )
+            high = th.clamp(
+                table[1] - margin - extent_max[:, axis], max=nominal + offset_range[1]
+            )
+            return low + u[:, column] * th.clamp(high - low, min=0.0)
+
+        goal_x = on_table(column=0, axis=0, table=self.table_x)
+        goal_y = on_table(column=1, axis=1, table=self.table_y)
 
         self.goal_yaw[envs_idx] = goal_yaw
         self.goal_pose[envs_idx, 0] = goal_x
@@ -761,6 +779,20 @@ class PushTEnv(BaseEnv):
         centroid_err_sq = (tee_centroid - goal_centroid).square().sum(dim=-1)
         rot_err_sq = 2 * (1 - th.cos(yaw - goal_yaw)) * self._tee_gyration_sq
         return th.sqrt(centroid_err_sq + rot_err_sq)
+
+    def _tee_footprint_extent(self, yaw: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
+        """[N, 2] min and max xy offsets of the tee footprint from its origin at the [N] `yaw`."""
+        corners = th.tensor(
+            [
+                (cx + sx * hx, cy + sy * hy)
+                for (cx, cy), (hx, hy) in self._TEE_FOOTPRINT_BOXES
+                for sx in (-1, 1)
+                for sy in (-1, 1)
+            ],
+            device=self.device,
+        )
+        rotated = self._rotate_xy(corners.unsqueeze(0), yaw.unsqueeze(-1))
+        return rotated.amin(dim=1), rotated.amax(dim=1)
 
     @staticmethod
     def _rotate_xy(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:

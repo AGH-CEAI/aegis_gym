@@ -230,6 +230,15 @@ class BaseEnv(VecEnv):
         """Whether the resets should apply the domain randomization."""
         return self._cfg_dr.enabled and not self._nominal_domain
 
+    def is_domain_randomization_enabled(self) -> bool:
+        """Whether the domain randomization is configured (`dr.enabled`)."""
+        return self._cfg_dr.enabled
+
+    def apply_domain_randomization(self, envs_idx: th.Tensor) -> None:
+        """Draws all the scene's domain randomizations for the `envs_idx` now."""
+        for rand_type in self._scene.get_available_randomizations():
+            self._scene.randomize_domain(rand_type=rand_type, env_idx=envs_idx)
+
     def is_preview_available(self) -> bool:
         """Whether the policy preview can be rendered (`render_preview()`)."""
         return self._scene.is_preview_available()
