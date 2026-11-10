@@ -23,6 +23,7 @@ from aegis_gym.envs import BaseEnv, get_env_class
 from aegis_gym.envs.scene import GenesisScene, RosGrcpScene
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
 from aegis_gym.runners import BasePolicyRunner, BehaviorCloningRunner, OnPolicyRunner
+from aegis_gym.runners.policy_eval import PolicyEvaluator
 from aegis_gym.runners.policy_preview import (
     PolicyPreviewRecorder,
     make_visual_bc_policy,
@@ -110,6 +111,122 @@ def create_policy_preview_recorder(
         )
         return None
     return recorder
+
+
+def create_policy_evaluator(
+    env: BaseEnv,
+    cfg: ExpConfig,
+    final: bool,
+    report_task: Task | None = None,
+    out_dir: Path | None = None,
+) -> PolicyEvaluator | None:
+    """
+    The evaluator of the student during the training (`final=False`) or of the trained models on
+    the held-out seeds (`final=True`), if enabled in the logger config and supported. The CSVs go
+    to `out_dir` (default: `<local_log_dir>/policy_eval`).
+    """
+    logger = get_logger("Train")
+    cfg_log = cfg.logger_cfg
+    if final:
+        num, seed_start = (
+            cfg_log.policy_eval_final_episodes,
+            cfg_log.policy_eval_final_seed_start,
+        )
+    else:
+        num = cfg_log.policy_eval_episodes if cfg_log.policy_eval_interval > 0 else 0
+        seed_start = cfg_log.policy_eval_seed_start
+    if num <= 0:
+        return None
+    if cfg.args.control_type != Control.SIM:
+        logger.info("The policy evaluation runs only in the simulation.")
+        return None
+    if not PolicyEvaluator.is_supported(env):
+        logger.warning("The env has no seeded reset; skipping the policy evaluation.")
+        return None
+    return PolicyEvaluator(
+        env=env,
+        seeds=range(seed_start, seed_start + num),
+        out_dir=out_dir or Path(cfg_log.local_log_dir) / "policy_eval",
+        domain_randomization_seed=cfg_log.policy_eval_dr_seed,
+        report_task=report_task,
+    )
+
+
+def evaluate_bc_student(
+    evaluator: PolicyEvaluator,
+    env: BaseEnv,
+    student: th.nn.Module,
+    cfg: ExpConfig,
+    iteration: int,
+    **evaluate_kwargs,
+) -> dict[str, float]:
+    """Evaluates the BC `student` (in the eval mode, its training mode is restored afterwards)."""
+    was_training = student.training
+    student.eval()
+    metrics = evaluator.evaluate(
+        policy=make_visual_bc_policy(
+            env=env,
+            bc_policy=student,
+            state_obs=cfg.bc_cfg.policy.state_obs,
+            augment_images=evaluator.randomizes_domain,
+        ),
+        iteration=iteration,
+        **evaluate_kwargs,
+    )
+    student.train(was_training)
+    return metrics
+
+
+FINAL_EVAL_TITLE = "policy_eval_final"
+
+
+def evaluate_final_bc_models(
+    evaluator: PolicyEvaluator,
+    env: BaseEnv,
+    runner: BehaviorCloningRunner,
+    cfg: ExpConfig,
+    best_model_path: Path | None,
+) -> None:
+    """
+    The last and the best (`best_model_path`, if another one) model on the held-out seeds,
+    reported as `policy_eval_final_last` / `_best` (also as the task's single values).
+    """
+    logger = get_logger("Train")
+    device = cfg.get_device()
+    last_iter, best_iter = runner.current_iter, runner.best_model_iter
+    best_is_last = best_iter in (-1, last_iter)
+    if not best_is_last and best_model_path is None:
+        logger.warning(
+            f"The best model {best_iter} isn't in the local log dir; evaluating the last one only."
+        )
+    suffix = evaluator.title_suffix
+    titles = [f"{FINAL_EVAL_TITLE}_last{suffix}"]
+    if best_is_last:
+        titles.append(f"{FINAL_EVAL_TITLE}_best{suffix}")
+    logger.info(
+        f">>> (BC) Final evaluation of the model {last_iter} on {evaluator.num_episodes} episodes"
+    )
+    evaluate_bc_student(
+        evaluator=evaluator,
+        env=env,
+        student=runner.get_inference_policy(device=device),
+        cfg=cfg,
+        iteration=last_iter,
+        titles=titles,
+        single_values=True,
+    )
+    if best_is_last or best_model_path is None:
+        return
+    logger.info(f">>> (BC) Final evaluation of the best model {best_iter}")
+    evaluate_bc_student(
+        evaluator=evaluator,
+        env=env,
+        student=runner.load_inference_policy(path=best_model_path, device=device),
+        cfg=cfg,
+        iteration=best_iter,
+        titles=[f"{FINAL_EVAL_TITLE}_best{suffix}"],
+        single_values=True,
+    )
 
 
 def create_env(cfg: ExpConfig) -> BaseEnv:
@@ -211,23 +328,52 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
             def record_preview(iteration: int) -> dict[str, float]:
                 student = runner.get_inference_policy(device=cfg.get_device()).eval()
                 metrics = preview.record(
-                    policy=make_visual_bc_policy(env=env, bc_policy=student),
+                    policy=make_visual_bc_policy(
+                        env=env,
+                        bc_policy=student,
+                        state_obs=cfg.bc_cfg.policy.state_obs,
+                    ),
                     iteration=iteration,
                 )
                 # the same module keeps training (its BatchNorm and Dropout layers)
                 student.train()
                 return metrics
 
+            evaluator = create_policy_evaluator(env=env, cfg=cfg, final=False)
+
+            def run_evaluation(iteration: int) -> dict[str, float]:
+                return evaluate_bc_student(
+                    evaluator=evaluator,
+                    env=env,
+                    student=runner.get_inference_policy(device=cfg.get_device()),
+                    cfg=cfg,
+                    iteration=iteration,
+                    titles=[f"policy_eval{evaluator.title_suffix}"],
+                )
+
             logger.info(">>> (BC) Starting runner")
             runner.learn(
                 num_learning_iterations=args.max_iterations,
                 preview=record_preview if preview is not None else None,
                 preview_interval=cfg.logger_cfg.policy_preview_interval,
+                evaluate=run_evaluation if evaluator is not None else None,
+                eval_interval=cfg.logger_cfg.policy_eval_interval,
             )
 
             if preview is not None:
                 logger.info(">>> (BC) Recording the final policy preview")
                 record_preview(iteration=max(runner.current_iter - 1, 0))
+
+            final_evaluator = create_policy_evaluator(env=env, cfg=cfg, final=True)
+            if final_evaluator is not None:
+                best_path = Path(cfg.logger_cfg.local_log_dir) / "model_best.pt"
+                evaluate_final_bc_models(
+                    evaluator=final_evaluator,
+                    env=env,
+                    runner=runner,
+                    cfg=cfg,
+                    best_model_path=best_path if best_path.exists() else None,
+                )
 
         case Algorithm.RL:
             logger.info(">>> Starting training: Reinforcement Learning (RL)")

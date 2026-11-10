@@ -48,8 +48,12 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
     def reset(self) -> ResetReturn:
         res = self._env.reset()
         # TODO(issue#121) Previously it was called in the reset_idx()
-        self._resample_aug_profile(th.arange(self.num_envs, device=self.device))
+        self.resample_augmentation()
         return res
+
+    def resample_augmentation(self) -> None:
+        """Draws new per episode augmentation profiles of all the envs."""
+        self._resample_aug_profile(th.arange(self.num_envs, device=self.device))
 
     def step(self, actions: th.Tensor) -> StepReturn:
         res = self._env.step(actions)

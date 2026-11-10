@@ -150,3 +150,31 @@ def test_push_t_reset_reports_the_ended_episodes_metrics():
     assert episode.keys() == expected.keys()
     for key, values in expected.items():
         assert episode[key].tolist() == pytest.approx(values), key
+
+
+def test_push_t_randomized_goals_stay_on_the_table():
+    num = 2000
+    env = object.__new__(PushTEnv)
+    env._scene = _Scene()
+    env.device = th.device("cpu")
+    env.goal_offset_xy, env.goal_z_rot = [0.47, 0.0], 0.0
+    env.goal_rand_x, env.goal_rand_y = [-0.05, 0.05], [-0.1, 0.1]
+    env.goal_rand_z_rot = [-th.pi, th.pi]
+    env.goal_table_margin = 0.01
+    env.table_x, env.table_y = (0.32, 0.87), (-0.42, 0.42)
+    env.goal_yaw, env.goal_pose = th.zeros(num), th.zeros(num, 7)
+    env._build_goal_transform = lambda envs_idx: None
+    env.goal_marker = MagicMock()
+
+    env._randomize_goal(envs_idx=th.arange(num), seeds=list(range(num)))
+
+    extent_min, extent_max = env._tee_footprint_extent(env.goal_yaw)
+    footprint_min = env.goal_pose[:, :2] + extent_min
+    footprint_max = env.goal_pose[:, :2] + extent_max
+    assert footprint_min[:, 0].min() >= 0.32 + 0.01 - 1e-6
+    assert footprint_max[:, 0].max() <= 0.87 - 0.01 + 1e-6
+    assert footprint_min[:, 1].min() >= -0.42 + 0.01 - 1e-6
+    assert footprint_max[:, 1].max() <= 0.42 - 0.01 + 1e-6
+    # a subset of the configured ranges, so the teachers trained on them stay in distribution
+    assert env.goal_pose[:, 0].min() >= 0.42 and env.goal_pose[:, 0].max() <= 0.52
+    assert env.goal_pose[:, 1].abs().max() <= 0.1

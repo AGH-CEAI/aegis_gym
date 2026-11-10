@@ -60,8 +60,10 @@ class LaunchArgs:
     bc_eval_every: int | None
     preview_checkpoints: bool | None
     seed: int | None
-
     _args_raw: Any
+    evaluate_checkpoints: bool | None = None
+    eval_episodes: int | None = None
+    eval_dr_seed: int | None = None
 
     def get_raw_args(self) -> Any:
         return self._args_raw
@@ -263,6 +265,33 @@ def parse_arguments(
         ),
     )
 
+    p.add_argument(
+        "--evaluate-checkpoints",
+        action="store_true",
+        default=False,
+        help=(
+            "Evaluation only: the success rate of the best (`model_best`) and the last checkpoint "
+            "of the ClearML training task (`--load-rl-task-id`, or `--load-bc-task-id` with "
+            "`-a bc`) on the held-out seeds (`logger.policy_eval_final_*`), reported to that task "
+            "as `policy_eval_final_best` / `_last`. The task must not be published."
+        ),
+    )
+    p.add_argument(
+        "--eval-episodes",
+        type=int,
+        default=None,
+        help="With `--evaluate-checkpoints`: the number of episodes (default: the config's).",
+    )
+    p.add_argument(
+        "--eval-dr-seed",
+        type=int,
+        default=None,
+        help=(
+            "With `--evaluate-checkpoints`: evaluate with the configured domain randomization "
+            "drawn from this seed (default: the nominal domain)."
+        ),
+    )
+
     if extra_argparser is not None:
         extra_argparser(p)
 
@@ -314,4 +343,7 @@ def parse_arguments(
         preview_checkpoints=args.preview_checkpoints,
         seed=args.seed,
         _args_raw=args,
+        evaluate_checkpoints=args.evaluate_checkpoints,
+        eval_episodes=args.eval_episodes,
+        eval_dr_seed=args.eval_dr_seed,
     )

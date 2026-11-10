@@ -133,6 +133,10 @@ def test_push_t_seeded_goal_follows_the_tee_draws():
         goal_rand_x=[0.0, 1.0],
         goal_rand_y=[0.0, 1.0],
         goal_rand_z_rot=[0.0, 2 * math.pi],
+        # a table this large never narrows the goal ranges
+        goal_table_margin=0.0,
+        table_x=(-10.0, 10.0),
+        table_y=(-10.0, 10.0),
         goal_pose=th.zeros(n, 7),
         goal_yaw=th.zeros(n),
         _GOAL_MARKER_LIFT=0.0,

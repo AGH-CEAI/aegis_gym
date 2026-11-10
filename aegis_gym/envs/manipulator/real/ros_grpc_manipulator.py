@@ -121,6 +121,10 @@ class RosGrpcManipulator(BaseManipulator):
         except RuntimeError:
             pass
         self._servo_enabled = False
+        # A previous run may have left the arm in the admittance chain; Disable is idempotent.
+        self._admittance_enabled = True
+        self._admittance_reference: th.Tensor | None = None
+        self._admittance_disable()
 
         # Prepare initial observation
         self._state: TensorDict | None = None
@@ -148,6 +152,7 @@ class RosGrpcManipulator(BaseManipulator):
     def _servo_enable(self) -> None:
         if self._servo_enabled:
             return
+        self._admittance_disable()
         self._run_coro(self._robot_client.servo_enable())
         self._servo_enabled = True
         self.logger.info("Servo enabled")
@@ -158,6 +163,34 @@ class RosGrpcManipulator(BaseManipulator):
         self._run_coro(self._robot_client.servo_disable())
         self._servo_enabled = False
         self.logger.info("Servo disabled")
+
+    def _admittance_enable(self) -> None:
+        """Tares the F/T sensor (chain still off, so no jump) and switches to admittance."""
+        if self._admittance_enabled:
+            return
+        self._servo_disable()
+        success, msg = self._run_coro(self._robot_client.wrench_bias_set())
+        if not success:
+            raise RuntimeError(f"Failed to tare before enabling admittance: {msg}")
+        self._ft_bias_active = True
+        self.read_state()
+        self.note_ft_bias_pose()
+        success, msg = self._run_coro(self._robot_client.admittance_enable())
+        if not success:
+            raise RuntimeError(f"Failed to enable the admittance chain: {msg}")
+        self._admittance_enabled = True
+        self.logger.info("Admittance enabled")
+
+    def _admittance_disable(self) -> None:
+        """Blocks for the server's settle time while the reference relaxes onto the measured pose."""
+        if not self._admittance_enabled:
+            return
+        success, msg = self._run_coro(self._robot_client.admittance_disable())
+        if not success:
+            raise RuntimeError(f"Failed to disable the admittance chain: {msg}")
+        self._admittance_enabled = False
+        self._admittance_reference = None
+        self.logger.info("Admittance disabled")
 
     def shutdown(self) -> None:
         """
@@ -172,6 +205,11 @@ class RosGrpcManipulator(BaseManipulator):
             self._run_coro(self._robot_client.servo_disable())
         except RuntimeError:
             pass
+
+        try:
+            self._admittance_disable()
+        except RuntimeError as e:
+            self.logger.error(f"Error disabling admittance: {e}")
 
         try:
             # Disconnect gRPC client
@@ -263,6 +301,34 @@ class RosGrpcManipulator(BaseManipulator):
         else:
             self.ctrl_gripper_close()
 
+    def ctrl_apply_delta_pose_action(
+        self,
+        delta: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> th.Tensor:
+        self._admittance_enable()
+        delta_np = delta.reshape(-1).detach().cpu().numpy()
+
+        success, msg, clipped, reference = self._run_coro(
+            self._robot_client.admittance_step(
+                translation=delta_np[:3], rotation=delta_np[3:6]
+            )
+        )
+        if not success:
+            self.logger.warning(f"Admittance step rejected: {msg}")
+        reference = th.from_numpy(reference).to(dtype=th.float32, device=self.device)
+        reference[3:] = self.pt.quat_xyzw_to_wxyz(reference[3:])
+        self._admittance_reference = reference.unsqueeze(dim=0)
+
+        if open_gripper is not None:
+            if open_gripper:
+                self.ctrl_gripper_open()
+            else:
+                self.ctrl_gripper_close()
+
+        return th.tensor([clipped or not success], dtype=th.bool, device=self.device)
+
     def ctrl_apply_joints_diff_action(
         self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
@@ -275,6 +341,7 @@ class RosGrpcManipulator(BaseManipulator):
         envs_idx: th.Tensor | None = None,
     ) -> None:
         self._servo_disable()
+        self._admittance_disable()
 
         goal_pose = goal_pose.squeeze(dim=0).clone()
         goal_pose[3:] = self.pt.quat_wxyz_to_xyzw(goal_pose[3:])
@@ -310,6 +377,7 @@ class RosGrpcManipulator(BaseManipulator):
 
     def ctrl_go_to_home(self, envs_idx: th.Tensor | None = None) -> None:
         self._servo_disable()
+        self._admittance_disable()
         self._run_coro(
             self._robot_client.goto_joints(
                 names=tuple(self.dof_home_dict.keys()),
@@ -328,6 +396,7 @@ class RosGrpcManipulator(BaseManipulator):
             )
 
         self._servo_disable()
+        self._admittance_disable()
         # Paired by name rather than by position: the bridge's joint enum is not in
         # kinematic order, and neither is the /joint_states topic.
         success, msg = self._run_coro(
@@ -383,7 +452,12 @@ class RosGrpcManipulator(BaseManipulator):
         return self._state[StateModality.WRENCH]
 
     def set_ft_bias(self) -> None:
-        """Tares the sensor in hardware, through the bridge (`wrench_bias_set`)."""
+        """Tares the sensor in hardware, through the bridge (`wrench_bias_set`).
+
+        Leaves admittance mode first: with the chain active the tare would be a step in the
+        measured force, and the arm would jump by dF / stiffness.
+        """
+        self._admittance_disable()
         success, msg = self._run_coro(self._robot_client.wrench_bias_set())
         if not success:
             raise RuntimeError(f"Failed to set the F/T sensor bias: {msg}")
@@ -394,6 +468,7 @@ class RosGrpcManipulator(BaseManipulator):
 
     def clear_ft_bias(self) -> None:
         """Clears the tare in hardware, through the bridge (`wrench_bias_clear`)."""
+        self._admittance_disable()
         success, msg = self._run_coro(self._robot_client.wrench_bias_clear())
         if not success:
             raise RuntimeError(f"Failed to clear the F/T sensor bias: {msg}")
@@ -409,6 +484,11 @@ class RosGrpcManipulator(BaseManipulator):
         if self._state is None:
             raise ValueError("Call read_state() to initialize values")
         return self._state[StateModality.POSE]
+
+    def get_tcp_reference(self) -> th.Tensor:
+        if self._admittance_reference is None:
+            return self.get_tcp_pose()
+        return self._admittance_reference
 
     def get_base_pose(self) -> th.Tensor:
         return th.tensor([0, 0, 0, 1, 0, 0, 0], dtype=th.float32, device=self.device)

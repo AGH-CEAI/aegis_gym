@@ -5,6 +5,7 @@ import pytest
 import torch as th
 
 import aegis_gym.config  # noqa: F401
+from aegis_gym.runners.bc_policy import ExperienceBuffer, build_student_state
 from aegis_gym.runners.bc_runner import (
     BehaviorCloningRunner,
     _mean_episode_extras,
@@ -36,11 +37,16 @@ class _FakeEnv:
         self.num_steps = 0
         self.extras = {}
         tcp_pose = th.zeros(NUM_ENVS, 7)
-        self.manipulator = SimpleNamespace(get_tcp_pose=lambda: tcp_pose)
+        reference = tcp_pose.clone()
+        reference[:, :3] = th.tensor([0.01, -0.02, 0.5])
+        self.manipulator = SimpleNamespace(
+            get_tcp_pose=lambda: tcp_pose, get_tcp_reference=lambda: reference
+        )
         self.object = SimpleNamespace(get_pose=lambda: th.zeros(NUM_ENVS, 7))
+        self.unwrapped = self
 
-    def get_observations(self) -> th.Tensor:
-        return th.zeros(NUM_ENVS, 1)
+    def get_observations(self) -> dict:
+        return {"policy": th.full((NUM_ENVS, 3), 7.0)}
 
     def get_modality_observations(self, modalities) -> dict:
         return {m: th.zeros(NUM_ENVS, 3, 4, 4) for m in modalities}
@@ -54,17 +60,22 @@ class _FakeEnv:
         return self.get_observations(), th.zeros(NUM_ENVS), dones, self.extras
 
 
-def _collecting_runner(teacher_mixing: bool) -> BehaviorCloningRunner:
+def _collecting_runner(
+    teacher_mixing: bool, clip: bool = False, stored: list | None = None
+) -> BehaviorCloningRunner:
     runner = object.__new__(BehaviorCloningRunner)
     runner.env = _FakeEnv()
     runner.logger = _FakeLogger()
     runner._num_steps_per_env = 3
     runner._use_teacher_mixing = teacher_mixing
+    runner._clip_teacher_actions = clip
+    runner._state_obs = ["tcp_pose"]
     # env 0: the student is close to the teacher, env 1: far (the teacher takes over)
     teacher_actions = th.tensor([[0.5, 0.0], [2.0, 0.0]])
     runner._teacher = lambda obs: teacher_actions
     runner._policy = lambda rgb, pose: th.tensor([[0.5, 0.0], [0.0, 0.0]])
-    runner._buffer = SimpleNamespace(add=lambda *args: None)
+    stored = stored if stored is not None else []
+    runner._buffer = SimpleNamespace(add=lambda *args: stored.append(args))
     return runner
 
 
@@ -77,6 +88,96 @@ def test_collection_reports_the_student_vs_teacher_statistics():
     # the executed (clamped) norms: student 0.5 / 2, teacher (0.5 + 1) / 2
     assert stats["action_norm_ratio"] == pytest.approx(0.5 / 1.5)
     assert stats["teacher_action_saturation"] == pytest.approx(0.25)
+
+
+def test_clipped_labels_are_the_executed_teacher_actions():
+    stored = []
+    stats = _collecting_runner(
+        teacher_mixing=True, clip=True, stored=stored
+    )._collect_with_rl_teacher()
+
+    _rgb, _state, _pose, labels = stored[0]
+    assert labels.tolist() == [[0.5, 0.0], [1.0, 0.0]]
+    # env 1: |0 - 1| = 1 is still a takeover
+    assert stats["teacher_intervention_rate"] == pytest.approx(0.5)
+    # the raw error stays comparable with the unclipped runs, the executed one: (0 + 1) / 4
+    assert stats["action_error_onpolicy"] == pytest.approx(1.0)
+    assert stats["action_error_onpolicy_executed"] == pytest.approx(0.25)
+
+
+def test_student_state_concatenates_the_named_inputs():
+    env = _FakeEnv()
+
+    state = build_student_state(env, ["tcp_pose", "reference_offset", "teacher_obs"])
+
+    assert state.shape == (NUM_ENVS, 7 + 2 + 3)
+    assert state[0, 7:9].tolist() == pytest.approx([0.01, -0.02])
+    with pytest.raises(ValueError, match="Unknown student state_obs"):
+        build_student_state(env, ["tee_mesh"])
+
+
+def test_student_state_tee_and_goal_poses_are_planar():
+    env = _FakeEnv()
+    tee = th.zeros(NUM_ENVS, 7)
+    tee[:, :2] = th.tensor([0.4, 0.1])
+    tee[:, 3] = math.cos(math.pi / 4)  # wxyz, 90 deg about z
+    tee[:, 6] = math.sin(math.pi / 4)
+    env.object = SimpleNamespace(get_pose=lambda: tee)
+    env.goal_pose = th.zeros(NUM_ENVS, 7)
+    env.goal_pose[:, 0] = 0.47
+    env.goal_yaw = th.zeros(NUM_ENVS)
+
+    state = build_student_state(env, ["tee_pose", "goal_pose"])
+
+    assert state[0].tolist() == pytest.approx(
+        [0.4, 0.1, 1.0, 0.0, 0.47, 0.0, 0.0, 1.0], abs=1e-6
+    )
+
+
+@pytest.mark.parametrize("image_dtype", [th.float32, th.uint8])
+def test_buffer_returns_the_images_in_0_1(image_dtype):
+    images = th.rand(NUM_ENVS, 3, 4, 4)
+    buffer = ExperienceBuffer(
+        num_envs=NUM_ENVS,
+        max_size=1,
+        img_shape=(3, 4, 4),
+        state_dim=7,
+        action_dim=2,
+        dtype=th.float32,
+        image_dtype=image_dtype,
+    )
+    buffer.add(
+        images, th.zeros(NUM_ENVS, 7), th.zeros(NUM_ENVS, 7), th.zeros(NUM_ENVS, 2)
+    )
+
+    batch = next(buffer.get_batches(num_mini_batches=1, num_epochs=1))
+
+    assert batch["rgb_obs"].dtype == th.float32
+    assert th.allclose(batch["rgb_obs"], images, atol=0.5 / 255 + 1e-6)
+
+
+def test_buffer_memory_estimate_matches_the_allocation():
+    args = {
+        "num_envs": 4,
+        "max_size": 5,
+        "img_shape": (9, 8, 8),
+        "state_dim": 9,
+        "action_dim": 2,
+        "dtype": th.float32,
+        "image_dtype": th.uint8,
+    }
+    buffer = ExperienceBuffer(**args)
+    allocated = sum(
+        t.numel() * t.element_size()
+        for t in (
+            buffer._rgb_obs,
+            buffer._robot_pose,
+            buffer._object_poses,
+            buffer._actions,
+        )
+    )
+
+    assert ExperienceBuffer.estimate_bytes(**args) == allocated
 
 
 def test_collection_without_mixing_has_no_intervention_rate():

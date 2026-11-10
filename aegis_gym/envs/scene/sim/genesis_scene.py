@@ -49,6 +49,7 @@ class GenesisScene(BaseScene):
             RandomizationType.MANIPULATOR_MAX_SPEED: self._rand_manipulator_max_speed,
             RandomizationType.MANIPULATOR_PD_GAINS: self._rand_manipulator_pd_gains,
             RandomizationType.FT_SENSOR_BIAS: self._rand_ft_sensor_bias,
+            RandomizationType.FT_SENSOR_DRIFT: self._rand_ft_sensor_drift,
         }
         self._cfg_env = cfg_env
         self._cfg_dr = cfg_dr
@@ -333,6 +334,9 @@ class GenesisScene(BaseScene):
         self.manipulator.max_angular_speed = self._max_angular_speed
         self.manipulator.set_joints_pd_gains()
         self._attach_cameras(offsets=self._dr_cam_base_offsets)
+        no_offset = th.zeros(self.num_envs, 6, device=self.device)
+        self.manipulator.set_ft_residual_bias(no_offset)
+        self.manipulator.set_ft_drift(rate=no_offset, walk_std=no_offset[0])
 
     def add_preview_camera(
         self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
@@ -536,3 +540,17 @@ class GenesisScene(BaseScene):
         ranges = th.tensor([[*cfg.force_range, *cfg.torque_range]], device=self.device)
         bias = (th.rand(len(envs_idx), 6, device=self.device) * 2.0 - 1.0) * ranges
         self.manipulator.set_ft_residual_bias(bias, envs_idx=envs_idx)
+
+    def _rand_ft_sensor_drift(self, envs_idx: th.Tensor) -> None:
+        cfg = self._cfg_dr.ft_sensor_drift
+        if not cfg.enabled:
+            return
+
+        ranges = th.tensor(
+            [[*cfg.force_rate_range, *cfg.torque_rate_range]], device=self.device
+        )
+        rate = (th.rand(len(envs_idx), 6, device=self.device) * 2.0 - 1.0) * ranges
+        walk = th.tensor(
+            [*cfg.force_walk_std, *cfg.torque_walk_std], device=self.device
+        )
+        self.manipulator.set_ft_drift(rate, walk, envs_idx=envs_idx)

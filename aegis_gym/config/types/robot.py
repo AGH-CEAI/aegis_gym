@@ -19,3 +19,8 @@ class RobotCfg(BaseCfg):
 
     ft_payload_mass: float | None
     ft_payload_com: list[float] | None
+
+    # A1 reference limits; must match the gRPC server launch arguments of the same name
+    admittance_max_step_lin: float = 0.004  # [m] per policy step
+    admittance_max_offset_lin: float = 0.02  # [m]
+    admittance_max_accel_lin: float = 0.0  # [m/s^2], 0 = off

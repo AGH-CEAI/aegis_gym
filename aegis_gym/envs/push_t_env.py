@@ -12,6 +12,7 @@ from aegis_gym.aux.geom import (
     quat_to_rotvec_error,
     quat_to_z_euler,
     quat_to_zrot,
+    transform_by_quat,
 )
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.aux.rand import rand_uniform
@@ -27,7 +28,8 @@ from .scene import BaseScene
 @register_env("push_t")
 class PushTEnv(BaseEnv):
     DEFAULT_MODALITIES = frozenset({Modality.TCP_POSE, Modality.OBJECT_POSE})
-    DEFAULT_EPISODE_LENGTH_S = 30.0
+    # the task must be solved within 15 s (2026-11-09; was 30 s)
+    DEFAULT_EPISODE_LENGTH_S = 15.0
     PREVIEW_CAMERA_POSE = ((0.95, 0.0, 1.25), (0.47, 0.0, 0.0))
 
     _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "push_t"
@@ -46,6 +48,9 @@ class PushTEnv(BaseEnv):
     _TEE_FALL_Z = 0.02
     # planar TCP velocity [vx, vy]; height and orientation are held by the env
     _ACTION_DIM = 2
+    control = "velocity"  # `env_specific_dict["control"]`
+    observe_reference = False
+    observe_force = False
 
     def __init__(self, scene: BaseScene, cfg: ExpConfig):
         super().__init__(scene=scene, cfg=cfg)
@@ -122,6 +127,7 @@ class PushTEnv(BaseEnv):
         self.goal_rand_x = list(goal_rand["x_range"])
         self.goal_rand_y = list(goal_rand["y_range"])
         self.goal_rand_z_rot = [math.radians(a) for a in goal_rand["z_rot_range_deg"]]
+        self.goal_table_margin = goal_rand["table_margin"]
         self.spawnbox_xlength = env_dict["spawnbox_xlength"]
         self.spawnbox_ylength = env_dict["spawnbox_ylength"]
         self.spawnbox_xoffset = env_dict["spawnbox_xoffset"]
@@ -138,6 +144,16 @@ class PushTEnv(BaseEnv):
         self.tcp_workspace_x = list(env_dict["tcp_workspace_x"])
         self.tcp_workspace_y = list(env_dict["tcp_workspace_y"])
         self.terminate_on_success = env_dict["terminate_on_success"]
+        self.control = env_dict["control"]
+        if self.control not in ("velocity", "admittance"):
+            raise ValueError(
+                f"Unknown push_t control `{self.control}`; use `velocity` or `admittance`."
+            )
+        self.observe_reference = (
+            self.control == "admittance" and env_dict["observe_reference"]
+        )
+        self.observe_force = env_dict["observe_force"]
+        self.force_obs_scale = env_dict["force_obs_scale"]
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -166,12 +182,20 @@ class PushTEnv(BaseEnv):
                 "x_range": [-0.05, 0.05],
                 "y_range": [-0.1, 0.1],
                 "z_rot_range_deg": [-180.0, 180.0],
+                # [m] the whole goal footprint stays this far inside the table top: the goal x/y
+                # range is narrowed per yaw (without it, 20 % of the goals hung over the near
+                # edge, by up to 7.7 cm)
+                "table_margin": 0.01,
             },
             # tee origin spawn box w.r.t. the goal; with any yaw the tee stays within the TCP
             # workspace sideways and >= 4 cm away from the TCP start pose
             "spawnbox_xlength": 0.14,
             "spawnbox_ylength": 0.34,
-            "spawnbox_xoffset": -0.05,
+            # -0.03 (was -0.05, 2026-11-05): the table starts at x = 0.32, so a tee with its stem
+            # towards the base hung over the near edge in 14 % of the spawns (up to 7.7 cm); now 9 %
+            # (up to 5.7 cm). Further out (-0.01: 5 %) the far end leaves the TCP workspace more often.
+            # Moved it a little bit further away from base
+            "spawnbox_xoffset": 0.03,
             "spawnbox_yoffset": -0.17,
             "mask_resolution": 64,
             "mask_half_width": 0.15,
@@ -186,6 +210,16 @@ class PushTEnv(BaseEnv):
             # [min, max] TCP position; the arm can't hold the height near its reach limit
             "tcp_workspace_x": [0.15, 0.7],
             "tcp_workspace_y": [-0.35, 0.35],
+            # `velocity`: TCP velocity servoing; `admittance`: compliant A1 mode, the action moves
+            # the TCP reference by up to `action_max_linear_speed * policy_dt` per step
+            "control": "velocity",
+            # admittance only: observe the reference-to-measured TCP offset (lag + deflection)
+            "observe_reference": True,
+            # observe the tared F/T force in world XY; the A1 spring state that the robot exposes
+            # (the internal offset is not sent over gRPC: in steady state it is F / K)
+            "observe_force": False,
+            # [m/N] the observed force is scaled to the static spring deflection, 1 / K of A1
+            "force_obs_scale": 0.002,
         }
 
     def _observe_tcp_pose(self) -> th.Tensor:
@@ -434,10 +468,8 @@ class PushTEnv(BaseEnv):
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        if not randomize_domain:
-            return
-        for rt in self._scene.get_available_randomizations():
-            self._scene.randomize_domain(rand_type=rt, env_idx=envs_idx)
+        if randomize_domain:
+            self.apply_domain_randomization(envs_idx)
 
     def _randomize_goal(
         self, envs_idx: th.Tensor, seeds: Sequence[int] | None = None
@@ -453,11 +485,25 @@ class PushTEnv(BaseEnv):
             low, high = low_high
             return u[:, column] * (high - low) + low
 
-        goal_x = self.goal_offset_xy[0] + uniform(0, self.goal_rand_x)
-        goal_y = self.goal_offset_xy[1] + uniform(1, self.goal_rand_y)
         goal_yaw = th.remainder(
             self.goal_z_rot + uniform(2, self.goal_rand_z_rot), 2 * math.pi
         )
+        extent_min, extent_max = self._tee_footprint_extent(goal_yaw)
+
+        def on_table(column: int, axis: int, table: tuple[float, float]) -> th.Tensor:
+            offset_range = (self.goal_rand_x, self.goal_rand_y)[axis]
+            nominal = self.goal_offset_xy[axis]
+            margin = self.goal_table_margin
+            low = th.clamp(
+                table[0] + margin - extent_min[:, axis], min=nominal + offset_range[0]
+            )
+            high = th.clamp(
+                table[1] - margin - extent_max[:, axis], max=nominal + offset_range[1]
+            )
+            return low + u[:, column] * th.clamp(high - low, min=0.0)
+
+        goal_x = on_table(column=0, axis=0, table=self.table_x)
+        goal_y = on_table(column=1, axis=1, table=self.table_y)
 
         self.goal_yaw[envs_idx] = goal_yaw
         self.goal_pose[envs_idx, 0] = goal_x
@@ -509,11 +555,16 @@ class PushTEnv(BaseEnv):
         self.episode_length_buf += 1
 
         actions = th.clamp(actions, min=-1.0, max=1.0)
-        tcp_twist = self._planar_action_to_tcp_twist(actions)
-
-        self._scene.pre_step()
-        self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
-        self._scene.step()
+        if self.control == "admittance":
+            tcp_delta = self._planar_action_to_tcp_delta(actions)
+            self._scene.pre_step()
+            self.manipulator.ctrl_apply_delta_pose_action(tcp_delta, open_gripper=False)
+            self._scene.step()
+        else:
+            tcp_twist = self._planar_action_to_tcp_twist(actions)
+            self._scene.pre_step()
+            self.manipulator.ctrl_apply_vel_action(tcp_twist, open_gripper=False)
+            self._scene.step()
 
         self.intersection_ratio = self._tee_projection_to_goal_intersection()
         self.success_buf = self.intersection_ratio >= self.success_thresh
@@ -558,6 +609,29 @@ class PushTEnv(BaseEnv):
         tcp_twist[:, 2] = self.tcp_hold_z_gain * z_err / self.max_linear_speed
         tcp_twist[:, 3:] = self.tcp_hold_rot_gain * rot_err / self.max_angular_speed
         return th.clamp(tcp_twist, min=-1.0, max=1.0)
+
+    def _planar_action_to_tcp_delta(self, actions: th.Tensor) -> th.Tensor:
+        """
+        Expands the planar [N, 2] action into the [N, 6] reference displacement of the admittance
+        mode (metres, rotation vector). The height and orientation are held on the reference, not
+        on the measured pose, so the hold doesn't push against the spring deflected by contact.
+        """
+        reference = self.manipulator.get_tcp_reference()
+        actions = self._limit_action_to_workspace(actions, tcp_xy=reference[:, :2])
+        max_lin = self.max_linear_speed * self.policy_dt
+        max_ang = self.max_angular_speed * self.policy_dt
+        z_err = self.tcp_height - reference[:, 2]
+        rot_err = quat_to_rotvec_error(self.tcp_start_pose[:, 3:], reference[:, 3:])
+
+        delta = th.zeros(self.num_envs, 6, device=self.device, dtype=th.float32)
+        delta[:, :2] = actions * max_lin
+        delta[:, 2] = th.clamp(
+            self.tcp_hold_z_gain * z_err * self.policy_dt, min=-max_lin, max=max_lin
+        )
+        rot = self.tcp_hold_rot_gain * rot_err * self.policy_dt
+        rot_norm = th.linalg.vector_norm(rot, dim=-1, keepdim=True)
+        delta[:, 3:] = rot * th.clamp(max_ang / th.clamp(rot_norm, min=1e-12), max=1.0)
+        return delta
 
     def _limit_action_to_workspace(
         self, actions: th.Tensor, tcp_xy: th.Tensor
@@ -673,6 +747,16 @@ class PushTEnv(BaseEnv):
                 [th.sin(tee_yaw), th.cos(tee_yaw)], dim=-1
             ),  # tee-yaw in world frame
         ]
+        if self.observe_reference:
+            # commanded minus measured TCP: the loop lag plus the spring deflection under contact
+            reference_xy = self.manipulator.get_tcp_reference()[:, :2]
+            obs_components.append(reference_xy - tcp_xy)
+        if self.observe_force:
+            force = transform_by_quat(
+                self.manipulator.get_ft_wrench()[:, :3],
+                obs[Modality.TCP_POSE][:, 3:],  # the sensor's output frame
+            )
+            obs_components.append(force[:, :2] * self.force_obs_scale)
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return obs_tensor
@@ -695,6 +779,20 @@ class PushTEnv(BaseEnv):
         centroid_err_sq = (tee_centroid - goal_centroid).square().sum(dim=-1)
         rot_err_sq = 2 * (1 - th.cos(yaw - goal_yaw)) * self._tee_gyration_sq
         return th.sqrt(centroid_err_sq + rot_err_sq)
+
+    def _tee_footprint_extent(self, yaw: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
+        """[N, 2] min and max xy offsets of the tee footprint from its origin at the [N] `yaw`."""
+        corners = th.tensor(
+            [
+                (cx + sx * hx, cy + sy * hy)
+                for (cx, cy), (hx, hy) in self._TEE_FOOTPRINT_BOXES
+                for sx in (-1, 1)
+                for sy in (-1, 1)
+            ],
+            device=self.device,
+        )
+        rotated = self._rotate_xy(corners.unsqueeze(0), yaw.unsqueeze(-1))
+        return rotated.amin(dim=1), rotated.amax(dim=1)
 
     @staticmethod
     def _rotate_xy(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:

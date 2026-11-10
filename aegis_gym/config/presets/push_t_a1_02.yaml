@@ -1,0 +1,143 @@
+# PPO configuration for the push_t environment, based on the ManiSkill3 PushT-v1
+# and IsaacLab rsl_rl manipulation baselines.
+rl:
+  class_name: "OnPolicyRunner" # Number of steps per environment per iteration
+  num_steps_per_env: 48  # Number of policy updates
+  max_iterations: 3000
+  seed: 1
+  use_cameras: False
+  # Observations mapping
+  obs_groups: {"actor": ["policy"], "critic": ["policy"]}
+
+  # Logging parameters
+  save_interval: 100  # Check for potential saves every `save_interval` iterations
+  best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
+  experiment_name: null
+  run_name: ""
+  algorithm:
+    class_name: "PPO"
+    # Training
+    learning_rate: 0.0003
+    num_learning_epochs: 5
+    num_mini_batches: 4
+    schedule: "adaptive"  # adaptive, fixed
+    # Value function
+    value_loss_coef: 1.0
+    clip_param: 0.2
+    use_clipped_value_loss: True
+    # Surrogate loss
+    desired_kl: 0.01
+    entropy_coef: 0.005
+    gamma: 0.995  # ~200 steps (8 s at 25 Hz) horizon, the task takes ~5-15 s
+    lam: 0.95
+    max_grad_norm: 1.0
+    # Miscellaneous
+    normalize_advantage_per_mini_batch: False
+    # Random network distilation
+    rnd_cfg: null
+    # Symmetry augmentation
+    symmetry_cfg: null
+  init_member_classes: {}
+  policy:
+    actor:
+      class_name: "MLPModel"
+      hidden_dims: [256, 256, 128]
+      activation: "elu"  # original: "relu"
+      obs_normalization: True
+      distribution_cfg:
+        class_name: "GaussianDistribution"  # state-dependent std: HeteroscedasticGaussianDistribution
+        init_std: 1.0
+        std_type: "log"  # 'scalar' or 'log'
+    critic:
+      class_name: "MLPModel"
+      hidden_dims: [256, 256, 128]
+      activation: "elu"
+      obs_normalization: True
+    # Reinitialize the last layer every `interval` iterations: `actor`, `critic` or `both`.
+    # An interval of 0 disables it.
+    reset_last_layer_weights: {"interval": 0, "part": "both"}
+    # Stop the gradient at the actor inputs, so the actor does not shape their representation.
+    detach_actor_grad: False
+bc:
+  # The grasp studies' optimizer settings (lr, steps, grad clip) are kept for the comparability
+  num_steps_per_env: 24
+  learning_rate: 0.001
+  # The samples of a 32k buffer (64 envs) in ~2k batches: 48 updates per iteration, as in the
+  # grasp studies (5 x 10), but with fewer passes over the rarely refreshed samples
+  num_epochs: 3
+  num_mini_batches: 16
+  # Push-T episodes are long (teacher ~6-9 s, timeout 15 s): the student-driven rollouts alone
+  # rarely reach the late, fine alignment phase, so the teacher takes over the large deviations
+  use_teacher_mixing: True
+  # Steps per env, the float32 RGB buffer of 3 cameras at 64x64 takes ~4.7 GB with 64 envs
+  buffer_size: 500
+  policy:
+    encoder_type: "shared_cnn"
+    # Keeps the image patches positions, which the tee pose precision relies on (the linear
+    # fusion averages each camera down to a 4x4 grid); the lowest action loss in the grasp studies
+    fusion_type: "attention_spatial"
+    # The tee pose as the auxiliary target, the main latent of the task
+    use_pose_head: True
+    action_head_state_obs_dim: 7  # TCP pose
+    # The teacher's capacity: the Push-T actions depend on the contact geometry
+    action_head_hidden_dims: [256, 256, 128]
+    pose_head_hidden_dims: [64, 64]
+
+logger:
+  # Policy preview video at the end of the training, `--no-record` disables it
+  enable_policy_preview: True
+
+dr:
+  enabled: True
+  image_aug:
+    enabled: True
+    per_episode_aug: True
+    brightness_jitter: 0.4
+    contrast_jitter: 0.3
+    gaussian_noise_std: 0.025
+    gamma_range: 0.25
+    channel_jitter: 0.05
+    blur_prob: 0.30
+    blur_kernel_size: 3
+    blur_sigma: 0.8
+    cutout:
+      prob: 0.3
+      min_size: 4
+      max_size: 12
+  pd_gains:
+    enabled: True
+    kp_noise: 0.10
+    kv_noise: 0.10
+  max_speed:
+    enabled: True
+    linear_speed_noise: 0.03
+    angular_speed_noise: 0.03
+  cameras_extrinsics:
+    enabled: True
+    scene_cam:
+      translation_std: 0.0
+      rotation_std_deg: 1.0
+    tool_cams:
+      translation_std: 0.001
+      rotation_std_deg: 0.6
+
+env:
+  # the task must be solved within 15 s (375 steps at 25 Hz; was 30 s before 2026-11-09)
+  episode_length_s: 15.0
+  # A1 at up to 0.2 m/s (measured on the robot 2026-11-05, see aegis_handoff.md, speed ladder):
+  # just below max_step_lin / policy_dt, so a full action is not clipped once at speed.
+  action_max_linear_speed: 0.196
+  env_specific_dict:
+    control: "admittance"
+    goal_randomization:
+      enabled: True
+      x_range: [-0.05, 0.05]
+      y_range: [-0.1, 0.1]
+      z_rot_range_deg: [-180.0, 180.0]
+
+# Must match the gRPC server on the robot: bringup with admittance_max_step_lin:=0.008
+# admittance_max_offset_lin:=0.03 admittance_max_accel_lin:=2.0
+robot:
+  admittance_max_step_lin: 0.008
+  admittance_max_offset_lin: 0.03
+  admittance_max_accel_lin: 2.0
