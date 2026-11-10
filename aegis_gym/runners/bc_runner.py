@@ -224,10 +224,19 @@ class BehaviorCloningRunner(BasePolicyRunner):
         init_at_random_ep_len: bool = False,
         preview: Callable[[int], dict[str, float]] | None = None,
         preview_interval: int = 0,
+        evaluate: Callable[[int], dict[str, float]] | None = None,
+        eval_interval: int = 0,
     ) -> None:
+        """
+        Trains the student for `num_learning_iterations`. The `preview(it)` runs every
+        `preview_interval` iterations (except the last one, the caller records the final preview),
+        the `evaluate(it)` every `eval_interval` iterations and at the last one. The best model is
+        selected by the evaluation's success rate, else the preview's, else the mean reward.
+        """
         self._buffer.clear()
         self._check_update_fits()
         use_preview = preview is not None and preview_interval > 0
+        use_eval = evaluate is not None and eval_interval > 0
 
         start_iter = self._current_iter
         end_iter = start_iter + num_learning_iterations
@@ -333,14 +342,29 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 if self.logger is not None:
                     self.logger.save_model(path=str(ckpt_path), it=it + 1)
 
-            # Save the best model, by the student alone (preview) if available
-            if self.logger is not None and use_preview:
-                if (it + 1) % preview_interval == 0 and it + 1 < end_iter:
+            # Save the best model, by the student alone (evaluation or preview) if available
+            if self.logger is not None and (use_eval or use_preview):
+                preview_due = (
+                    use_preview
+                    and (it + 1) % preview_interval == 0
+                    and it + 1 < end_iter
+                )
+                eval_due = use_eval and (
+                    (it + 1) % eval_interval == 0 or it + 1 == end_iter
+                )
+                if preview_due:
                     metrics = preview(it)
-                    self._discard_interrupted_episodes()
+                    if not use_eval:
+                        self._update_best_model(
+                            it, score=(metrics["success_rate"], metrics["mean_return"])
+                        )
+                if eval_due:
+                    metrics = evaluate(it)
                     self._update_best_model(
                         it, score=(metrics["success_rate"], metrics["mean_return"])
                     )
+                if preview_due or eval_due:
+                    self._discard_interrupted_episodes()
             elif self.logger is not None and len(self.logger.rewbuffer) > 0:
                 mean_reward = statistics.mean(self.logger.rewbuffer)
                 self._update_best_model(it, score=(-1.0, mean_reward))
@@ -725,6 +749,18 @@ class BehaviorCloningRunner(BasePolicyRunner):
     def get_inference_policy(self, device: th.device) -> Any:
         return self._policy.to(device)
 
+    @property
+    def best_model_iter(self) -> int:
+        """The `current_iter` of the best model (`model_best.pt`), -1 if none."""
+        return self._best_model_iter
+
+    def load_inference_policy(self, path: Path, device: th.device) -> Any:
+        """A copy of the student with the weights of the checkpoint `path`, in the eval mode."""
+        checkpoint = th.load(path, map_location=device, weights_only=False)
+        policy = copy.deepcopy(self._policy).to(device)
+        policy.load_state_dict(checkpoint["model_state_dict"])
+        return policy.eval()
+
     def export_policy(self, path: Path, filename: str = "policy.pt") -> None:
         raise NotImplementedError()
 
@@ -773,4 +809,4 @@ def _format_score(score: tuple[float, float]) -> str:
     success_rate, value = score
     if success_rate < 0:
         return f"Mean reward = {value:.2f}"
-    return f"Preview success rate = {success_rate:.3f}, mean return = {value:.2f}"
+    return f"Success rate = {success_rate:.3f}, mean return = {value:.2f}"
