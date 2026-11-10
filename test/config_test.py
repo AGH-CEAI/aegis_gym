@@ -167,6 +167,16 @@ def test_episode_length_defaults_to_the_selected_env():
     assert env_cfg.max_steps == int(env_cfg.episode_length_s / env_cfg.policy_dt)
 
 
+def test_action_preview_launch_arg_enables_the_debugging_tools():
+    cm.setup_config(argv=["", "--debug-action-preview"])
+    debug_cfg = cm.get_config().debug_cfg
+
+    assert debug_cfg.enabled
+    assert debug_cfg.enable_action_preview
+    assert not debug_cfg.enable_vis_preview
+    assert debug_cfg.action_preview_env_idx == 0
+
+
 def test_episode_length_launch_arg_overrides_env_default():
     cm.setup_config(argv=["", "--env", "push_t", "--episode-length-s", "12.0"])
 
