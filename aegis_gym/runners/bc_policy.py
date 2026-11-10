@@ -5,6 +5,7 @@ import torch as th
 from strenum import StrEnum
 from torch import nn
 
+from aegis_gym.aux.geom import quat_to_z_euler
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
 
@@ -28,12 +29,28 @@ def _reference_offset(env) -> th.Tensor:
     return manipulator.get_tcp_reference()[:, :2] - manipulator.get_tcp_pose()[:, :2]
 
 
+def _planar_pose(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:
+    return th.cat([xy, th.sin(yaw).unsqueeze(-1), th.cos(yaw).unsqueeze(-1)], dim=-1)
+
+
+def _tee_pose(env) -> th.Tensor:
+    pose = env.object.get_pose()
+    return _planar_pose(pose[:, :2], quat_to_z_euler(pose[:, 3:]))
+
+
+def _goal_pose(env) -> th.Tensor:
+    return _planar_pose(env.goal_pose[:, :2], env.goal_yaw)
+
+
 # The student's non-image inputs by name. `teacher_obs` is privileged (the true tee pose): a
-# sim-only sanity check of the distillation, not deployable.
+# sim-only sanity check of the distillation, not deployable. `tee_pose` (privileged too) and
+# `goal_pose` are absolute, in the world frame: x, y, sin / cos yaw (hypothesis 2 of the handoff).
 STUDENT_STATE_OBS: dict[str, Callable] = {
     "tcp_pose": lambda env: env.manipulator.get_tcp_pose(),
     "reference_offset": _reference_offset,
     "teacher_obs": lambda env: env.get_observations()["policy"],
+    "tee_pose": _tee_pose,
+    "goal_pose": _goal_pose,
 }
 
 
