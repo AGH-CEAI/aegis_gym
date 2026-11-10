@@ -9,6 +9,13 @@ from aegis_gym.config.types import CamerasSetup
 from ..base_env import BaseEnv, Modality, ResetReturn, StepReturn
 
 
+def innermost_env(env: BaseEnv) -> BaseEnv:
+    """The env under all the wrappers (`unwrapped` removes a single one)."""
+    while isinstance(env, BaseEnvWrapper):
+        env = env.unwrapped
+    return env
+
+
 class BaseEnvWrapper(BaseEnv):
     """
     An abstract class to implement environment wrappers
