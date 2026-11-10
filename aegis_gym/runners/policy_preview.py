@@ -21,7 +21,7 @@ from aegis_gym.config.types import (
     Modality,
 )
 from aegis_gym.envs import BaseEnv
-from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
+from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, innermost_env
 
 from .bc_policy import build_student_state
 
@@ -263,13 +263,21 @@ def _camera_label(modality: Modality) -> str:
 
 
 def make_visual_bc_policy(
-    env: BaseEnv, bc_policy: Callable, state_obs: list[str]
+    env: BaseEnv,
+    bc_policy: Callable,
+    state_obs: list[str],
+    augment_images: bool = False,
 ) -> InferencePolicy:
-    """Adapts the BC student, acting on (camera images, `state_obs`), to the preview's call."""
-    env = env.unwrapped
+    """
+    Adapts the BC student, acting on (camera images, `state_obs`), to the preview's call. The
+    images come from the innermost env, or through the `env`'s wrappers with `augment_images`
+    (e.g. the `VisionAugEnvWrapper`).
+    """
+    image_source = env if augment_images else innermost_env(env)
+    env = innermost_env(env)
 
     def policy(_obs: TensorDict) -> th.Tensor:
-        images = env.get_modality_observations(modalities=IMAGE_MODALITIES)
+        images = image_source.get_modality_observations(modalities=IMAGE_MODALITIES)
         rgb = th.cat([images[m] for m in IMAGE_MODALITIES], dim=1).float()
         return bc_policy(rgb, build_student_state(env, state_obs))
 

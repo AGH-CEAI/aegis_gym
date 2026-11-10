@@ -7,3 +7,18 @@ local_log_dir: ""
 enable_policy_preview: False
 policy_preview_interval: 0
 policy_preview_resolution: [320, 240]
+# BC, simulation: the student alone on fixed seeded initial states (`PolicyEvaluator`). Every
+# `policy_eval_interval` iterations (and at the last one; 0: off) on `policy_eval_episodes` seeds from
+# `policy_eval_seed_start`, it selects the best model (instead of the preview). After the training, the
+# best and the last model on `policy_eval_final_episodes` held-out seeds (0: off, e.g. to run it as a
+# separate task: `eval.py --evaluate-checkpoints`). 256 episodes: 95 % CI ~ +-4 % at 0.9 success, 1000:
+# ~ +-1.9 %, and a 5-point difference at p < 0.001 (paired by seed).
+policy_eval_interval: 100
+policy_eval_episodes: 256
+policy_eval_seed_start: 10000
+policy_eval_final_episodes: 1000
+policy_eval_final_seed_start: 20000
+# null: the nominal domain (no domain randomization); an int: each wave of `num_envs` episodes gets the
+# configured domain randomization (scene + image augmentation) drawn from this seed, the same for every
+# policy evaluated at the same `num_envs`
+policy_eval_dr_seed: null
