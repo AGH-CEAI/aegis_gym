@@ -174,3 +174,5 @@ cython_debug/
 COLCON_IGNORE
 *.pt
 logs_*/
+*.npz
+*.csv
