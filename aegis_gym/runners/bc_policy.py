@@ -132,6 +132,12 @@ def build_memory(cfg: MemoryCfg, input_dim: int) -> nn.Module | None:
             "model_dim": cfg.model_dim,
             "num_heads": cfg.num_heads,
         }
+    elif cfg.type == "hopfield":
+        kwargs = {
+            "window": cfg.window,
+            "model_dim": cfg.model_dim,
+            "update_steps": cfg.update_steps,
+        }
     # "identity": the memoryless student trained on the chunks (the control of the memory students)
     name = "none" if cfg.type == "identity" else cfg.type
     return make_memory(name, input_dim=input_dim, residual=cfg.residual, **kwargs)

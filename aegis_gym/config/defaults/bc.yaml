@@ -112,15 +112,17 @@ policy:
   # between the fused features (+ state_obs) and the action head; any type but "none" needs the
   # enc_mem_dec package (image geonosis:5000/aegis_gym_emd)
   memory:
-    type: "none"  # none, identity (memoryless, trained on chunks), frame_stack, gru, lstm, attention_window
+    type: "none"  # none, identity (memoryless, trained on chunks), frame_stack, gru, lstm, attention_window,
+    # hopfield
     residual: False  # the current step's features appended to the memory's output
     hidden_dim: 256  # gru, lstm
     num_layers: 1  # gru, lstm
     num_frames: 4  # frame_stack
     frame_stride: 1  # frame_stack: the steps between the stacked frames
-    window: 16  # attention_window: the steps attended, the current one included
-    model_dim: 128  # attention_window
+    window: 16  # attention_window, hopfield: the steps attended, the current one included
+    model_dim: 128  # attention_window, hopfield
     num_heads: 4  # attention_window
+    update_steps: 1  # hopfield: the retrieval iterations
     # training chunks: `burn_in` steps without gradients, then the loss on `sequence_length`
     sequence_length: 32
     burn_in: 16

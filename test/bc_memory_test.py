@@ -134,6 +134,7 @@ def test_memoryless_policy_needs_no_enc_mem_dec():
         {"type": "frame_stack", "num_frames": 3},
         {"type": "frame_stack", "num_frames": 3, "frame_stride": 2},
         {"type": "attention_window", "window": 3, "model_dim": 8, "num_heads": 2},
+        {"type": "hopfield", "window": 3, "model_dim": 8, "update_steps": 2},
     ],
     ids=lambda m: (
         m["type"]
@@ -420,6 +421,14 @@ def _training_runner(tmp_path, latent_pose_loss_weight: float, memory: dict):
             "window": 5,
             "model_dim": 8,
             "num_heads": 2,
+            "residual": True,
+            "sequence_length": 4,
+            "burn_in": 4,
+        },
+        {
+            "type": "hopfield",
+            "window": 5,
+            "model_dim": 8,
             "residual": True,
             "sequence_length": 4,
             "burn_in": 4,
