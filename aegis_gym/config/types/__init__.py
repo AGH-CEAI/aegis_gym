@@ -1,5 +1,12 @@
 from .base_cfg import BaseCfg, ToggleCfg
-from .bc import BCCfg, CNNLayerCfg, FusionCfg, PolicyBCCfg, VisionEncoderCfg
+from .bc import (
+    BCCfg,
+    CNNLayerCfg,
+    FusionCfg,
+    MemoryCfg,
+    PolicyBCCfg,
+    VisionEncoderCfg,
+)
 from .debug import DebugCfg
 from .domain_randomization import (
     CameraFovValueCfg,
@@ -68,6 +75,7 @@ __all__ = [
     "ImageAugCfg",
     "LoggerCfg",
     "MaxSpeedCfg",
+    "MemoryCfg",
     "Modality",
     "PDGainCfg",
     "PolicyBCCfg",

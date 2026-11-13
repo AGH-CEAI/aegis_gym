@@ -20,12 +20,9 @@ from aegis_gym.config import (
     parse_arguments,
 )
 from aegis_gym.config.types import (
-    IMAGE_MODALITIES,
     POLICY_PREVIEW_SEEDS,
     Algorithm,
-    DebugCfg,
     ExpConfig,
-    Modality,
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
@@ -337,37 +334,34 @@ def eval_policy_single(
 
     # TODO(issue#101): Design arguments and config manager for policy loading
     policy = load_policy(env=env, cfg=cfg)
+    if args.algorithm == Algorithm.BC:
+        # the configured student inputs, and a memory's state carried between the steps
+        policy = make_visual_bc_policy(
+            env=env, bc_policy=policy, state_obs=cfg.bc_cfg.policy.state_obs
+        )
     obs, _ = env.reset()
     metrics = run_eval(
         env=env,
         policy=policy,
-        stage=args.algorithm,
         max_steps=max_steps,
         obs=obs,
         device=device,
-        debug_cfg=cfg.debug_cfg,
     )
     log_metrics(clearml_task, metrics)
 
     preview = create_policy_preview_recorder(env=env, cfg=cfg)
     if preview is None:
         return
-    if args.algorithm == Algorithm.BC:
-        policy = make_visual_bc_policy(
-            env=env, bc_policy=policy, state_obs=cfg.bc_cfg.policy.state_obs
-        )
     preview.record(policy=policy, iteration=0)
 
 
 # TODO(issue#100): Unify policy model types under a common base class or type alias
 def run_eval(
     env: BaseEnv,
-    policy: Callable,
-    stage: Algorithm,
+    policy: InferencePolicy,
     max_steps: int,
     obs: th.Tensor,
     device: th.device,
-    debug_cfg: DebugCfg,
 ) -> dict[str, float]:
     logger = get_logger("Eval")
     total_rewards = th.zeros(env.num_envs, device=device)
@@ -376,29 +370,14 @@ def run_eval(
     start_time = time.perf_counter()
     total_inference_time = 0.0
 
-    # TODO(issue#135) This shouldn't be defined in the eval code!
-    def get_obs_vis() -> th.Tensor:
-        obs = env.get_modality_observations(modalities=IMAGE_MODALITIES)
-        return th.cat([obs[m] for m in IMAGE_MODALITIES], dim=1).float()
+    # without the graph: a memory's state would carry it through the whole run
+    with th.inference_mode():
+        for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
+            actions = policy(obs)
+            obs, rews, _dones, _infos = env.step(actions)
 
-    vis_debug_params = {}
-    if debug_cfg.enabled:
-        vis_debug_params = debug_cfg.as_dict()
-        vis_debug_params.pop("enabled")
-
-    for _ in tqdm(range(max_steps), desc="Evaluation", unit="step"):
-        match stage:
-            case Algorithm.RL:
-                actions = policy(obs)
-            case Algorithm.BC:
-                rgb_obs = get_obs_vis()
-                tcp_pose = env.get_modality_observation(Modality.TCP_POSE)
-                actions = policy(rgb_obs, tcp_pose)
-
-        obs, rews, _dones, _infos = env.step(actions)
-
-        total_rewards += rews
-        episode_lengths += 1
+            total_rewards += rews
+            episode_lengths += 1
 
     logger.info("Finished model inference")
 

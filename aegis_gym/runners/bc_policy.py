@@ -1,13 +1,14 @@
 import math
 from collections.abc import Callable, Iterator
+from typing import Any
 
 import torch as th
 from strenum import StrEnum
 from torch import nn
 
-from aegis_gym.aux.geom import quat_to_z_euler
+from aegis_gym.aux.geom import quat_to_z_euler, transform_by_quat
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
+from aegis_gym.config.types import FusionCfg, MemoryCfg, PolicyBCCfg, VisionEncoderCfg
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,
@@ -29,6 +30,18 @@ def _reference_offset(env) -> th.Tensor:
     return manipulator.get_tcp_reference()[:, :2] - manipulator.get_tcp_pose()[:, :2]
 
 
+def _contact_force(env) -> th.Tensor:
+    """
+    The tared F/T force in the world XY, scaled to the A1 spring deflection [m] by the env's
+    `force_obs_scale`: the env's own force observation (`observe_force`).
+    """
+    manipulator = env.manipulator
+    force = transform_by_quat(
+        manipulator.get_ft_wrench()[:, :3], manipulator.get_tcp_pose()[:, 3:]
+    )
+    return force[:, :2] * env.force_obs_scale
+
+
 def _planar_pose(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:
     return th.cat([xy, th.sin(yaw).unsqueeze(-1), th.cos(yaw).unsqueeze(-1)], dim=-1)
 
@@ -42,12 +55,35 @@ def _goal_pose(env) -> th.Tensor:
     return _planar_pose(env.goal_pose[:, :2], env.goal_yaw)
 
 
+# the latent pose decoder's x, y in dm: on the scale of the sin / cos of the yaw
+LATENT_POSE_XY_SCALE = 10.0
+
+
+def latent_pose_target(object_poses: th.Tensor) -> th.Tensor:
+    """[N, 4] the latent pose decoder's target from the [N, 7] (x, y, z, quat) tee poses."""
+    xy = object_poses[:, :2] * LATENT_POSE_XY_SCALE
+    return _planar_pose(xy, quat_to_z_euler(object_poses[:, 3:7]))
+
+
+def latent_pose_errors(
+    pred: th.Tensor, object_poses: th.Tensor
+) -> tuple[th.Tensor, th.Tensor]:
+    """[N] the position [m] and yaw [rad] errors of the latent pose decoder's [N, 4] predictions."""
+    target = latent_pose_target(object_poses)
+    pos_err = th.linalg.vector_norm(pred[:, :2] - target[:, :2], dim=-1)
+    yaw_err = th.atan2(pred[:, 2], pred[:, 3]) - th.atan2(target[:, 2], target[:, 3])
+    yaw_err = th.atan2(th.sin(yaw_err), th.cos(yaw_err)).abs()
+    return pos_err / LATENT_POSE_XY_SCALE, yaw_err
+
+
 # The student's non-image inputs by name. `teacher_obs` is privileged (the true tee pose): a
 # sim-only sanity check of the distillation, not deployable. `tee_pose` (privileged too) and
 # `goal_pose` are absolute, in the world frame: x, y, sin / cos yaw (hypothesis 2 of the handoff).
+# `contact_force` is deployable (the F/T sensor over the gRPC bridge).
 STUDENT_STATE_OBS: dict[str, Callable] = {
     "tcp_pose": lambda env: env.manipulator.get_tcp_pose(),
     "reference_offset": _reference_offset,
+    "contact_force": _contact_force,
     "teacher_obs": lambda env: env.get_observations()["policy"],
     "tee_pose": _tee_pose,
     "goal_pose": _goal_pose,
@@ -64,6 +100,41 @@ def build_student_state(env, names: list[str]) -> th.Tensor:
     # unwrapped: the wrappers' observation calls augment (and resample) the images
     env = env.unwrapped
     return th.cat([STUDENT_STATE_OBS[n](env).float() for n in names], dim=-1)
+
+
+MemoryState = tuple[th.Tensor, ...]
+"""The student's memory state: batch-first tensors (see `enc_mem_dec.memory.MemoryState`)."""
+
+
+def build_memory(cfg: MemoryCfg, input_dim: int) -> nn.Module | None:
+    """The `enc_mem_dec` memory of `cfg`, None for "none" (enc_mem_dec is needed otherwise only)."""
+    if cfg.type == "none":
+        if cfg.residual:
+            raise ValueError("memory.residual needs a memory, the type is 'none'")
+        return None
+    try:
+        from enc_mem_dec.memory import make_memory
+    except ImportError as e:
+        raise ImportError(
+            f"memory.type '{cfg.type}' needs the enc_mem_dec package (the worker image "
+            "geonosis:5000/aegis_gym_emd)"
+        ) from e
+    kwargs: dict[str, Any] = {}
+    if cfg.type in ("gru", "lstm"):
+        kwargs = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.num_layers}
+    elif cfg.type == "frame_stack":
+        kwargs = {"num_frames": cfg.num_frames}
+        if cfg.frame_stride != 1:  # older enc_mem_dec images have no stride
+            kwargs["stride"] = cfg.frame_stride
+    elif cfg.type == "attention_window":
+        kwargs = {
+            "window": cfg.window,
+            "model_dim": cfg.model_dim,
+            "num_heads": cfg.num_heads,
+        }
+    # "identity": the memoryless student trained on the chunks (the control of the memory students)
+    name = "none" if cfg.type == "identity" else cfg.type
+    return make_memory(name, input_dim=input_dim, residual=cfg.residual, **kwargs)
 
 
 class ResetLastLayerTarget(StrEnum):
@@ -129,10 +200,17 @@ class Policy(nn.Module):
                 f"{self._cfg.state_obs} ({state_obs_dim}); set it to {state_obs_dim} or null"
             )
 
-        action_input_dim = vision_obs_dim + state_obs_dim
+        features_dim = vision_obs_dim + state_obs_dim
+        self.memory = build_memory(self._cfg.memory, input_dim=features_dim)
+        action_input_dim = (
+            features_dim if self.memory is None else self.memory.output_dim
+        )
 
         logger.info(f"Vision obs dim: {vision_obs_dim}")
         logger.info(f"State obs dim: {state_obs_dim}")
+        logger.info(
+            f"Memory: {self._cfg.memory.type if self.memory is None else self.memory.name}"
+        )
 
         logger.info(f"Action head input dim: {action_input_dim}")
         self.action_head = self._build_mlp(
@@ -140,6 +218,17 @@ class Policy(nn.Module):
             hidden_dims=self._cfg.action_head_hidden_dims,
             output_dim=action_dim,
         )
+
+        self.latent_pose_head: nn.Sequential | None = None
+        if self._cfg.latent_pose_loss_weight > 0:
+            self.latent_pose_head = self._build_mlp(
+                input_dim=action_input_dim,
+                hidden_dims=self._cfg.latent_pose_hidden_dims,
+                output_dim=4,
+            )
+            logger.info(
+                f"Latent pose decoder, loss weight {self._cfg.latent_pose_loss_weight}"
+            )
 
         self.pose_head: nn.Sequential | None = None
         if self.use_pose_head:
@@ -152,13 +241,90 @@ class Policy(nn.Module):
             )
         self.to(device)
 
+    @property
+    def has_memory(self) -> bool:
+        return self.memory is not None
+
     def forward(
         self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
     ) -> th.Tensor:
-        features = self.vision_encoder(rgb_obs)
-        fused = self.feature_fusion(features)
-        fused = th.cat([fused, state_obs], dim=-1)
-        return self.action_head(fused)
+        """The memoryless student's actions; with a memory see `step()` and `sequence()`."""
+        return self.forward_with_latent(rgb_obs, state_obs)[0]
+
+    def forward_with_latent(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+    ) -> tuple[th.Tensor, th.Tensor]:
+        """The memoryless student's actions and the action head's input."""
+        if self.has_memory:
+            raise RuntimeError("The student has a memory: use step() or sequence().")
+        latent = self._features(rgb_obs, state_obs)
+        return self.action_head(latent), latent
+
+    def predict_latent_pose(self, latent: th.Tensor) -> th.Tensor | None:
+        """[..., 4] the tee's planar pose from the action head's input, None without the decoder."""
+        if self.latent_pose_head is None:
+            return None
+        return self.latent_pose_head(latent)
+
+    def initial_memory_state(self, batch_size: int) -> MemoryState:
+        # the parameters' device: `self.device` is the one at the construction (before `.to()`)
+        device = next(self.parameters()).device
+        return self.memory.initial_state(batch_size, device)
+
+    def step(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        memory_state: MemoryState,
+        episode_starts: th.Tensor,
+        return_latent: bool = False,
+    ) -> tuple[th.Tensor, MemoryState] | tuple[th.Tensor, MemoryState, th.Tensor]:
+        """
+        One step of the student with a memory: the actions and the next memory state, reset first
+        for the `episode_starts` [batch] (bool); with `return_latent`, also the action head's input.
+        """
+        memory_state = self.memory.reset(memory_state, episode_starts)
+        features = self._features(rgb_obs, state_obs)
+        y, memory_state = self.memory.step(features, memory_state)
+        if return_latent:
+            return self.action_head(y), memory_state, y
+        return self.action_head(y), memory_state
+
+    def sequence(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        episode_starts: th.Tensor,
+        burn_in: int,
+        return_latents: bool = False,
+    ) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+        """
+        The actions [time - burn_in, batch, action_dim] on chunks [time, batch, ...] of episode
+        steps, from the initial memory state: the first `burn_in` steps only warm the state up
+        (without gradients), the state is reset at the `episode_starts` [time, batch]. With
+        `return_latents`, also the action head's inputs [time - burn_in, batch, ...].
+        """
+        batch_size = rgb_obs.shape[1]
+        state = self.initial_memory_state(batch_size)
+        if burn_in > 0:
+            with th.no_grad():
+                features = self._chunk_features(rgb_obs[:burn_in], state_obs[:burn_in])
+                _, state = self.memory.sequence(
+                    features, state, episode_starts[:burn_in]
+                )
+        features = self._chunk_features(rgb_obs[burn_in:], state_obs[burn_in:])
+        y, _ = self.memory.sequence(features, state, episode_starts[burn_in:])
+        actions = self.action_head(y)
+        return (actions, y) if return_latents else actions
+
+    def _features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
+        fused = self.feature_fusion(self.vision_encoder(rgb_obs))
+        return th.cat([fused, state_obs], dim=-1)
+
+    def _chunk_features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
+        num_steps, batch_size = rgb_obs.shape[:2]
+        features = self._features(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
+        return features.view(num_steps, batch_size, -1)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         if not self.use_pose_head:
@@ -313,7 +479,10 @@ class Policy(nn.Module):
 
 
 class ExperienceBuffer:
-    """A first-in-first-out buffer for experience replay."""
+    """
+    A first-in-first-out buffer for experience replay: a ring over the steps, each of all the envs,
+    so every env's column is in time order (the episode starts are stored for the memory students).
+    """
 
     def __init__(
         self,
@@ -348,6 +517,9 @@ class ExperienceBuffer:
         self._actions = th.empty(
             max_size, num_envs, action_dim, dtype=dtype, device=device
         )
+        self._episode_starts = th.zeros(
+            max_size, num_envs, dtype=th.bool, device=device
+        )
 
     def add(
         self,
@@ -355,13 +527,18 @@ class ExperienceBuffer:
         robot_pose: th.Tensor,
         object_poses: th.Tensor,
         actions: th.Tensor,
+        episode_starts: th.Tensor | None = None,
     ) -> None:
-        """Add experience to buffer."""
+        """Add experience to buffer; `episode_starts` [num_envs] marks the first steps of episodes."""
         self._ptr = (self._ptr + 1) % self._max_size
         self._rgb_obs[self._ptr] = self._encode_images(rgb_obs)
         self._robot_pose[self._ptr] = robot_pose
         self._object_poses[self._ptr] = object_poses
         self._actions[self._ptr] = actions
+        if episode_starts is None:
+            self._episode_starts[self._ptr] = False
+        else:
+            self._episode_starts[self._ptr] = episode_starts
         self._size = min(self._size + 1, self._max_size)
 
     def get_batches(
@@ -387,6 +564,53 @@ class ExperienceBuffer:
                     "actions": self._actions[batch_indices].reshape(
                         -1, self._action_dim
                     ),
+                }
+
+    def get_sequence_batches(
+        self,
+        num_mini_batches: int,
+        num_epochs: int,
+        sequence_length: int,
+        burn_in: int,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        Mini-batches of chunks in time order, `[burn_in + sequence_length, num_chunks, ...]` per
+        key, plus the `burn_in` actually used: while the buffer holds fewer steps, the chunks and
+        then the burn-in get shorter. Each epoch tiles every env's column with non-overlapping
+        trained parts at a random phase; the burn-in steps precede them (overlapping the previous
+        chunk's). A chunk never crosses the ring's write position (between the newest and the
+        oldest step).
+        """
+        length = min(sequence_length, self._size)
+        burn_in = min(burn_in, self._size - length)
+        # the physical index of the oldest step
+        oldest = (self._ptr - self._size + 1) % self._max_size
+        steps = th.arange(burn_in + length, device=self._device)
+        for _ in range(num_epochs):
+            phase = int(th.randint(0, length, (1,)))
+            # the logical starts of the trained parts, every one with a full burn-in before it
+            first = burn_in + (phase if burn_in + phase + length <= self._size else 0)
+            starts = th.arange(
+                first, self._size - length + 1, length, device=self._device
+            )
+            chunks = th.cartesian_prod(
+                starts, th.arange(self._num_envs, device=self._device)
+            )
+            chunks = chunks.view(-1, 2)[th.randperm(len(chunks), device=self._device)]
+            batch_size = max(1, math.ceil(len(chunks) / num_mini_batches))
+            for begin in range(0, len(chunks), batch_size):
+                batch = chunks[begin : begin + batch_size]
+                time_idx = (
+                    oldest + batch[:, 0].unsqueeze(0) - burn_in + steps.unsqueeze(1)
+                ) % self._max_size
+                env_idx = batch[:, 1].unsqueeze(0)
+                yield {
+                    "rgb_obs": self._decode_images(self._rgb_obs[time_idx, env_idx]),
+                    "robot_pose": self._robot_pose[time_idx, env_idx],
+                    "object_poses": self._object_poses[time_idx, env_idx],
+                    "actions": self._actions[time_idx, env_idx],
+                    "episode_starts": self._episode_starts[time_idx, env_idx],
+                    "burn_in": burn_in,
                 }
 
     def _encode_images(self, images: th.Tensor) -> th.Tensor:
@@ -417,7 +641,8 @@ class ExperienceBuffer:
         other_bytes = (state_dim + 7 + action_dim) * th.empty(
             0, dtype=dtype
         ).element_size()
-        return steps * (image_bytes + other_bytes)
+        episode_start_bytes = 1
+        return steps * (image_bytes + other_bytes + episode_start_bytes)
 
     def clear(self) -> None:
         """Clear the buffer."""
@@ -425,6 +650,7 @@ class ExperienceBuffer:
         self._robot_pose.zero_()
         self._object_poses.zero_()
         self._actions.zero_()
+        self._episode_starts.zero_()
         self._ptr = 0
         self._size = 0
 

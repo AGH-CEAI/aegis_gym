@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- BC students with a memory (`bc.policy.memory`: `frame_stack`, `gru`, `lstm`, `attention_window`, optionally `residual`; `identity` is the memoryless student trained on the same chunks, their control; the default `none` keeps the memoryless student and needs no extra package): the memory of the private [`enc_mem_dec`](https://github.com/AGH-CEAI/enc_mem_dec/) package sits between the fused image features (+ `state_obs`) and the action head. The experience buffer stores the episode starts and gives chunks in time order (`sequence_length` steps after a `burn_in` without gradients); the memory state is carried through the rollouts, the preview and the policy evaluation, reset at the first step of each episode.
+- The BC student's `contact_force` input (`bc.policy.state_obs`): the tared F/T force in the world XY times the env's `force_obs_scale`, as the env's `observe_force` observation; deployable through the gRPC bridge.
+- Optional latent pose decoder of the BC student (`bc.policy.latent_pose_loss_weight`, 0 = off): the tee's planar pose (x, y in dm, sin / cos yaw) from the action head's input, with the `Loss/latent_pose` and `BC/latent_pose_*_err_*` metrics; the policy evaluation records its episode mean errors (`latent_pose_err_cm`, `latent_pose_yaw_err_deg`).
 - [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
 - [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
 - [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
@@ -100,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `eval.py` runs a BC student through `make_visual_bc_policy()` (its configured `state_obs`, was the TCP pose only, and a memory's state), without the autograd graph, and the loaded BC student is in the eval mode (the BatchNorm running statistics, was the acting batch's).
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The observation cameras' near clipping plane is 1 mm (`GenesisScene.CAMERA_NEAR`) instead of Genesis' default 10 cm.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - Genesis `ctrl_apply_vel_action()` no longer overrides the gripper position control with the arm velocity control.
 - [PR-167](https://github.com/AGH-CEAI/aegis_gym/pull/167) - The Genesis manipulator uses the calibrated `action_max_linear_speed` and `action_max_angular_speed` also with the disabled speed domain randomization (was 1 m/s and 1 rad/s).

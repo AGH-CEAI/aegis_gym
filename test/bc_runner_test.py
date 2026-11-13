@@ -75,7 +75,7 @@ def _collecting_runner(
     runner._teacher = lambda obs: teacher_actions
     runner._policy = lambda rgb, pose: th.tensor([[0.5, 0.0], [0.0, 0.0]])
     stored = stored if stored is not None else []
-    runner._buffer = SimpleNamespace(add=lambda *args: stored.append(args))
+    runner._buffer = SimpleNamespace(add=lambda *args, **kwargs: stored.append(args))
     return runner
 
 
@@ -134,6 +134,26 @@ def test_student_state_tee_and_goal_poses_are_planar():
     )
 
 
+def test_student_contact_force_is_the_world_xy_force_scaled():
+    tcp = th.zeros(NUM_ENVS, 7)
+    tcp[:, 3] = math.cos(math.pi / 4)  # wxyz, the sensor frame 90 deg about z
+    tcp[:, 6] = math.sin(math.pi / 4)
+    wrench = th.zeros(NUM_ENVS, 6)
+    wrench[:, :3] = th.tensor([10.0, 0.0, 3.0])
+    env = SimpleNamespace(
+        manipulator=SimpleNamespace(
+            get_tcp_pose=lambda: tcp, get_ft_wrench=lambda: wrench
+        ),
+        force_obs_scale=0.002,
+    )
+    env.unwrapped = env
+
+    state = build_student_state(env, ["contact_force"])
+
+    assert state.shape == (NUM_ENVS, 2)
+    assert state[0].tolist() == pytest.approx([0.0, 0.02], abs=1e-6)
+
+
 @pytest.mark.parametrize("image_dtype", [th.float32, th.uint8])
 def test_buffer_returns_the_images_in_0_1(image_dtype):
     images = th.rand(NUM_ENVS, 3, 4, 4)
@@ -174,6 +194,7 @@ def test_buffer_memory_estimate_matches_the_allocation():
             buffer._robot_pose,
             buffer._object_poses,
             buffer._actions,
+            buffer._episode_starts,
         )
     )
 

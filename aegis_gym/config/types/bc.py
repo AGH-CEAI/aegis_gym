@@ -27,6 +27,27 @@ class FusionCfg(BaseCfg):
 
 
 @dataclass(slots=True)
+class MemoryCfg(BaseCfg):
+    # the enc_mem_dec memory between the fused image features (+ state_obs) and the action head:
+    # "none" (memoryless, needs no enc_mem_dec), "frame_stack", "gru", "lstm", "attention_window";
+    # "identity": memoryless too, but trained on the chunks as the memories (their control)
+    type: str = "none"
+    # the current step's features appended to the memory's output
+    residual: bool = False
+    hidden_dim: int = 256  # gru, lstm
+    num_layers: int = 1  # gru, lstm
+    num_frames: int = 4  # frame_stack
+    frame_stride: int = 1  # frame_stack: the steps between the stacked frames
+    window: int = 16  # attention_window: the steps attended, the current one included
+    model_dim: int = 128  # attention_window
+    num_heads: int = 4  # attention_window
+    # trained on chunks of the buffer: `burn_in` steps warm the state up (no gradients), the loss
+    # is on the next `sequence_length` steps
+    sequence_length: int = 32
+    burn_in: int = 16
+
+
+@dataclass(slots=True)
 class PolicyBCCfg(BaseCfg):
     encoder_type: str
     fusion_type: str
@@ -42,6 +63,11 @@ class PolicyBCCfg(BaseCfg):
     pose_head_hidden_dims: list[int]
     # the student's non-image inputs, concatenated in this order (see `STUDENT_STATE_OBS`)
     state_obs: list[str] = field(default_factory=lambda: ["tcp_pose"])
+    memory: MemoryCfg = field(default_factory=MemoryCfg)
+    # a decoder of the tee's planar pose (x, y in dm, sin / cos yaw) from the action head's input (the
+    # memory's output, the features without a memory), its loss weighted by this (0: no decoder)
+    latent_pose_loss_weight: float = 0.0
+    latent_pose_hidden_dims: list[int] = field(default_factory=lambda: [128])
 
 
 @dataclass(slots=True)

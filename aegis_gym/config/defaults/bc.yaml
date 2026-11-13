@@ -104,10 +104,30 @@ policy:
   # null: the sum of the `state_obs` dimensions; a number is checked against it
   action_head_state_obs_dim: 7
   # the non-image inputs: tcp_pose (7), reference_offset (2, admittance reference - TCP in XY),
+  # contact_force (2, the tared F/T force in world XY x the env's force_obs_scale),
   # teacher_obs (the teacher's full observation, privileged: a sim-only sanity check)
   state_obs: ["tcp_pose"]
   action_head_hidden_dims: [128, 128, 64]
   pose_head_hidden_dims: [64, 64]
+  # between the fused features (+ state_obs) and the action head; any type but "none" needs the
+  # enc_mem_dec package (image geonosis:5000/aegis_gym_emd)
+  memory:
+    type: "none"  # none, identity (memoryless, trained on chunks), frame_stack, gru, lstm, attention_window
+    residual: False  # the current step's features appended to the memory's output
+    hidden_dim: 256  # gru, lstm
+    num_layers: 1  # gru, lstm
+    num_frames: 4  # frame_stack
+    frame_stride: 1  # frame_stack: the steps between the stacked frames
+    window: 16  # attention_window: the steps attended, the current one included
+    model_dim: 128  # attention_window
+    num_heads: 4  # attention_window
+    # training chunks: `burn_in` steps without gradients, then the loss on `sequence_length`
+    sequence_length: 32
+    burn_in: 16
+  # a decoder of the tee's planar pose (x, y in dm, sin / cos yaw) from the action head's input (the
+  # memory's output, the features without a memory); its loss weight, 0: no decoder
+  latent_pose_loss_weight: 0.0
+  latent_pose_hidden_dims: [128]
 # training settings
 buffer_size: 1000
 save_freq: 50
