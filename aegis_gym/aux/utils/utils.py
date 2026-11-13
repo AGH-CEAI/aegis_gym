@@ -126,7 +126,8 @@ def load_bc_policy(
     ):
         bc_runner.load(last_ckpt)
     logger.info("Loaded BC checkpoint")
-    return bc_runner.get_inference_policy(device=cfg.get_device())
+    # the BatchNorm running statistics of the training, not the statistics of the acting batch
+    return bc_runner.get_inference_policy(device=cfg.get_device()).eval()
 
 
 def resolve_checkpoint(

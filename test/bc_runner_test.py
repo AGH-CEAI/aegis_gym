@@ -73,7 +73,7 @@ def _collecting_runner(
     runner._teacher = lambda obs: teacher_actions
     runner._policy = lambda rgb, pose: th.tensor([[0.5, 0.0], [0.0, 0.0]])
     stored = stored if stored is not None else []
-    runner._buffer = SimpleNamespace(add=lambda *args: stored.append(args))
+    runner._buffer = SimpleNamespace(add=lambda *args, **kwargs: stored.append(args))
     return runner
 
 
@@ -166,6 +166,7 @@ def test_buffer_memory_estimate_matches_the_allocation():
             buffer._robot_pose,
             buffer._object_poses,
             buffer._actions,
+            buffer._episode_starts,
         )
     )
 

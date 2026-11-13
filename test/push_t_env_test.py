@@ -252,3 +252,20 @@ def test_envs_report_the_seeded_reset_support(env_cls: type, supported: bool):
     env._scene = _Scene()
 
     assert env.supports_seeded_reset is supported
+
+
+def test_push_t_contact_force_is_the_world_xy_force_scaled():
+    env = _state_obs_env()
+    tcp = th.zeros(NUM_ENVS, 7)
+    tcp[:, 3] = math.cos(math.pi / 4)  # wxyz, the sensor frame 90 deg about z
+    tcp[:, 6] = math.sin(math.pi / 4)
+    wrench = th.zeros(NUM_ENVS, 6)
+    wrench[:, :3] = th.tensor([10.0, 0.0, 3.0])
+    env._observation_fns[Modality.TCP_POSE] = lambda: tcp
+    env.manipulator.get_ft_wrench = lambda: wrench
+    env.force_obs_scale = 0.002
+
+    state = env.get_state_obs(["contact_force"])
+
+    assert state.shape == (NUM_ENVS, 2)
+    assert state[0].tolist() == pytest.approx([0.0, 0.02], abs=1e-6)
