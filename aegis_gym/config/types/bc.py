@@ -29,7 +29,8 @@ class FusionCfg(BaseCfg):
 @dataclass(slots=True)
 class MemoryCfg(BaseCfg):
     # the enc_mem_dec memory between the fused image features (+ state_obs) and the action head:
-    # "none" (memoryless, needs no enc_mem_dec), "frame_stack", "gru", "lstm", "attention_window";
+    # "none" (memoryless, needs no enc_mem_dec), "frame_stack", "gru", "lstm", "attention_window",
+    # "hopfield";
     # "identity": memoryless too, but trained on the chunks as the memories (their control)
     type: str = "none"
     # the current step's features appended to the memory's output
@@ -38,9 +39,12 @@ class MemoryCfg(BaseCfg):
     num_layers: int = 1  # gru, lstm
     num_frames: int = 4  # frame_stack
     frame_stride: int = 1  # frame_stack: the steps between the stacked frames
-    window: int = 16  # attention_window: the steps attended, the current one included
-    model_dim: int = 128  # attention_window
+    window: int = (
+        16  # attention_window, hopfield: the steps attended, the current one included
+    )
+    model_dim: int = 128  # attention_window, hopfield
     num_heads: int = 4  # attention_window
+    update_steps: int = 1  # hopfield: the retrieval iterations
     # trained on chunks of the buffer: `burn_in` steps warm the state up (no gradients), the loss
     # is on the next `sequence_length` steps
     sequence_length: int = 32
