@@ -130,6 +130,18 @@ policy:
   # memory's output, the features without a memory); its loss weight, 0: no decoder
   latent_pose_loss_weight: 0.0
   latent_pose_hidden_dims: [128]
+  # the enc_mem_dec multimodal fusion in place of the vision encoder + fusion + concatenated state_obs:
+  # an encoder per camera and per state_obs entry, then "concat", "poe" or "gpoe"; "none": the path above
+  multimodal:
+    fusion: "none"  # none, concat, poe, gpoe
+    feature_dim: 128  # each modality encoder's output
+    latent_dim: 128  # poe, gpoe
+    image_pooling: "attention"  # attention, spatial_softmax (after the camera's vision_encoder CNN)
+    state_hidden_dims: [512, 512]
+    gate_hidden_dim: 256  # gpoe
+    prior_expert: False  # poe, gpoe: N(0, I) as one more expert
+    sample: True  # poe, gpoe: a sample of the joint in the training step, the mean when acting
+    kl_weight: 0.0  # poe, gpoe: the experts' KL to N(0, I) in the loss
 # training settings
 buffer_size: 1000
 save_freq: 50

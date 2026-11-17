@@ -125,7 +125,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
         cfg = ConfigManager.get_config()
         im_h, im_w = cfg.env_cfg.image_resolution
 
-        state_dim = build_student_state(self.env, self._state_obs).shape[-1]
+        state_obs_dims = {
+            name: build_student_state(self.env, [name]).shape[-1]
+            for name in self._state_obs
+        }
+        state_dim = sum(state_obs_dims.values())
 
         # Multi-task policy with action and pose heads
         self._policy = Policy(
@@ -136,6 +140,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             image_height=im_h,
             image_width=im_w,
             device=self.device,
+            state_obs_dims=state_obs_dims,
         )
 
         # Initialize optimizer
@@ -212,6 +217,9 @@ class BehaviorCloningRunner(BasePolicyRunner):
             for pred_pose in self._policy.predict_pose(batch["rgb_obs"]):
                 loss = loss + pred_pose.sum()
             loss = loss + self._compute_recon_loss(batch)[0]
+            expert_kl = self._policy.expert_kl()
+            if expert_kl is not None:
+                loss = loss + expert_kl
             loss.backward()
         except th.cuda.OutOfMemoryError as e:
             free, total = th.cuda.mem_get_info(self.device)
@@ -292,6 +300,9 @@ class BehaviorCloningRunner(BasePolicyRunner):
             total_latent_pose_loss = th.tensor(0.0, device=self.device)
             total_latent_pose_pos_err = 0.0
             total_latent_pose_yaw_err = 0.0
+            total_expert_kl = th.tensor(0.0, device=self.device)
+            total_expert_kl_loss = th.tensor(0.0, device=self.device)
+            fusion_sums: dict[str, float] = {}
             num_batches = 0
             last_recons = None
             last_batch = None
@@ -323,6 +334,17 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 # Compute action prediction loss
                 action_loss = F.mse_loss(pred_action, batch["actions"])
 
+                # the multimodal fusion's experts: their KL to N(0, I), weighted into the loss
+                expert_kl_loss = th.tensor(0.0, device=self.device)
+                expert_kl = self._policy.expert_kl()
+                if expert_kl is not None:
+                    expert_kl_loss = (
+                        self.cfg_train.policy.multimodal.kl_weight * expert_kl
+                    )
+                    total_expert_kl += expert_kl.detach()
+                    for name, value in self._policy.fusion_stats().items():
+                        fusion_sums[name] = fusion_sums.get(name, 0.0) + value
+
                 # Compute pose estimation loss (position + orientation)
                 pose_loss = th.tensor(0.0, device=self.device)
                 for pred_pose in pred_poses:
@@ -344,7 +366,13 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     last_batch = batch
 
                 # Combined loss with weights
-                total_loss = action_loss + pose_loss + recon_loss + latent_pose_loss
+                total_loss = (
+                    action_loss
+                    + pose_loss
+                    + recon_loss
+                    + latent_pose_loss
+                    + expert_kl_loss
+                )
 
                 # Backward pass
                 self._optimizer.zero_grad()
@@ -358,6 +386,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 total_pose_loss += pose_loss
                 total_recon_loss += recon_loss
                 total_latent_pose_loss += latent_pose_loss.detach()
+                total_expert_kl_loss += expert_kl_loss.detach()
                 num_batches += 1
 
             self._save_reconstructions(batch=last_batch, recons=last_recons, it=it)
@@ -381,6 +410,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     total_latent_pose_yaw_err / num_batches
                 )
 
+            if self._policy.multimodal is not None and fusion_sums:
+                bc_stats["expert_kl"] = total_expert_kl.item() / num_batches
+                for name, value in fusion_sums.items():
+                    bc_stats[f"fusion_{name}"] = value / num_batches
+
             if self.logger is not None:
                 self._log_metrics(
                     it=it,
@@ -388,6 +422,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     avg_pose_loss=total_pose_loss / num_batches,
                     avg_recon_loss=total_recon_loss / num_batches,
                     avg_latent_pose_loss=total_latent_pose_loss / num_batches,
+                    avg_expert_kl_loss=total_expert_kl_loss / num_batches,
                     current_lr=self._optimizer.param_groups[0]["lr"],
                     fps=(self._num_steps_per_env * self.env.num_envs) / (forward_time),
                     forward_time=forward_time,
@@ -723,11 +758,18 @@ class BehaviorCloningRunner(BasePolicyRunner):
         backward_time: float,
         bc_stats: dict[str, float],
         avg_latent_pose_loss: th.Tensor | None = None,
+        avg_expert_kl_loss: th.Tensor | None = None,
     ) -> None:
         if avg_latent_pose_loss is None:
             avg_latent_pose_loss = th.zeros_like(avg_action_loss)
+        if avg_expert_kl_loss is None:
+            avg_expert_kl_loss = th.zeros_like(avg_action_loss)
         total_loss = (
-            avg_action_loss + avg_pose_loss + avg_recon_loss + avg_latent_pose_loss
+            avg_action_loss
+            + avg_pose_loss
+            + avg_recon_loss
+            + avg_latent_pose_loss
+            + avg_expert_kl_loss
         )
 
         self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
@@ -736,6 +778,10 @@ class BehaviorCloningRunner(BasePolicyRunner):
         if self._policy.latent_pose_head is not None:
             self.logger.writer.add_scalar(
                 "Loss/latent_pose", avg_latent_pose_loss.item(), it
+            )
+        if self._policy.multimodal is not None and self._policy.multimodal.num_experts:
+            self.logger.writer.add_scalar(
+                "Loss/expert_kl", avg_expert_kl_loss.item(), it
             )
         self.logger.writer.add_scalar("Loss/total", total_loss.item(), it)
         self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
