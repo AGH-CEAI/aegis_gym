@@ -52,6 +52,26 @@ class MemoryCfg(BaseCfg):
 
 
 @dataclass(slots=True)
+class MultimodalCfg(BaseCfg):
+    # the enc_mem_dec multimodal fusion in place of the vision encoder + fusion + the concatenated
+    # `state_obs`: each camera and each `state_obs` entry gets its own encoder, then "concat" (their
+    # features), "poe" (Gaussian experts, their product) or "gpoe" (the generalized product, Bartyzel
+    # RA-L 2024); "none": the vision path above (needs no enc_mem_dec)
+    fusion: str = "none"
+    feature_dim: int = 128  # each modality encoder's output
+    latent_dim: int = 128  # poe, gpoe: the experts' and the joint latent
+    # the camera's CNN is the `vision_encoder` (`vision_encoder_spatial` with attention_spatial)
+    image_pooling: str = "attention"  # attention, spatial_softmax
+    state_hidden_dims: list[int] = field(default_factory=lambda: [512, 512])
+    gate_hidden_dim: int = 256  # gpoe
+    prior_expert: bool = False  # poe, gpoe: N(0, I) as one more expert
+    # poe, gpoe: the latent is a sample of the joint in the training step (the mean when acting)
+    sample: bool = True
+    # poe, gpoe: the weight of the experts' KL to N(0, I) in the BC loss
+    kl_weight: float = 0.0
+
+
+@dataclass(slots=True)
 class PolicyBCCfg(BaseCfg):
     encoder_type: str
     fusion_type: str
@@ -73,6 +93,7 @@ class PolicyBCCfg(BaseCfg):
     # memory's output, the features without a memory), its loss weighted by this (0: no decoder)
     latent_pose_loss_weight: float = 0.0
     latent_pose_hidden_dims: list[int] = field(default_factory=lambda: [128])
+    multimodal: MultimodalCfg = field(default_factory=MultimodalCfg)
 
 
 @dataclass(slots=True)

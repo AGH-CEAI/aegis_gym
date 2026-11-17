@@ -1,5 +1,5 @@
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import torch as th
@@ -8,7 +8,13 @@ from torch import nn
 
 from aegis_gym.aux.geom import planar_pose, quat_to_z_euler
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import FusionCfg, MemoryCfg, PolicyBCCfg, VisionEncoderCfg
+from aegis_gym.config.types import (
+    FusionCfg,
+    MemoryCfg,
+    MultimodalCfg,
+    PolicyBCCfg,
+    VisionEncoderCfg,
+)
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,
@@ -86,6 +92,56 @@ def build_memory(cfg: MemoryCfg, input_dim: int) -> nn.Module | None:
     return make_memory(name, input_dim=input_dim, residual=cfg.residual, **kwargs)
 
 
+def camera_modality(index: int) -> str:
+    """The multimodal fusion's name of camera `index` (the order of the stacked RGB channels)."""
+    return f"camera_{index}"
+
+
+def build_multimodal(
+    cfg: MultimodalCfg,
+    num_cameras: int,
+    cnn_builder: Callable[[], nn.Module],
+    cnn_channels: int,
+    state_obs_dims: dict[str, int],
+) -> nn.Module:
+    """
+    The `enc_mem_dec` `MultimodalFusion` of `cfg`: an encoder per camera (`cnn_builder()` with
+    `cnn_channels` output channels, pooled) and one per state input of `state_obs_dims` (in order).
+    """
+    try:
+        from enc_mem_dec.multimodal import (
+            ImageModalityEncoder,
+            MultimodalFusion,
+            StateModalityEncoder,
+        )
+    except ImportError as e:
+        raise ImportError(
+            f"multimodal.fusion '{cfg.fusion}' needs the enc_mem_dec package with `multimodal` "
+            "(the worker image geonosis:5000/aegis_gym_emd)"
+        ) from e
+    encoders: dict[str, nn.Module] = {
+        camera_modality(i): ImageModalityEncoder(
+            cnn_builder(),
+            backbone_channels=cnn_channels,
+            output_dim=cfg.feature_dim,
+            pooling=cfg.image_pooling,
+        )
+        for i in range(num_cameras)
+    }
+    for name, dim in state_obs_dims.items():
+        encoders[name] = StateModalityEncoder(
+            dim, output_dim=cfg.feature_dim, hidden_dims=cfg.state_hidden_dims
+        )
+    return MultimodalFusion(
+        encoders,
+        fusion=cfg.fusion,
+        latent_dim=cfg.latent_dim,
+        prior_expert=cfg.prior_expert,
+        gate_hidden_dim=cfg.gate_hidden_dim,
+        sample=cfg.sample,
+    )
+
+
 class ResetLastLayerTarget(StrEnum):
     ACTION = "action"
     POSE = "pose"
@@ -120,7 +176,12 @@ class Policy(nn.Module):
         image_height: int,
         image_width: int,
         device: th.device,
+        state_obs_dims: dict[str, int] | None = None,
     ):
+        """
+        `state_obs_dims`: the dimension of each `state_obs` input (their sum is `state_obs_dim`); needed
+        by the multimodal fusion with more than one state input.
+        """
         super().__init__()
 
         logger = get_logger("Policy")
@@ -136,12 +197,6 @@ class Policy(nn.Module):
         logger.info(f"Fusion type: {self.fusion_type}")
         logger.info(f"Use pose head: {self.use_pose_head}")
 
-        self.vision_encoder = self._build_vision_encoder().to(device)
-        self.feature_fusion = self._build_fusion(
-            image_height=image_height, image_width=image_width
-        )
-
-        vision_obs_dim = self.feature_fusion.output_dim
         configured_dim = self._cfg.action_head_state_obs_dim
         if configured_dim is not None and configured_dim != state_obs_dim:
             raise ValueError(
@@ -149,7 +204,25 @@ class Policy(nn.Module):
                 f"{self._cfg.state_obs} ({state_obs_dim}); set it to {state_obs_dim} or null"
             )
 
-        features_dim = vision_obs_dim + state_obs_dim
+        self.vision_encoder: BaseVisionEncoder | None = None
+        self.feature_fusion: BaseFusionModule | None = None
+        self.multimodal: nn.Module | None = None
+        # the multimodal fusion's output of the last `_features()` call (its experts' KL, weights)
+        self.last_fusion = None
+        if self._cfg.multimodal.fusion != "none":
+            self.multimodal = self._build_multimodal(state_obs_dim, state_obs_dims)
+            features_dim = self.multimodal.output_dim
+            vision_obs_dim = None
+            logger.info(
+                f"Multimodal fusion: {self._cfg.multimodal.fusion} of {self.multimodal.encoders.names}"
+            )
+        else:
+            self.vision_encoder = self._build_vision_encoder().to(device)
+            self.feature_fusion = self._build_fusion(
+                image_height=image_height, image_width=image_width
+            )
+            vision_obs_dim = self.feature_fusion.output_dim
+            features_dim = vision_obs_dim + state_obs_dim
         self.memory = build_memory(self._cfg.memory, input_dim=features_dim)
         action_input_dim = (
             features_dim if self.memory is None else self.memory.output_dim
@@ -267,8 +340,59 @@ class Policy(nn.Module):
         return (actions, y) if return_latents else actions
 
     def _features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
+        if self.multimodal is not None:
+            return self._multimodal_features(rgb_obs, state_obs)
         fused = self.feature_fusion(self.vision_encoder(rgb_obs))
         return th.cat([fused, state_obs], dim=-1)
+
+    def _multimodal_features(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+    ) -> th.Tensor:
+        inputs = {
+            camera_modality(i): camera
+            for i, camera in enumerate(rgb_obs.chunk(self.num_cameras, dim=1))
+        }
+        inputs |= dict(
+            zip(
+                self._state_obs_dims,
+                state_obs.split(list(self._state_obs_dims.values()), dim=-1),
+            )
+        )
+        out = self.multimodal(inputs)
+        self.last_fusion = out
+        # acting (collection, preview, evaluation runs without gradients): the joint's mean, a
+        # deterministic student; the sample only in the training step
+        if out.joint is not None and not th.is_grad_enabled():
+            return out.joint.mean
+        return out.latent
+
+    def expert_kl(self) -> th.Tensor | None:
+        """The experts' KL to N(0, I) of the last features, None without experts."""
+        if self.last_fusion is None or self.last_fusion.experts is None:
+            return None
+        return self.last_fusion.expert_kl()
+
+    def fusion_stats(self) -> dict[str, float]:
+        """
+        Of the last features, per modality: `share_<name>`, its share of the joint mean (the
+        normalized weighted precision, mean over the batch and the latent dims) and with gpoe
+        `weight_<name>`, its gate weight.
+        """
+        out = self.last_fusion
+        if out is None or out.experts is None:
+            return {}
+        names = self.multimodal.encoders.names + (
+            ["prior"] if self._cfg.multimodal.prior_expert else []
+        )
+        log_precision = -out.experts.log_var.detach()
+        if out.log_weights is not None:
+            log_precision = log_precision + out.log_weights.detach()
+        shares = th.softmax(log_precision, dim=-2).flatten(0, -3).mean(dim=(0, -1))
+        stats = {f"share_{n}": v.item() for n, v in zip(names, shares)}
+        if out.weights is not None:
+            weights = out.weights.detach().flatten(0, -3).mean(dim=(0, -1))
+            stats |= {f"weight_{n}": v.item() for n, v in zip(names, weights)}
+        return stats
 
     def _chunk_features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
         num_steps, batch_size = rgb_obs.shape[:2]
@@ -290,11 +414,49 @@ class Policy(nn.Module):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
+    def _vision_cfg(self) -> VisionEncoderCfg:
+        if self.fusion_type == "attention_spatial":
+            return self._cfg.vision_encoder_spatial
+        return self._cfg.vision_encoder
+
+    def _build_multimodal(
+        self, state_obs_dim: int, state_obs_dims: dict[str, int] | None
+    ) -> nn.Module:
+        if self.use_pose_head:
+            raise ValueError(
+                "use_pose_head reads the vision encoder's features: off with multimodal.fusion"
+            )
+        if self.encoder_type == "autoencoder":
+            raise ValueError(
+                "the autoencoder encoder doesn't go with multimodal.fusion"
+            )
+        names = list(self._cfg.state_obs)
+        if state_obs_dims is None:
+            if len(names) != 1:
+                raise ValueError(
+                    f"multimodal.fusion with the state_obs {names} needs state_obs_dims"
+                )
+            state_obs_dims = {names[0]: state_obs_dim}
+        if (
+            list(state_obs_dims) != names
+            or sum(state_obs_dims.values()) != state_obs_dim
+        ):
+            raise ValueError(
+                f"state_obs_dims {state_obs_dims} don't match state_obs {names} ({state_obs_dim})"
+            )
+        self._state_obs_dims = dict(state_obs_dims)
+        vision_cfg = self._vision_cfg()
+        return build_multimodal(
+            self._cfg.multimodal,
+            num_cameras=self.num_cameras,
+            cnn_builder=lambda: self._build_cnn(vision_cfg),
+            cnn_channels=vision_cfg.conv_layers[-1].out_channels,
+            state_obs_dims=self._state_obs_dims,
+        )
+
     def _build_vision_encoder(self) -> BaseVisionEncoder:
 
-        vision_cfg = self._cfg.vision_encoder
-        if self.fusion_type == "attention_spatial":
-            vision_cfg = self._cfg.vision_encoder_spatial
+        vision_cfg = self._vision_cfg()
 
         def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)

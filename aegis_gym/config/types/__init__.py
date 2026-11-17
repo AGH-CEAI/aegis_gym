@@ -4,6 +4,7 @@ from .bc import (
     CNNLayerCfg,
     FusionCfg,
     MemoryCfg,
+    MultimodalCfg,
     PolicyBCCfg,
     VisionEncoderCfg,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "MaxSpeedCfg",
     "MemoryCfg",
     "Modality",
+    "MultimodalCfg",
     "PDGainCfg",
     "PolicyBCCfg",
     "PolicyCfg",
