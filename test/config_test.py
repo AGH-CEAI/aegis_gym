@@ -187,6 +187,18 @@ def test_push_t_preset_config_is_applied():
     assert goal_rand["z_rot_range_deg"] == [-180.0, 180.0]
 
 
+def test_peg_in_hole_preset_config_is_applied():
+    preset = Path(__file__).parent.parent / "aegis_gym/config/presets/peg_in_hole.yaml"
+    cm.setup_config(argv=["", "--env", "peg_in_hole", "-c", str(preset)])
+    cfg = cm.get_config()
+
+    assert cfg.rl_cfg.obs_groups["critic"] == ["policy", "privileged"]
+    assert cfg.env_cfg.action_max_linear_speed == 0.02
+    assert cfg.env_cfg.episode_length_s == 10.0
+    assert cfg.env_cfg.env_specific_dict["active_slots"] == [1]
+    _assert_robot_domain_randomization_enabled()
+
+
 def test_reacher_preset_config_is_applied():
     preset = Path(__file__).parent.parent / "aegis_gym/config/presets/reacher.yaml"
     cm.setup_config(argv=["", "--env", "reacher", "-c", str(preset)])
