@@ -11,7 +11,7 @@ from aegis_gym.config.types import Control, RobotCfg
 from aegis_gym.envs.plotjuggler_udp import PlotJugglerUDP
 
 from ..manipulator.base_manipulator import BaseManipulator
-from ..objects.base_objects import ObjectProperties, ObjectType
+from ..objects.base_objects import BaseObject, ObjectProperties, ObjectType
 
 
 class RandomizationType(StrEnum):
@@ -179,6 +179,15 @@ class BaseScene(ABC):
         scenes without the domain randomization.
         """
         return
+
+    def attach_object_to_tcp(self, obj: BaseObject) -> None:
+        """
+        Rigidly attaches the `obj` to the TCP at their current relative pose, in all envs, as a
+        part held in the gripper. The scene must be built. On a real robot the gripper holds it.
+        """
+        raise NotImplementedError(
+            f"The `{type(self).__name__}` scene doesn't support attaching objects to the TCP."
+        )
 
     def add_preview_camera(
         self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
