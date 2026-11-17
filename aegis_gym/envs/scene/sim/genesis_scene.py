@@ -390,6 +390,11 @@ class GenesisScene(BaseScene):
         self._global_entity_cnt += 1
         return obj
 
+    def attach_object_to_tcp(self, obj: BaseObject) -> None:
+        if not self._is_build:
+            raise RuntimeError("The objects can be attached only after `build()`.")
+        self.manipulator.attach_entity(obj.entity)
+
     def add_manipulator(self, cfg: RobotCfg) -> None:
         self.manipulator = GenesisManipulator(
             num_envs=self.num_envs,

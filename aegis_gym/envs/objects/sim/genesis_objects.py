@@ -5,6 +5,11 @@ from ..base_objects import BaseBox, BaseMesh, BaseURDF, ObjectProperties
 
 
 class _GenesisPoseMixin:
+    @property
+    def entity(self) -> "gs.engine.entities.RigidEntity":
+        """The Genesis entity, available after `create()`."""
+        return self._obj
+
     def get_pose(self, envs_idx: th.Tensor | int | None = None) -> th.Tensor:
         pos = self._obj.get_pos()
         quat = self._obj.get_quat()

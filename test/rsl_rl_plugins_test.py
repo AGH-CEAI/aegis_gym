@@ -22,7 +22,12 @@ def _rl_section(path):
     return data.get("rl", data)
 
 
-RL_CONFIGS = ["defaults/rl.yaml", "presets/push_t.yaml", "presets/reacher.yaml"]
+RL_CONFIGS = [
+    "defaults/rl.yaml",
+    "presets/push_t.yaml",
+    "presets/reacher.yaml",
+    "presets/peg_in_hole.yaml",
+]
 
 
 @pytest.mark.parametrize("config", RL_CONFIGS)

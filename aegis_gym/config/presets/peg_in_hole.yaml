@@ -1,0 +1,79 @@
+# PPO configuration for the peg_in_hole environment, based on the
+# Isaac Lab NIST / Factory rsl_rl baselines.
+rl:
+  class_name: "OnPolicyRunner" # Number of steps per environment per iteration
+  num_steps_per_env: 48  # Number of policy updates
+  max_iterations: 3000
+  seed: 1
+  use_cameras: False
+  # Observations mapping: the critic also gets the privileged state, it never runs on the robot
+  obs_groups: {"actor": ["policy"], "critic": ["policy", "privileged"]}
+
+  # Logging parameters
+  save_interval: 100  # Check for potential saves every `save_interval` iterations
+  best_model_skip_iters: 100  # Ignore first N iterations when tracking best model
+  experiment_name: null
+  run_name: ""
+  algorithm:
+    class_name: "PPO"
+    # Training
+    learning_rate: 0.0003
+    num_learning_epochs: 5
+    num_mini_batches: 4
+    schedule: "adaptive"  # adaptive, fixed
+    # Value function
+    value_loss_coef: 1.0
+    clip_param: 0.2
+    use_clipped_value_loss: True
+    # Surrogate loss
+    desired_kl: 0.01
+    entropy_coef: 0.005
+    gamma: 0.995  # ~200 steps (8 s at 25 Hz) horizon, the episode takes 10 s
+    lam: 0.95
+    max_grad_norm: 1.0
+    # Miscellaneous
+    normalize_advantage_per_mini_batch: False
+    # Random network distilation
+    rnd_cfg: null
+    # Symmetry augmentation
+    symmetry_cfg: null
+  init_member_classes: {}
+  policy:
+    actor:
+      class_name: "MLPModel"
+      hidden_dims: [256, 256, 128]
+      activation: "elu"
+      obs_normalization: True
+      distribution_cfg:
+        class_name: "GaussianDistribution"
+        init_std: 1.0
+        std_type: "log"  # 'scalar' or 'log'
+    critic:
+      class_name: "MLPModel"
+      hidden_dims: [256, 256, 128]
+      activation: "elu"
+      obs_normalization: True
+    # Reinitialize the last layer every `interval` iterations: `actor`, `critic` or `both`.
+    # An interval of 0 disables it.
+    reset_last_layer_weights: {"interval": 0, "part": "both"}
+    # Stop the gradient at the actor inputs, so the actor does not shape their representation.
+    detach_actor_grad: False
+
+logger:
+  # Policy preview video at the end of the training, `--no-record` disables it
+  enable_policy_preview: True
+
+env:
+  action_max_linear_speed: 0.02  # m/s
+  action_max_angular_speed: 0.25  # rad/s
+
+dr:
+  enabled: True
+  pd_gains:
+    enabled: True
+    kp_noise: 0.25
+    kv_noise: 0.50
+  max_speed:
+    enabled: True
+    linear_speed_noise: 0.03
+    angular_speed_noise: 0.03

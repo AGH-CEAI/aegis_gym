@@ -51,6 +51,7 @@ class GenesisManipulator(BaseManipulator):
         self._available_cameras = available_cameras
         self._cfg_robot = cfg_robot
         self._policy_dt = policy_dt
+        self._ft_bias: th.Tensor | None = None
         self._ft_residual_bias = th.zeros(
             (num_envs, 6), dtype=th.float32, device=self.device
         )
@@ -182,6 +183,8 @@ class GenesisManipulator(BaseManipulator):
         )
         self._gravity_link_masses: th.Tensor | None = None
         self._gravity_link_local_coms: th.Tensor | None = None
+        # entities welded to the TCP (`attach_entity()`) with their links' global indices
+        self._attached: list[tuple[gs.engine.entities.RigidEntity, th.Tensor]] = []
         # self._left_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][0])
         # self._right_finger_link = self._robot_entity.get_link(self._args["gripper_link_names"][1])
         self._default_joint_angles = self._cfg_robot.default_arm_dof
@@ -595,21 +598,58 @@ class GenesisManipulator(BaseManipulator):
         noise = th.randn_like(wrench) * self._ft_noise_std
         return wrench + noise.clamp(-self._ft_noise_limit, self._ft_noise_limit)
 
+    def attach_entity(self, entity: "gs.engine.entities.RigidEntity") -> None:
+        """
+        Simulation only: welds the `entity` (its base link) to the TCP link at their current
+        relative pose, in all envs, as a part held in the gripper. Its contacts count into the F/T
+        reading. Its weight doesn't, as of a sensor tared with the part held.
+
+        Genesis records the relative pose when the weld is added and refuses a second weld of the
+        same links in any env, so the pose can't be changed per env later on.
+        """
+        self._gs_scene.sim.rigid_solver.add_weld_constraint(
+            self._ee_link.idx, entity.base_link_idx
+        )
+        links_idx = th.arange(
+            entity.link_start,
+            entity.link_start + entity.n_links,
+            dtype=th.int32,
+            device=self.device,
+        )
+        self._attached.append((entity, links_idx))
+
     def _contact_wrench_world(self) -> th.Tensor:
-        """Wrench at the sensor (world frame) from the contacts on the links past it."""
+        """
+        Wrench at the sensor (world frame) from the contacts on the links past it and on the
+        attached entities. The contacts between them cancel out, as the internal forces.
+        """
         sensor_pos = self._ft_link.get_pos()  # [num_envs, 3]
         contacts = self._robot_entity.get_contacts(
             exclude_self_contact=True, is_padded=True
         )
+        wrench = self._links_contact_wrench(
+            contacts=contacts, links_idx=self._gravity_link_idx, sensor_pos=sensor_pos
+        )
+        for entity, links_idx in self._attached:
+            wrench = wrench + self._links_contact_wrench(
+                contacts=entity.get_contacts(is_padded=True),
+                links_idx=links_idx,
+                sensor_pos=sensor_pos,
+            )
+        return wrench
 
+    def _links_contact_wrench(
+        self, contacts: dict, links_idx: th.Tensor, sensor_pos: th.Tensor
+    ) -> th.Tensor:
+        """Wrench at the `sensor_pos` (world frame) from the `contacts` on the `links_idx`."""
         valid = contacts["valid_mask"]  # [num_envs, n_contacts]
         if valid.numel() == 0:
             return th.zeros((sensor_pos.shape[0], 6), device=self.device)
 
         # `force_b` is the force on `link_b` and `force_a` the force on `link_a`; take
-        # whichever side of the pair is ours, and drop contacts upstream of the sensor.
-        is_a = th.isin(contacts["link_a"], self._gravity_link_idx)
-        is_b = th.isin(contacts["link_b"], self._gravity_link_idx)
+        # whichever side of the pair is ours, and drop contacts of the other links.
+        is_a = th.isin(contacts["link_a"], links_idx)
+        is_b = th.isin(contacts["link_b"], links_idx)
         force = th.where(is_b.unsqueeze(-1), contacts["force_b"], contacts["force_a"])
         keep = (valid & (is_a | is_b)).unsqueeze(-1)
         force = th.where(keep, force, th.zeros_like(force))
