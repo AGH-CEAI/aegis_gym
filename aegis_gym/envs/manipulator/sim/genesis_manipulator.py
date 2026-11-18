@@ -3,7 +3,7 @@ import time
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import genesis as gs
 import torch as th
@@ -478,6 +478,47 @@ class GenesisManipulator(BaseManipulator):
         q_pos[idx[:, None], self._fingers_dof] = self._gripper_close_dof
 
         self._robot_entity.control_dofs_position(position=q_pos)
+
+    def set_gripper_width(
+        self, width: float, envs_idx: th.Tensor | None = None
+    ) -> None:
+        """
+        Teleports the fingers `width` [m] apart (e.g. touching a grasped object), leaving their PD targets as they
+        are. Simulation only: a reset helper, not a command.
+        """
+        idx: th.Tensor = (
+            envs_idx
+            if envs_idx is not None
+            else th.arange(self._num_envs, device=self.device)
+        )
+        finger = min(max(width / 2, self._gripper_close_dof), self._gripper_open_dof)
+        self._robot_entity.set_dofs_position(
+            position=th.full(
+                (len(idx), len(self._fingers_dof)),
+                finger,
+                dtype=th.float32,
+                device=self.device,
+            ),
+            dofs_idx_local=self._fingers_dof,
+            envs_idx=idx,
+            zero_velocity=True,
+        )
+
+    def weld_object(self, obj: Any) -> None:
+        """
+        Welds the base link of `obj` (a Genesis scene object) to the TCP link in its current relative pose, in all
+        envs: Genesis rejects a link pair welded in any env, so the weld is replaced everywhere. Simulation only.
+        """
+        self.release_object(obj)
+        self._gs_scene.sim.rigid_solver.add_weld_constraint(
+            self._ee_link.idx, obj._obj.base_link.idx
+        )
+
+    def release_object(self, obj: Any) -> None:
+        """Removes the weld of `weld_object()` in all envs (a no-op without one)."""
+        self._gs_scene.sim.rigid_solver.delete_weld_constraint(
+            self._ee_link.idx, obj._obj.base_link.idx
+        )
 
     def get_n_dofs(self) -> int:
         return self._robot_entity.n_dofs
