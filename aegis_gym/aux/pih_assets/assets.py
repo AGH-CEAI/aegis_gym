@@ -1,7 +1,8 @@
 """
-Generates the peg-in-hole asset files on demand, cached by a hash of the parameters.
+Generates the peg-in-hole asset files: on demand, cached by a hash of the parameters (`generate_pih_assets`), or into
+a given directory (`export_pih_assets`, used for the files in `aegis_gym/assets/peg_in_hole/`).
 
-The same parameters always give the same directory, so parallel processes and repeated runs reuse the files;
+The same parameters always give the same cache directory, so parallel processes and repeated runs reuse the files;
 a new tolerance or size just produces a new directory.
 """
 
@@ -21,7 +22,7 @@ from .geometry import PihGeometry, Pose, build_geometry
 from .urdf import write_urdf
 
 # Bump when the generated files change for the same parameters, so stale caches are not reused.
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 CACHE_ENV_VAR = "AEGIS_GYM_PIH_CACHE"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "aegis_gym" / "pih_assets"
 
@@ -66,67 +67,79 @@ def params_hash(cfg: PihAssetsCfg) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def generate_pih_assets(
-    cfg: PihAssetsCfg | None = None, cache_dir: str | Path | None = None
-) -> PihAssets:
-    """Returns the assets for `cfg` (nominal when None), writing them only if not cached yet."""
-    cfg = cfg or PihAssetsCfg.from_yaml()
-    root = Path(cache_dir or os.environ.get(CACHE_ENV_VAR) or DEFAULT_CACHE_DIR)
-    directory = root / f"pih_{params_hash(cfg)}"
-    geometry = build_geometry(cfg)
-    assets = PihAssets(
+def _assets(cfg: PihAssetsCfg, directory: Path) -> PihAssets:
+    return PihAssets(
         cfg=cfg,
-        geometry=geometry,
+        geometry=build_geometry(cfg),
         directory=directory,
         peg_urdf=directory / "peg.urdf",
         board_urdf=directory / "board.urdf",
         peg_stl=directory / "peg.stl",
         board_stl=directory / "board.stl",
     )
-    if not directory.is_dir():
-        _write(assets, root)
+
+
+def generate_pih_assets(
+    cfg: PihAssetsCfg | None = None, cache_dir: str | Path | None = None
+) -> PihAssets:
+    """Returns the assets for `cfg` (nominal when None), writing them only if not cached yet."""
+    cfg = cfg or PihAssetsCfg.from_yaml()
+    root = Path(cache_dir or os.environ.get(CACHE_ENV_VAR) or DEFAULT_CACHE_DIR)
+    assets = _assets(cfg, root / f"pih_{params_hash(cfg)}")
+    if not assets.directory.is_dir():
+        root.mkdir(parents=True, exist_ok=True)
+        # write next to the target and rename, so a concurrent reader never sees a half-written directory
+        tmp = Path(tempfile.mkdtemp(dir=root, prefix=".tmp_"))
+        try:
+            _write_files(assets, tmp)
+            try:
+                tmp.rename(assets.directory)
+            except OSError:
+                # lost a race to another writer: their files are identical
+                if not assets.directory.is_dir():
+                    raise
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
     return assets
 
 
-def _write(assets: PihAssets, root: Path) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    # write next to the target and rename, so a concurrent reader never sees a half-written directory
-    tmp = Path(tempfile.mkdtemp(dir=root, prefix=".tmp_"))
-    try:
-        geom, cfg = assets.geometry, assets.cfg
-        export_stl(geom.peg_boxes, tmp / assets.peg_stl.name)
-        export_stl(geom.board_boxes, tmp / assets.board_stl.name)
-        board_mass = PLA_DENSITY * sum(b.volume for b in geom.board_boxes)
-        write_urdf(
-            tmp / assets.peg_urdf.name,
-            "peg",
-            geom.peg_boxes,
-            cfg.peg.mass,
-            assets.peg_stl.name,
-            _PEG_RGBA,
+def export_pih_assets(cfg: PihAssetsCfg | None, out_dir: str | Path) -> PihAssets:
+    """Writes the assets for `cfg` (nominal when None) into `out_dir`, overwriting the files there."""
+    cfg = cfg or PihAssetsCfg.from_yaml()
+    assets = _assets(cfg, Path(out_dir))
+    assets.directory.mkdir(parents=True, exist_ok=True)
+    _write_files(assets, assets.directory)
+    return assets
+
+
+def _write_files(assets: PihAssets, directory: Path) -> None:
+    """peg/board URDF and STL plus `params.yaml` into `directory`, named as in `assets`."""
+    geom, cfg = assets.geometry, assets.cfg
+    export_stl(geom.peg_boxes, directory / assets.peg_stl.name)
+    export_stl(geom.board_boxes, directory / assets.board_stl.name)
+    board_mass = PLA_DENSITY * sum(b.volume for b in geom.board_boxes)
+    write_urdf(
+        directory / assets.peg_urdf.name,
+        "peg",
+        geom.peg_boxes,
+        cfg.peg.mass,
+        assets.peg_stl.name,
+        _PEG_RGBA,
+    )
+    write_urdf(
+        directory / assets.board_urdf.name,
+        "board",
+        geom.board_boxes,
+        board_mass,
+        assets.board_stl.name,
+        _BOARD_RGBA,
+    )
+    with open(directory / "params.yaml", "w") as f:
+        yaml.safe_dump(
+            {"generator_version": GENERATOR_VERSION, **_plain(cfg.to_dict())},
+            f,
+            sort_keys=False,
         )
-        write_urdf(
-            tmp / assets.board_urdf.name,
-            "board",
-            geom.board_boxes,
-            board_mass,
-            assets.board_stl.name,
-            _BOARD_RGBA,
-        )
-        with open(tmp / "params.yaml", "w") as f:
-            yaml.safe_dump(
-                {"generator_version": GENERATOR_VERSION, **_plain(cfg.to_dict())},
-                f,
-                sort_keys=False,
-            )
-        try:
-            tmp.rename(assets.directory)
-        except OSError:
-            # lost a race to another writer: their files are identical
-            if not assets.directory.is_dir():
-                raise
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _plain(value):

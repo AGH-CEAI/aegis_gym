@@ -1,6 +1,6 @@
 # Nominal peg-in-hole dimensions, in metres and kilograms.
-# The single source for the generated simulation assets and the 3D-printed parts.
-# Override any key from the env config instead of editing this file per experiment.
+# The single source of the peg and board files next to it (peg.urdf/stl, board.urdf/stl) and of the 3D-printed parts.
+# After a change regenerate them: python3 -m scripts.peg_in_hole.generate_assets
 
 peg:
   side: 0.025            # edge of the square leg cross-section
@@ -17,4 +17,4 @@ board:
   bottom: 0.005          # floor under each hole; 0 makes through holes
   margin: 0.02           # wall between the outermost holes and the board edge
   slot_pitch: 0.06       # centre spacing of the slots along x
-  clearances: [0.005, 0.001, 0.0005]  # one slot per entry: hole side minus leg side (total, like the SCAD)
+  clearances: [0.001]    # one slot per entry: hole side minus leg side (total, like the SCAD); 26 mm hole

@@ -1,4 +1,10 @@
-from .assets import HoleFrame, PihAssets, generate_pih_assets, params_hash
+from .assets import (
+    HoleFrame,
+    PihAssets,
+    export_pih_assets,
+    generate_pih_assets,
+    params_hash,
+)
 from .cfg import NOMINAL_YAML, BoardCfg, LegsCfg, PegCfg, PihAssetsCfg
 from .export import boxes_to_mesh, export_stl
 from .geometry import Box, PihGeometry, Rect, Slot, build_geometry, decompose_plate
@@ -19,6 +25,7 @@ __all__ = [
     "boxes_to_mesh",
     "build_geometry",
     "decompose_plate",
+    "export_pih_assets",
     "export_stl",
     "generate_pih_assets",
     "mass_properties",

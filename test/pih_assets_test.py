@@ -11,13 +11,15 @@ from aegis_gym.aux.pih_assets import (
 )
 
 _TOL = 1e-9
+# the nominal board has one hole; the geometry is checked on three slots side by side
+_THREE_SLOTS = {"board": {"clearances": [0.005, 0.001, 0.0005]}}
 _TWO_LEGS = {
     "peg": {"legs": {"grid": [2, 1], "length": 0.03}},
-    "board": {"slot_pitch": 0.1},
+    "board": {"slot_pitch": 0.1, **_THREE_SLOTS["board"]},
 }
 _MULTILEG = {
     "peg": {"legs": {"grid": [2, 2], "pitch": 0.04, "length": 0.03}},
-    "board": {"slot_pitch": 0.1},
+    "board": {"slot_pitch": 0.1, **_THREE_SLOTS["board"]},
 }
 
 
@@ -37,14 +39,14 @@ def _hole_box(h: Rect, depth: float) -> Box:
     )
 
 
-@pytest.fixture(params=[None, _TWO_LEGS, _MULTILEG], ids=["1x1", "2x1", "2x2"])
+@pytest.fixture(params=[_THREE_SLOTS, _TWO_LEGS, _MULTILEG], ids=["1x1", "2x1", "2x2"])
 def cfg(request) -> PihAssetsCfg:
     return _cfg(request.param)
 
 
-def test_nominal_loads_three_clearances():
+def test_nominal_is_one_hole_with_1mm_clearance():
     cfg = _cfg()
-    assert cfg.board.clearances == (0.005, 0.001, 0.0005)
+    assert cfg.board.clearances == (0.001,)
     assert cfg.peg.legs.grid == (1, 1)
 
 
@@ -134,7 +136,7 @@ def test_single_peg_is_one_box():
 
 
 def test_frames():
-    cfg = _cfg()
+    cfg = _cfg(_THREE_SLOTS)
     geom = build_geometry(cfg)
     assert geom.peg_tip_frame == (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)
     assert geom.peg_grasp_frame[2] == pytest.approx(
@@ -146,8 +148,8 @@ def test_frames():
 
 
 def test_through_holes_have_no_floor():
-    blind = build_geometry(_cfg())
-    through = build_geometry(_cfg({"board": {"bottom": 0.0}}))
+    blind = build_geometry(_cfg(_THREE_SLOTS))
+    through = build_geometry(_cfg({"board": {"bottom": 0.0, **_THREE_SLOTS["board"]}}))
     assert len(blind.board_boxes) - len(through.board_boxes) == 3
 
 
@@ -168,7 +170,7 @@ def test_overrides_merge_and_keep_the_rest():
             "peg": {"legs": {"grid": [2, 1], "length": 0.03, "pitch": 0.026}}
         },  # no wall between holes
         {"peg": {"legs": {"grid": [2, 1]}}},  # multileg needs a leg length
-        {"board": {"slot_pitch": 0.02}},  # slots overlap
+        {"board": {"slot_pitch": 0.02, **_THREE_SLOTS["board"]}},  # slots overlap
         {"board": {"bottom": 0.03}},  # no depth left
         {"board": {"clearances": [-0.001]}},
         {"peg": {"grasp_from_top": 0.1}},

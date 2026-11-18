@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -7,6 +8,7 @@ from aegis_gym.aux.pih_assets import (
     Box,
     PihAssetsCfg,
     boxes_to_mesh,
+    export_pih_assets,
     export_stl,
     generate_pih_assets,
     mass_properties,
@@ -139,7 +141,7 @@ def test_cache_reused(tmp_path):
 def test_new_params_new_directory(tmp_path):
     a = generate_pih_assets(PihAssetsCfg.from_yaml(), tmp_path)
     b = generate_pih_assets(
-        PihAssetsCfg.from_yaml(overrides={"board": {"clearances": [0.001]}}), tmp_path
+        PihAssetsCfg.from_yaml(overrides={"board": {"clearances": [0.002]}}), tmp_path
     )
     assert a.directory != b.directory
     assert params_hash(a.cfg) == params_hash(PihAssetsCfg.from_yaml())
@@ -154,3 +156,28 @@ def test_hole_frames(assets):
     frames = assets.hole_frames
     assert [f.clearance for f in frames] == list(assets.cfg.board.clearances)
     assert all(len(f.pose) == 7 for f in frames)
+
+
+_ASSETS_DIR = (
+    Path(__file__).resolve().parents[1] / "aegis_gym" / "assets" / "peg_in_hole"
+)
+_ASSET_FILES = ("peg.urdf", "peg.stl", "board.urdf", "board.stl", "params.yaml")
+
+
+@pytest.mark.parametrize("name", _ASSET_FILES)
+def test_committed_assets_are_up_to_date(tmp_path, name):
+    """The files the envs load match nominal.yaml: after a change run `python3 -m scripts.peg_in_hole.generate_assets`."""
+    export_pih_assets(None, tmp_path)
+    assert (_ASSETS_DIR / name).read_bytes() == (tmp_path / name).read_bytes()
+
+
+def test_committed_board_has_one_1mm_hole():
+    boxes = _collision_boxes(_ASSETS_DIR / "board.urdf")
+    walls = [
+        (xyz, size) for xyz, size in boxes if size[2] > 0.01
+    ]  # the floor is 5 mm thick
+    # the hole is the gap between the walls around the origin, along x and along y
+    gap_x = min(x - s[0] / 2 for (x, _, _), s in walls if x > 0) - max(
+        x + s[0] / 2 for (x, _, _), s in walls if x < 0
+    )
+    assert gap_x == pytest.approx(0.026, abs=1e-9)
