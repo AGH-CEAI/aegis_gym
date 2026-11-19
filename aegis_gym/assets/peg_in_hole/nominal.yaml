@@ -1,0 +1,20 @@
+# Nominal peg-in-hole dimensions, in metres and kilograms.
+# The single source of the peg and board files next to it (peg.urdf/stl, board.urdf/stl) and of the 3D-printed parts.
+# After a change regenerate them: python3 -m scripts.peg_in_hole.generate_assets
+
+peg:
+  side: 0.025            # edge of the square leg cross-section
+  length: 0.08           # total height, tip to top
+  mass: 0.04             # whole peg (PLA print)
+  grasp_from_top: 0.0125 # grasp point below the top face (Hand-E pads are ~20.5 mm tall)
+  legs:
+    grid: [1, 1]         # legs along x and y; [1, 1] is the single-peg variant
+    pitch: 0.04          # leg centre spacing, used only with more than one leg
+    length: null         # length of each leg below the base; null = the whole peg (single leg only)
+
+board:
+  thickness: 0.03        # board height, top face to table
+  bottom: 0.005          # floor under each hole; 0 makes through holes
+  margin: 0.02           # wall between the outermost holes and the board edge
+  slot_pitch: 0.06       # centre spacing of the slots along x
+  clearances: [0.001]    # one slot per entry: hole side minus leg side (total, like the SCAD); 26 mm hole
