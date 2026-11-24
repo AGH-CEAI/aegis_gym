@@ -17,3 +17,9 @@ class LoggerCfg(BaseCfg):
     enable_policy_preview: bool = False
     policy_preview_interval: int = 0
     policy_preview_resolution: list[int] = field(default_factory=lambda: [320, 240])
+    policy_eval_interval: int = 0
+    policy_eval_episodes: int = 256
+    policy_eval_seed_start: int = 10_000
+    policy_eval_final_episodes: int = 0
+    policy_eval_final_seed_start: int = 20_000
+    policy_eval_dr_seed: int | None = None

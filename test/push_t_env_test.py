@@ -237,3 +237,18 @@ def test_state_obs_rejects_the_unknown_names_and_allows_none():
     with pytest.raises(ValueError, match="Unknown state_obs.*ReacherEnv"):
         env.get_state_obs(["tcp_pose", "tee_pose"])
     assert env.get_state_obs([]).shape == (NUM_ENVS, 0)
+
+
+class _UnseededReacherEnv(ReacherEnv):
+    _reset_idx_seeded = BaseEnv._reset_idx_seeded
+
+
+@pytest.mark.parametrize(
+    ("env_cls", "supported"),
+    [(PushTEnv, True), (ReacherEnv, True), (_UnseededReacherEnv, False)],
+)
+def test_envs_report_the_seeded_reset_support(env_cls: type, supported: bool):
+    env = object.__new__(env_cls)
+    env._scene = _Scene()
+
+    assert env.supports_seeded_reset is supported

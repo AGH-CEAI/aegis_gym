@@ -60,6 +60,13 @@ class BaseEnvWrapper(BaseEnv):
     def get_state_obs(self, names: Sequence[str]) -> th.Tensor:
         return self._env.get_state_obs(names)
 
+    @property
+    def supports_seeded_reset(self) -> bool:
+        return self._env.supports_seeded_reset
+
+    def apply_domain_randomization(self, envs_idx: th.Tensor) -> None:
+        self._env.apply_domain_randomization(envs_idx)
+
     def get_observations(self) -> TensorDict:
         return self._env.get_observations()
 

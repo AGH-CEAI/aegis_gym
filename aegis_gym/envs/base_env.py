@@ -236,6 +236,11 @@ class BaseEnv(VecEnv):
         self._reset_idx_seeded(envs_idx=envs_idx, seeds=seeds)
         return self.get_observations()
 
+    @property
+    def supports_seeded_reset(self) -> bool:
+        """Whether the env implements `reset_seeded()`."""
+        return type(self)._reset_idx_seeded is not BaseEnv._reset_idx_seeded
+
     def _reset_idx_seeded(self, envs_idx: th.Tensor, seeds: Sequence[int]) -> None:
         raise NotImplementedError(
             f"The `{type(self).__name__}` environment doesn't support the seeded reset."

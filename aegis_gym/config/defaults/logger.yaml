@@ -7,3 +7,12 @@ local_log_dir: ""
 enable_policy_preview: False
 policy_preview_interval: 0
 policy_preview_resolution: [320, 240]
+policy_eval_interval: 100
+policy_eval_episodes: 256
+policy_eval_seed_start: 10000
+policy_eval_final_episodes: 1000
+policy_eval_final_seed_start: 20000
+# null: the nominal domain (no domain randomization); an int: each wave of `num_envs` episodes gets the
+# configured domain randomization (scene + image augmentation) drawn from this seed, the same for every
+# policy evaluated at the same `num_envs`
+policy_eval_dr_seed: null

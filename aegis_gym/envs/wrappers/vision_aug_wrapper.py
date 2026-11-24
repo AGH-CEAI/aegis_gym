@@ -55,6 +55,11 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         """Draws new per episode augmentation profiles of all the envs."""
         self._resample_aug_profile(th.arange(self.num_envs, device=self.device))
 
+    def apply_domain_randomization(self, envs_idx: th.Tensor) -> None:
+        """The scene's randomizations, then new augmentation profiles of the `envs_idx`."""
+        self._env.apply_domain_randomization(envs_idx)
+        self._resample_aug_profile(envs_idx)
+
     def step(self, actions: th.Tensor) -> StepReturn:
         res = self._env.step(actions)
         return res

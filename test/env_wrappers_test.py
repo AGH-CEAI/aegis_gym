@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+import torch as th
 
 # the wrappers package imports cv2, provided by the container's system packages
 pytest.importorskip("cv2")
@@ -41,3 +42,28 @@ def test_env_wrapper_delegates_the_state_obs():
 
     assert wrapper.available_state_obs == {"tcp_pose"}
     assert wrapper.get_state_obs(["tcp_pose"]) == ["tcp_pose"]
+
+
+def test_env_wrapper_delegates_the_seeded_reset_support():
+    env = SimpleNamespace(supports_seeded_reset=False, _scene=None)
+
+    assert BaseEnvWrapper(env=BaseEnvWrapper(env=env)).supports_seeded_reset is False
+
+
+def test_vision_aug_wrapper_redraws_its_augmentation_with_the_domain_randomization():
+    calls = []
+    env = SimpleNamespace(
+        apply_domain_randomization=lambda envs_idx: calls.append(
+            ("scene", envs_idx.tolist())
+        ),
+        _scene=None,
+    )
+    aug = object.__new__(VisionAugEnvWrapper)
+    aug._env = env
+    aug._resample_aug_profile = lambda envs_idx: calls.append(
+        ("aug", envs_idx.tolist())
+    )
+
+    BaseEnvWrapper(env=aug).apply_domain_randomization(th.tensor([0, 2]))
+
+    assert calls == [("scene", [0, 2]), ("aug", [0, 2])]
