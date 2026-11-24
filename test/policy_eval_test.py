@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import numpy as np
 import pytest
 import torch as th
-
 from aegis_gym.runners.policy_eval import PolicyEvaluator, wilson_interval
 
 NUM_ENVS = 4
