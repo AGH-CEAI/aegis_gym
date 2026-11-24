@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-192](https://github.com/AGH-CEAI/aegis_gym/pull/192) - Changed RGB images in torch from float32 type to unit32 and added buffer allocation test to ensure enough VRAM for the whole training.
+- [PR-185](https://github.com/AGH-CEAI/aegis_gym/pull/185) - Initial implementation of admittance control (sim & real).
 - [PR-188](https://github.com/AGH-CEAI/aegis_gym/pull/188) - Added script for playing open loop replay from pre-recorded trajectory.
 
 ### Changed
