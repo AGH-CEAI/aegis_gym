@@ -38,6 +38,7 @@ from aegis_gym.runners.policy_preview import (
     preview_iteration,
 )
 from train import (
+    DEFAULT_FINAL_EVAL_EPISODES,
     FINAL_EVAL_TITLE,
     create_env,
     create_policy_evaluator,
@@ -184,12 +185,9 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
     """
     logger = get_logger("Eval")
     args = cfg.args
-    cfg_log = cfg.logger_cfg
-    if args.eval_episodes is not None:
-        cfg_log.policy_eval_final_episodes = args.eval_episodes
-    elif cfg_log.policy_eval_final_episodes <= 0:
-        cfg_log.policy_eval_final_episodes = 1000
-    cfg_log.policy_eval_dr_seed = args.eval_dr_seed
+    num_episodes = args.eval_episodes
+    if num_episodes is None and cfg.logger_cfg.policy_eval_final_episodes <= 0:
+        num_episodes = DEFAULT_FINAL_EVAL_EPISODES
 
     is_bc = args.algorithm == Algorithm.BC
     if is_bc and args.eval_dr_seed is not None and cfg.dr_cfg.enabled:
@@ -200,9 +198,11 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
         env=env,
         cfg=cfg,
         final=True,
+        domain_randomization_seed=args.eval_dr_seed,
+        num_episodes=num_episodes,
         report_task=target,
         # per task: the evaluations of several tasks in one experiment don't overwrite each other
-        out_dir=Path(cfg_log.local_log_dir) / "policy_eval" / target.id,
+        out_dir=Path(cfg.logger_cfg.local_log_dir) / "policy_eval" / target.id,
     )
     if evaluator is None:
         raise RuntimeError("The policy evaluation isn't available for this setup.")
@@ -257,7 +257,11 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
 def make_checkpoint_runner_loader(
     env: BaseEnv, cfg: ExpConfig
 ) -> Callable[[Path], tuple[Callable, int]]:
-    """Loads a checkpoint into a single runner: (its policy, the checkpoint's iteration)."""
+    """
+    Loads the checkpoints into a single runner: (its policy, the checkpoint's iteration). They
+    aren't connected to the evaluation task as its input models, these are the target task's own
+    checkpoints.
+    """
     device = cfg.get_device()
     if cfg.args.algorithm == Algorithm.RL:
         rl_runner = OnPolicyRunner(env=env, cfg=cfg)
@@ -282,29 +286,15 @@ def make_checkpoint_runner_loader(
 def make_checkpoint_loader(
     env: BaseEnv, cfg: ExpConfig
 ) -> Callable[[Path], InferencePolicy]:
-    """
-    Loads the checkpoints into a single runner, as the preview's policy. They aren't connected to
-    the evaluation task as its input models, these are the target task's own checkpoints.
-    """
-    device = cfg.get_device()
+    """The checkpoints of `make_checkpoint_runner_loader()` as the preview's policy."""
+    load_checkpoint = make_checkpoint_runner_loader(env=env, cfg=cfg)
     if cfg.args.algorithm == Algorithm.RL:
-        rl_runner = OnPolicyRunner(env=env, cfg=cfg)
-
-        def load_rl(path: Path) -> InferencePolicy:
-            with without_clearml_load_binding():
-                rl_runner.load(path)
-            return rl_runner.get_inference_policy(device=device)
-
-        return load_rl
-
-    bc_runner = BehaviorCloningRunner(env=env, cfg=cfg, teacher=None)
+        return lambda path: load_checkpoint(path)[0]
 
     def load_bc(path: Path) -> InferencePolicy:
-        with without_clearml_load_binding():
-            bc_runner.load(path)
-        student = bc_runner.get_inference_policy(device=device).eval()
+        student, _ = load_checkpoint(path)
         return make_visual_bc_policy(
-            env=env, bc_policy=student, state_obs=cfg.bc_cfg.policy.state_obs
+            env=env, bc_policy=student.eval(), state_obs=cfg.bc_cfg.policy.state_obs
         )
 
     return load_bc

@@ -280,7 +280,10 @@ def parse_arguments(
         "--eval-episodes",
         type=int,
         default=None,
-        help="With `--evaluate-checkpoints`: the number of episodes (default: the config's).",
+        help=(
+            "With `--evaluate-checkpoints`: the number of episodes (default: the config's "
+            "`policy_eval_final_episodes`, 1000 if it's off)."
+        ),
     )
     p.add_argument(
         "--eval-dr-seed",

@@ -773,9 +773,7 @@ class PushTEnv(BaseEnv):
             ),  # tee-yaw in world frame
         ]
         if self.observe_reference:
-            # commanded minus measured TCP: the loop lag plus the spring deflection under contact
-            reference_xy = self.manipulator.get_tcp_reference()[:, :2]
-            obs_components.append(reference_xy - tcp_xy)
+            obs_components.append(self._observe_reference_offset())
         if self.observe_force:
             force = transform_by_quat(
                 self.manipulator.get_ft_wrench()[:, :3],

@@ -117,13 +117,17 @@ def create_policy_evaluator(
     env: BaseEnv,
     cfg: ExpConfig,
     final: bool,
+    domain_randomization_seed: int | None,
+    num_episodes: int | None = None,
     report_task: Task | None = None,
     out_dir: Path | None = None,
 ) -> PolicyEvaluator | None:
     """
     The evaluator of the student during the training (`final=False`) or of the trained models on
-    the held-out seeds (`final=True`), if enabled in the logger config and supported. The CSVs go
-    to `out_dir` (default: `<local_log_dir>/policy_eval`).
+    the held-out seeds (`final=True`), if enabled in the logger config (or by `num_episodes`,
+    which overrides its number of episodes) and supported. With `domain_randomization_seed`
+    (None: the nominal domain), see `PolicyEvaluator`. The CSVs go to `out_dir` (default:
+    `<local_log_dir>/policy_eval`).
     """
     logger = get_logger("Train")
     cfg_log = cfg.logger_cfg
@@ -135,19 +139,21 @@ def create_policy_evaluator(
     else:
         num = cfg_log.policy_eval_episodes if cfg_log.policy_eval_interval > 0 else 0
         seed_start = cfg_log.policy_eval_seed_start
+    if num_episodes is not None:
+        num = num_episodes
     if num <= 0:
         return None
     if cfg.args.control_type != Control.SIM:
         logger.info("The policy evaluation runs only in the simulation.")
         return None
-    if not PolicyEvaluator.is_supported(env):
+    if not env.supports_seeded_reset:
         logger.warning("The env has no seeded reset; skipping the policy evaluation.")
         return None
     return PolicyEvaluator(
         env=env,
         seeds=range(seed_start, seed_start + num),
         out_dir=out_dir or Path(cfg_log.local_log_dir) / "policy_eval",
-        domain_randomization_seed=cfg_log.policy_eval_dr_seed,
+        domain_randomization_seed=domain_randomization_seed,
         report_task=report_task,
     )
 
@@ -178,6 +184,8 @@ def evaluate_bc_student(
 
 
 FINAL_EVAL_TITLE = "policy_eval_final"
+# `eval.py --evaluate-checkpoints` without `--eval-episodes` while the config's final one is off
+DEFAULT_FINAL_EVAL_EPISODES = 1000
 
 
 def evaluate_final_bc_models(
@@ -339,7 +347,12 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 student.train()
                 return metrics
 
-            evaluator = create_policy_evaluator(env=env, cfg=cfg, final=False)
+            evaluator = create_policy_evaluator(
+                env=env,
+                cfg=cfg,
+                final=False,
+                domain_randomization_seed=cfg.logger_cfg.policy_eval_dr_seed,
+            )
 
             def run_evaluation(iteration: int) -> dict[str, float]:
                 return evaluate_bc_student(
@@ -364,7 +377,12 @@ def train_runner(env: BaseEnv, cfg: ExpConfig) -> None:
                 logger.info(">>> (BC) Recording the final policy preview")
                 record_preview(iteration=max(runner.current_iter - 1, 0))
 
-            final_evaluator = create_policy_evaluator(env=env, cfg=cfg, final=True)
+            final_evaluator = create_policy_evaluator(
+                env=env,
+                cfg=cfg,
+                final=True,
+                domain_randomization_seed=cfg.logger_cfg.policy_eval_dr_seed,
+            )
             if final_evaluator is not None:
                 best_path = Path(cfg.logger_cfg.local_log_dir) / "model_best.pt"
                 evaluate_final_bc_models(

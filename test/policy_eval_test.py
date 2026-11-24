@@ -5,9 +5,14 @@ import numpy as np
 import pytest
 import torch as th
 
-from aegis_gym.runners.policy_eval import PolicyEvaluator, wilson_interval
+from aegis_gym.runners.policy_eval import (
+    PolicyEvaluator,
+    _episode_rows,
+    wilson_interval,
+)
 
 NUM_ENVS = 4
+SEEDS = tuple(range(100, 110))
 
 
 class _SeededEnv:
@@ -94,7 +99,7 @@ class _SeededEnv:
         return self._obs(), rewards, dones, extras
 
 
-def _evaluator(env: _SeededEnv, tmp_path, seeds=range(100, 110), dr_seed=None):
+def _evaluator(env: _SeededEnv, tmp_path, seeds=SEEDS, dr_seed=None):
     return PolicyEvaluator(
         env=env, seeds=seeds, out_dir=tmp_path, domain_randomization_seed=dr_seed
     )
@@ -178,3 +183,37 @@ def test_domain_randomization_needs_it_configured(tmp_path):
 def test_evaluator_title_suffix(tmp_path):
     assert _evaluator(_SeededEnv(), tmp_path).title_suffix == ""
     assert _evaluator(_SeededEnv(), tmp_path, dr_seed=3).title_suffix == "_dr3"
+
+
+def test_episode_rows_take_the_env_flags_from_its_episode_rates():
+    dones = th.tensor([True, False, True])
+    extras = {
+        "success": th.tensor([True, False, False]),
+        "time_outs": th.tensor([0.0, 0.0, 1.0]),
+        "episode": {
+            # per reset env (0 and 2); `success_rate` duplicates `success`
+            "success_rate": th.tensor([1.0, 0.0]),
+            "tee_off_table_rate": th.tensor([0.0, 1.0]),
+            "final_coverage": th.tensor([0.9, 0.2]),
+            "rew_progress": 0.5,
+        },
+    }
+
+    rows = _episode_rows(
+        ended=dones,
+        dones=dones,
+        extras=extras,
+        seeds=[7, 8, 9],
+        returns=th.tensor([1.0, 2.0, 3.0]),
+        lengths=th.tensor([4, 5, 6]),
+        policy_dt=0.5,
+    )
+
+    assert [row["seed"] for row in rows] == [7, 9]
+    assert [row["success"] for row in rows] == [True, False]
+    assert [row["time_out"] for row in rows] == [False, True]
+    assert [row["tee_off_table"] for row in rows] == [False, True]
+    assert [row["final_coverage"] for row in rows] == pytest.approx([0.9, 0.2])
+    assert [row["episode_length_s"] for row in rows] == [2.0, 3.0]
+    assert "success_rate" not in rows[0] and "rew_progress" not in rows[0]
+    assert PolicyEvaluator._summarize(rows)["tee_off_table_rate"] == 0.5

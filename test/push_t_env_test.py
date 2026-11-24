@@ -180,3 +180,75 @@ def test_push_t_randomized_goals_stay_on_the_table():
     # a subset of the configured ranges, so the teachers trained on them stay in distribution
     assert env.goal_pose[:, 0].min() >= 0.42 and env.goal_pose[:, 0].max() <= 0.52
     assert env.goal_pose[:, 1].abs().max() <= 0.1
+
+
+def _state_obs_env(env_cls: type = PushTEnv) -> BaseEnv:
+    """The env with its state terms on stubbed TCP, tee (90 deg about z) and goal poses."""
+    env = object.__new__(env_cls)
+    cfg = SimpleNamespace(
+        env_cfg=SimpleNamespace(num_envs=NUM_ENVS),
+        dr_cfg=None,
+        get_device=lambda: th.device("cpu"),
+    )
+    BaseEnv.__init__(env, scene=_Scene(), cfg=cfg)
+    tcp = th.zeros(NUM_ENVS, 7)
+    tcp[:, :3] = th.tensor([0.5, 0.1, 0.2])
+    reference = tcp.clone()
+    reference[:, :2] += th.tensor([0.01, -0.02])
+    tee = th.zeros(NUM_ENVS, 7)
+    tee[:, :2] = th.tensor([0.4, 0.1])
+    tee[:, 3] = math.cos(math.pi / 4)  # wxyz
+    tee[:, 6] = math.sin(math.pi / 4)
+    env._observation_fns = {
+        Modality.TCP_POSE: lambda: tcp,
+        Modality.OBJECT_POSE: lambda: tee,
+    }
+    env.manipulator = SimpleNamespace(get_tcp_reference=lambda: reference)
+    env.goal_pose = th.zeros(NUM_ENVS, 7)
+    env.goal_pose[:, 0] = 0.47
+    env.goal_yaw = th.zeros(NUM_ENVS)
+    env.get_observations = lambda: {"policy": th.full((NUM_ENVS, 3), 7.0)}
+    return env
+
+
+def test_state_obs_concatenates_the_named_terms():
+    env = _state_obs_env()
+
+    state = env.get_state_obs(["tcp_pose", "reference_offset", "teacher_obs"])
+
+    assert state.shape == (NUM_ENVS, 7 + 2 + 3)
+    assert state[0, :3].tolist() == pytest.approx([0.5, 0.1, 0.2])
+    assert state[0, 7:9].tolist() == pytest.approx([0.01, -0.02])
+    assert state[0, 9:].tolist() == [7.0, 7.0, 7.0]
+
+
+def test_push_t_tee_and_goal_state_obs_are_planar():
+    state = _state_obs_env().get_state_obs(["tee_pose", "goal_pose"])
+
+    assert state[0].tolist() == pytest.approx(
+        [0.4, 0.1, 1.0, 0.0, 0.47, 0.0, 0.0, 1.0], abs=1e-6
+    )
+
+
+def test_state_obs_rejects_the_unknown_names_and_allows_none():
+    env = _state_obs_env(ReacherEnv)
+
+    assert env.available_state_obs == {"tcp_pose", "teacher_obs"}
+    with pytest.raises(ValueError, match="Unknown state_obs.*ReacherEnv"):
+        env.get_state_obs(["tcp_pose", "tee_pose"])
+    assert env.get_state_obs([]).shape == (NUM_ENVS, 0)
+
+
+class _UnseededReacherEnv(ReacherEnv):
+    _reset_idx_seeded = BaseEnv._reset_idx_seeded
+
+
+@pytest.mark.parametrize(
+    ("env_cls", "supported"),
+    [(PushTEnv, True), (ReacherEnv, True), (_UnseededReacherEnv, False)],
+)
+def test_envs_report_the_seeded_reset_support(env_cls: type, supported: bool):
+    env = object.__new__(env_cls)
+    env._scene = _Scene()
+
+    assert env.supports_seeded_reset is supported

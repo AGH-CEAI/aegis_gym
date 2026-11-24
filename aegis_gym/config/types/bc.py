@@ -40,7 +40,8 @@ class PolicyBCCfg(BaseCfg):
     action_head_state_obs_dim: int | None
     action_head_hidden_dims: list[int]
     pose_head_hidden_dims: list[int]
-    # the student's non-image inputs, concatenated in this order (see `STUDENT_STATE_OBS`)
+    # the student's non-image inputs, the env's state terms concatenated in this order (see
+    # `BaseEnv.get_state_obs()`); empty for an image-only student
     state_obs: list[str] = field(default_factory=lambda: ["tcp_pose"])
 
 

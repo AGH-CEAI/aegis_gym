@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from aegis_gym.aux.logging import get_logger
 from aegis_gym.envs import BaseEnv
-from aegis_gym.envs.wrappers import BaseEnvWrapper, innermost_env
+from aegis_gym.envs.wrappers import innermost_env
 
 from .policy_preview import InferencePolicy
 
@@ -67,12 +67,6 @@ class PolicyEvaluator:
             raise ValueError(
                 "The evaluation with the domain randomization needs it enabled (`dr.enabled`)."
             )
-
-    @staticmethod
-    def is_supported(env: BaseEnv) -> bool:
-        """Whether the env has the seeded reset the evaluation relies on."""
-        env_cls = type(innermost_env(env))
-        return env_cls._reset_idx_seeded is not BaseEnv._reset_idx_seeded
 
     @property
     def randomizes_domain(self) -> bool:
@@ -156,16 +150,10 @@ class PolicyEvaluator:
         if not self.randomizes_domain:
             return
         self._reseed(wave)
-        base = self._base
-        base.apply_domain_randomization(th.arange(base.num_envs, device=base.device))
-        env = self._env
-        while True:
-            resample = getattr(type(env), "resample_augmentation", None)
-            if resample is not None:
-                env.resample_augmentation()
-            if not isinstance(env, BaseEnvWrapper):
-                break
-            env = env.unwrapped
+        # through the wrappers: e.g. the `VisionAugEnvWrapper` redraws its augmentation too
+        self._env.apply_domain_randomization(
+            th.arange(self._base.num_envs, device=self._base.device)
+        )
 
     def _run_episodes(self, policy: InferencePolicy, desc: str) -> list[EpisodeRow]:
         base = self._base
@@ -321,16 +309,15 @@ def _episode_rows(
     """
     The results of the `ended` episodes of the wave. The env's `extras["episode"]` metrics are of
     the envs reset in this step (all the `dones`, in the order of their indices); the ones per
-    episode are kept, without the `*_rate` ones (the same as the flags).
+    episode are kept. A per episode `<flag>_rate` is the episode's `<flag>` (e.g. the Push-T's
+    `tee_off_table`), unless it's already a column (`success`, `time_out`).
     """
     reset_envs = th.nonzero(dones).flatten().tolist()
     episode = extras.get("episode", {})
     per_episode = {
         key: value
         for key, value in episode.items()
-        if isinstance(value, th.Tensor)
-        and value.numel() == len(reset_envs)
-        and not key.endswith("_rate")
+        if isinstance(value, th.Tensor) and value.numel() == len(reset_envs)
     }
 
     def flag(key: str, i: int) -> bool | None:
@@ -344,13 +331,14 @@ def _episode_rows(
             "success": bool(flag("success", i)),
             "time_out": bool(flag("time_outs", i)),
         }
-        tee_off_table = flag("tee_off_table", i)
-        if tee_off_table is not None:
-            row["tee_off_table"] = tee_off_table
         row["return"] = float(returns[i])
         row["episode_length_s"] = int(lengths[i]) * policy_dt
         position = reset_envs.index(i)
         for key, value in per_episode.items():
-            row[key] = float(value.flatten()[position])
+            value = value.flatten()[position]
+            if not key.endswith("_rate"):
+                row[key] = float(value)
+            elif (name := key.removesuffix("_rate")) not in row:
+                row[name] = bool(value)
         rows.append(row)
     return rows
