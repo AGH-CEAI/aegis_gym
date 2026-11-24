@@ -227,12 +227,6 @@ class BehaviorCloningRunner(BasePolicyRunner):
         evaluate: Callable[[int], dict[str, float]] | None = None,
         eval_interval: int = 0,
     ) -> None:
-        """
-        Trains the student for `num_learning_iterations`. The `preview(it)` runs every
-        `preview_interval` iterations (except the last one, the caller records the final preview),
-        the `evaluate(it)` every `eval_interval` iterations and at the last one. The best model is
-        selected by the evaluation's success rate, else the preview's, else the mean reward.
-        """
         self._buffer.clear()
         self._check_update_fits()
         use_preview = preview is not None and preview_interval > 0
