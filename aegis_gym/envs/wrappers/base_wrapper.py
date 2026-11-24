@@ -1,4 +1,4 @@
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from typing import Any
 
 import torch as th
@@ -45,10 +45,20 @@ class BaseEnvWrapper(BaseEnv):
     def get_cameras_setup(self) -> CamerasSetup:
         return self._env.get_cameras_setup()
 
+    def get_modality_observation(self, modality: Modality) -> th.Tensor:
+        return self._env.get_modality_observation(modality)
+
     def get_modality_observations(
         self, modalities: Collection[Modality] | None = None
     ) -> TensorDict:
         return self._env.get_modality_observations(modalities=modalities)
+
+    @property
+    def available_state_obs(self) -> frozenset[str]:
+        return self._env.available_state_obs
+
+    def get_state_obs(self, names: Sequence[str]) -> th.Tensor:
+        return self._env.get_state_obs(names)
 
     def get_observations(self) -> TensorDict:
         return self._env.get_observations()

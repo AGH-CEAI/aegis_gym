@@ -60,6 +60,7 @@ class BaseEnv(VecEnv):
         self.device = cfg.get_device()
         self._obs_cache: TensorDict = TensorDict({}, batch_size=[self.num_envs])
         self._nominal_domain = False
+        self._state_obs_fns = self._build_state_obs_fns()
 
     def __del__(self):
         if self._scene:
@@ -145,6 +146,35 @@ class BaseEnv(VecEnv):
         for m in modalities - self._obs_cache_keys():
             self._obs_cache_set(m, self._observation_fns[m]())
         return self._obs_cache_get(modalities)
+
+    def _build_state_obs_fns(self) -> dict[str, Callable[[], th.Tensor]]:
+        """
+        The named non-image state terms of `get_state_obs()`, e.g. the BC student's inputs.
+        Environments extend them with their task-specific terms.
+        """
+        return {
+            "tcp_pose": lambda: self.get_modality_observation(Modality.TCP_POSE),
+            # privileged in sim (the true object state): a sanity check, not deployable
+            "teacher_obs": lambda: self.get_observations()["policy"],
+        }
+
+    @property
+    def available_state_obs(self) -> frozenset[str]:
+        """Names of the state terms `get_state_obs()` provides."""
+        return frozenset(self._state_obs_fns)
+
+    def get_state_obs(self, names: Sequence[str]) -> th.Tensor:
+        """[num_envs, D] the `names` state terms concatenated, D = 0 for no names."""
+        unknown = set(names) - self.available_state_obs
+        if unknown:
+            raise ValueError(
+                f"Unknown state_obs {sorted(unknown)} of `{type(self).__name__}`; "
+                f"use {sorted(self.available_state_obs)}"
+            )
+        terms = [self._state_obs_fns[n]().float() for n in names]
+        if not terms:
+            return th.zeros(self.num_envs, 0, device=self.device)
+        return th.cat(terms, dim=-1)
 
     def _resolve_modalities(
         self, modalities: Collection[Modality] | None

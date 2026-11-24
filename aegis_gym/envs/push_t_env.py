@@ -1,5 +1,5 @@
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +9,7 @@ from tensordict import TensorDict
 
 from aegis_gym.aux.geom import (
     check_points_in_polygon,
+    planar_pose,
     quat_to_rotvec_error,
     quat_to_z_euler,
     quat_to_zrot,
@@ -226,6 +227,31 @@ class PushTEnv(BaseEnv):
 
     def _observe_object_pose(self) -> th.Tensor:
         return self.object.get_pose()
+
+    def _build_state_obs_fns(self) -> dict[str, Callable[[], th.Tensor]]:
+        return {
+            **super()._build_state_obs_fns(),
+            "reference_offset": self._observe_reference_offset,
+            "tee_pose": self._observe_planar_tee_pose,
+            "goal_pose": self._observe_planar_goal_pose,
+        }
+
+    def _observe_reference_offset(self) -> th.Tensor:
+        """
+        [N, 2] commanded minus measured TCP in XY: the loop lag plus the spring deflection under
+        contact.
+        """
+        tcp_xy = self.get_modality_observation(Modality.TCP_POSE)[:, :2]
+        return self.manipulator.get_tcp_reference()[:, :2] - tcp_xy
+
+    def _observe_planar_tee_pose(self) -> th.Tensor:
+        """[N, 4] the tee origin in the world frame, (x, y, sin yaw, cos yaw); privileged in sim."""
+        pose = self.get_modality_observation(Modality.OBJECT_POSE)
+        return planar_pose(pose[:, :2], quat_to_z_euler(pose[:, 3:]))
+
+    def _observe_planar_goal_pose(self) -> th.Tensor:
+        """[N, 4] the goal in the world frame, (x, y, sin yaw, cos yaw)."""
+        return planar_pose(self.goal_pose[:, :2], self.goal_yaw)
 
     def _observe_camera_scene(self) -> th.Tensor:
         return self.manipulator.get_camera_image(camera=CameraName.CAMERA_SCENE)
@@ -747,9 +773,7 @@ class PushTEnv(BaseEnv):
             ),  # tee-yaw in world frame
         ]
         if self.observe_reference:
-            # commanded minus measured TCP: the loop lag plus the spring deflection under contact
-            reference_xy = self.manipulator.get_tcp_reference()[:, :2]
-            obs_components.append(reference_xy - tcp_xy)
+            obs_components.append(self._observe_reference_offset())
         if self.observe_force:
             force = transform_by_quat(
                 self.manipulator.get_ft_wrench()[:, :3],

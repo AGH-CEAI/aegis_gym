@@ -1,5 +1,5 @@
 import math
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 
 import torch as th
 from strenum import StrEnum
@@ -21,32 +21,6 @@ from .bc_fusions import (
     SpatialAttentionFusion,
     VectorAttentionFusion,
 )
-
-
-def _reference_offset(env) -> th.Tensor:
-    manipulator = env.manipulator
-    return manipulator.get_tcp_reference()[:, :2] - manipulator.get_tcp_pose()[:, :2]
-
-
-# The student's non-image inputs by name. `teacher_obs` is privileged (the true tee pose): a
-# sim-only sanity check of the distillation, not deployable.
-STUDENT_STATE_OBS: dict[str, Callable] = {
-    "tcp_pose": lambda env: env.manipulator.get_tcp_pose(),
-    "reference_offset": _reference_offset,
-    "teacher_obs": lambda env: env.get_observations()["policy"],
-}
-
-
-def build_student_state(env, names: list[str]) -> th.Tensor:
-    """[num_envs, D] the `names` inputs of `STUDENT_STATE_OBS`, concatenated."""
-    unknown = set(names) - STUDENT_STATE_OBS.keys()
-    if unknown:
-        raise ValueError(
-            f"Unknown student state_obs {sorted(unknown)}; use {list(STUDENT_STATE_OBS)}"
-        )
-    # unwrapped: the wrappers' observation calls augment (and resample) the images
-    env = env.unwrapped
-    return th.cat([STUDENT_STATE_OBS[n](env).float() for n in names], dim=-1)
 
 
 class ResetLastLayerTarget(StrEnum):
@@ -359,17 +333,14 @@ class ExperienceBuffer:
                 batch_indices = indices[batch_idx : batch_idx + batch_size]
 
                 # Yield a mini-batch of data
+                # flatten, not reshape(-1, D): ambiguous for the empty (D = 0) state
                 yield {
                     "rgb_obs": self._decode_images(
-                        self._rgb_obs[batch_indices].reshape(-1, *self._img_shape)
+                        self._rgb_obs[batch_indices].flatten(0, 1)
                     ),
-                    "robot_pose": self._robot_pose[batch_indices].reshape(
-                        -1, self._state_dim
-                    ),
-                    "object_poses": self._object_poses[batch_indices].reshape(-1, 7),
-                    "actions": self._actions[batch_indices].reshape(
-                        -1, self._action_dim
-                    ),
+                    "robot_pose": self._robot_pose[batch_indices].flatten(0, 1),
+                    "object_poses": self._object_poses[batch_indices].flatten(0, 1),
+                    "actions": self._actions[batch_indices].flatten(0, 1),
                 }
 
     def _encode_images(self, images: th.Tensor) -> th.Tensor:

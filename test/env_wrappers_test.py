@@ -27,3 +27,17 @@ def test_env_wrapper_delegates_the_default_env_specific_dict():
     wrapper = BaseEnvWrapper(env=env)
 
     assert wrapper.get_default_env_specific_dict() == {"friction": 0.4}
+
+
+def test_env_wrapper_delegates_the_state_obs():
+    env = SimpleNamespace(
+        available_state_obs=frozenset({"tcp_pose"}),
+        get_state_obs=lambda names: names,
+        _scene=None,
+    )
+    inner = BaseEnvWrapper(env=env)
+
+    wrapper = BaseEnvWrapper(env=inner)
+
+    assert wrapper.available_state_obs == {"tcp_pose"}
+    assert wrapper.get_state_obs(["tcp_pose"]) == ["tcp_pose"]

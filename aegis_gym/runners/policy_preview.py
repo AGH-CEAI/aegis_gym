@@ -23,8 +23,6 @@ from aegis_gym.config.types import (
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper
 
-from .bc_policy import build_student_state
-
 InferencePolicy = Callable[[TensorDict], th.Tensor]
 
 
@@ -271,7 +269,7 @@ def make_visual_bc_policy(
     def policy(_obs: TensorDict) -> th.Tensor:
         images = env.get_modality_observations(modalities=IMAGE_MODALITIES)
         rgb = th.cat([images[m] for m in IMAGE_MODALITIES], dim=1).float()
-        return bc_policy(rgb, build_student_state(env, state_obs))
+        return bc_policy(rgb, env.get_state_obs(state_obs))
 
     return policy
 
