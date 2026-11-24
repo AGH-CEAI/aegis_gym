@@ -1,5 +1,6 @@
 from .geom import (
     check_points_in_polygon,
+    planar_pose,
     quat_to_rotvec_error,
     quat_to_z_euler,
     quat_to_zrot,
@@ -10,6 +11,7 @@ from .geom import (
 
 __all__ = [
     "check_points_in_polygon",
+    "planar_pose",
     "quat_to_rotvec_error",
     "quat_to_z_euler",
     "quat_to_zrot",

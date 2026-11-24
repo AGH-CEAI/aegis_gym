@@ -24,22 +24,6 @@ from .bc_fusions import (
 )
 
 
-def _reference_offset(env) -> th.Tensor:
-    manipulator = env.manipulator
-    return manipulator.get_tcp_reference()[:, :2] - manipulator.get_tcp_pose()[:, :2]
-
-
-def _planar_pose(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:
-    return th.cat([xy, th.sin(yaw).unsqueeze(-1), th.cos(yaw).unsqueeze(-1)], dim=-1)
-
-
-def _tee_pose(env) -> th.Tensor:
-    pose = env.object.get_pose()
-    return _planar_pose(pose[:, :2], quat_to_z_euler(pose[:, 3:]))
-
-
-def _goal_pose(env) -> th.Tensor:
-    return _planar_pose(env.goal_pose[:, :2], env.goal_yaw)
 
 
 # The student's non-image inputs by name. `teacher_obs` is privileged (the true tee pose): a

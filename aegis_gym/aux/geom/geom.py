@@ -103,6 +103,11 @@ def quat_to_z_euler(quats: th.Tensor) -> th.Tensor:
     return 2 * th.acos(qw)
 
 
+def planar_pose(xy: th.Tensor, yaw: th.Tensor) -> th.Tensor:
+    """[N, 2] positions and [N] yaw angles to [N, 4] (x, y, sin yaw, cos yaw) planar poses."""
+    return th.cat([xy, th.sin(yaw).unsqueeze(-1), th.cos(yaw).unsqueeze(-1)], dim=-1)
+
+
 def quat_to_zrot(quats: th.Tensor, device: th.device) -> th.Tensor:
     """Converts a pure Z-axis rotation quaternion into a 3x3 homogeneous 2D
     rotation matrix."""
