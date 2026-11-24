@@ -103,8 +103,10 @@ policy:
       num_heads: 4
   # null: the sum of the `state_obs` dimensions; a number is checked against it
   action_head_state_obs_dim: 7
-  # the non-image inputs: tcp_pose (7), reference_offset (2, admittance reference - TCP in XY),
-  # teacher_obs (the teacher's full observation, privileged: a sim-only sanity check)
+  # the non-image inputs, the env's state terms ([] for none): tcp_pose (7), teacher_obs (the
+  # teacher's full observation, privileged: a sim-only sanity check); push_t adds
+  # reference_offset (2, admittance reference - TCP in XY), tee_pose (4, privileged) and
+  # goal_pose (4), the latter two as x, y, sin / cos yaw in the world frame
   state_obs: ["tcp_pose"]
   action_head_hidden_dims: [128, 128, 64]
   pose_head_hidden_dims: [64, 64]

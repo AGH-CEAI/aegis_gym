@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-191](https://github.com/AGH-CEAI/aegis_gym/pull/191) - The BC student's non-image inputs (`state_obs`) are the environment's named state terms (`BaseEnv.get_state_obs()`, extended per env) instead of the runner reading the env internals: the generic `tcp_pose` and `teacher_obs`, and the Push-T `reference_offset`, `tee_pose` and `goal_pose` (x, y, sin / cos yaw in the world frame). `state_obs: []` trains an image-only student.
 - [PR-192](https://github.com/AGH-CEAI/aegis_gym/pull/192) - Changed RGB images in torch from float32 type to unit32 and added buffer allocation test to ensure enough VRAM for the whole training.
 - [PR-185](https://github.com/AGH-CEAI/aegis_gym/pull/185) - Initial implementation of admittance control (sim & real).
 - [PR-188](https://github.com/AGH-CEAI/aegis_gym/pull/188) - Added script for playing open loop replay from pre-recorded trajectory.
