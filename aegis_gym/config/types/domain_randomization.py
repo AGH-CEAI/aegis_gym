@@ -66,11 +66,13 @@ class CamerasFovCfg(ToggleCfg):
 class FtSensorNoiseCfg(ToggleCfg):
     """Gaussian measurement noise added to the simulated F/T reading."""
 
-    force_std: list[float] = field(default_factory=lambda: [0.0035, 0.0056, 0.0150])
-    force_limit: list[float] = field(default_factory=lambda: [0.0105, 0.0168, 0.0449])
-    torque_std: list[float] = field(default_factory=lambda: [0.00023, 0.00025, 0.00007])
-    torque_limit: list[float] = field(
-        default_factory=lambda: [0.00069, 0.00074, 0.00020]
+    force_std: list[float] = field(default_factory=lambda: [0.0246, 0.0201, 0.0139])
+    force_limit: list[float] = field(default_factory=lambda: [0.074, 0.060, 0.042])
+    torque_std: list[float] = field(default_factory=lambda: [0.0016, 0.00225, 0.00038])
+    torque_limit: list[float] = field(default_factory=lambda: [0.0048, 0.0068, 0.0011])
+    # Lag-1 correlation per axis between consecutive policy steps; 0 is white noise.
+    correlation: list[float] = field(
+        default_factory=lambda: [0.2, 0.0, 0.0, 0.0, 0.2, 0.0]
     )
 
 
@@ -78,8 +80,29 @@ class FtSensorNoiseCfg(ToggleCfg):
 class FtSensorBiasCfg(ToggleCfg):
     """A constant F/T offset that survives taring, resampled each episode."""
 
-    force_range: list[float] = field(default_factory=lambda: [0.10, 0.15, 0.35])
+    force_range: list[float] = field(default_factory=lambda: [0.04, 0.02, 0.03])
     torque_range: list[float] = field(default_factory=lambda: [0.006, 0.003, 0.001])
+
+
+@dataclass(slots=True, frozen=True)
+class FtSensorDriftCfg(ToggleCfg):
+    """Zero drift since the last tare: a per-episode linear rate (uniform in +-range) plus a
+    random walk; both start from zero at every tare and at every episode reset."""
+
+    force_rate_range: list[float] = field(default_factory=lambda: [6e-5, 6e-5, 2e-4])
+    torque_rate_range: list[float] = field(default_factory=lambda: [1e-6, 1e-6, 5e-7])
+    force_walk_std: list[float] = field(default_factory=lambda: [5e-4, 8e-4, 2.2e-3])
+    torque_walk_std: list[float] = field(default_factory=lambda: [4e-5, 3e-5, 1e-5])
+
+
+@dataclass(slots=True, frozen=True)
+class FtSensorImpulseCfg(ToggleCfg):
+    """Single-step force kicks on top of the noise: ambient vibrations reaching the sensor.
+    Per axis [x, y, z] of the sensor frame, a Poisson rate and a uniform magnitude, random sign."""
+
+    enabled: bool = False
+    rate: list[float] = field(default_factory=lambda: [1.0, 1.0, 0.3])  # [1/s]
+    magnitude_range: list[float] = field(default_factory=lambda: [0.2, 0.5])  # [N]
 
 
 @dataclass(slots=True, frozen=True)
@@ -98,3 +121,5 @@ class DomainRandomizationCfg(ToggleCfg):
 
     ft_sensor_noise: FtSensorNoiseCfg = field(default_factory=FtSensorNoiseCfg)
     ft_sensor_bias: FtSensorBiasCfg = field(default_factory=FtSensorBiasCfg)
+    ft_sensor_drift: FtSensorDriftCfg = field(default_factory=FtSensorDriftCfg)
+    ft_sensor_impulses: FtSensorImpulseCfg = field(default_factory=FtSensorImpulseCfg)

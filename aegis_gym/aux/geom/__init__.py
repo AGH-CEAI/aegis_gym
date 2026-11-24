@@ -3,6 +3,7 @@ from .geom import (
     quat_to_rotvec_error,
     quat_to_z_euler,
     quat_to_zrot,
+    rotvec_to_quat,
     transform_by_quat,
     transform_quat_by_quat,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "quat_to_rotvec_error",
     "quat_to_z_euler",
     "quat_to_zrot",
+    "rotvec_to_quat",
     "transform_by_quat",
     "transform_quat_by_quat",
 ]

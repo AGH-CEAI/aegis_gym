@@ -67,6 +67,34 @@ class BaseManipulator(ABC):
         ...
 
     @abstractmethod
+    def ctrl_apply_delta_pose_action(
+        self,
+        delta: th.Tensor,
+        open_gripper: bool | None = None,
+        envs_idx: th.Tensor | None = None,
+    ) -> th.Tensor:
+        """
+        Move the compliant (admittance) TCP reference by a displacement.
+
+        The reference is integrated from the previous reference, not from the measured pose,
+        so contact deflects the arm like a spring instead of being absorbed. Each call is
+        limited per step and in its distance from the measured pose (force ceiling
+        ~ stiffness * max offset). The first call tares the F/T sensor and switches the arm
+        into admittance mode, so it must come in free space (a contact force at that moment
+        would become the zero); any MoveIt motion or F/T tare leaves the mode.
+
+        Args:
+            delta: [num_envs, 6] tensor [dx, dy, dz, rx, ry, rz] in the world frame, where d is
+                   translation in metres and r is a rotation vector (axis * angle) in radians.
+                   Physical units: scaling a normalised policy action is the caller's job.
+            open_gripper: Optional bool to control gripper state
+
+        Returns:
+            [num_envs] bool tensor, True where the step was limited (clipped) or rejected.
+        """
+        ...
+
+    @abstractmethod
     def ctrl_apply_joints_diff_action(
         self, joints_diff: th.Tensor, envs_idx: th.Tensor | None = None
     ) -> None:
@@ -245,6 +273,16 @@ class BaseManipulator(ABC):
     def get_tcp_pose(self) -> th.Tensor:
         """
         Get TCP pose as [n_envs, 7], where 7 values: [x, y, z, qw, qx, qy, qz].
+        """
+        ...
+
+    @abstractmethod
+    def get_tcp_reference(self) -> th.Tensor:
+        """
+        The admittance TCP reference as [n_envs, 7]: [x, y, z, qw, qx, qy, qz], i.e. where
+        `ctrl_apply_delta_pose_action` has commanded the arm, after the limits. The measured pose
+        trails it by the loop delay and by the spring deflection under contact, so the policy can
+        tell its own command from the reaction. Outside admittance mode it is the measured pose.
         """
         ...
 
