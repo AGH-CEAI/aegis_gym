@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [PR-188](https://github.com/AGH-CEAI/aegis_gym/pull/188) - Added script for playing open loop replay from pre-recorded trajectory.
+
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+## [v202610271553]
+
+### Added
+
 - [PR-171](https://github.com/AGH-CEAI/aegis_gym/pull/171) - F/T sensor calibration: measured payload in `robot.yaml`, taring, gravity-compensated reading (also in PlotJuggler), `ctrl_go_to_joints()` and the `scripts/ft_sensor/calibration.py` script for the simulation and the real robot.
 - [PR-179](https://github.com/AGH-CEAI/aegis_gym/pull/179) - The `reacher.yaml` and `push_t.yaml` presets enable the robot domain randomization explicitly.
 - [PR-178](https://github.com/AGH-CEAI/aegis_gym/pull/178) - Added dummy `RosGrpcMesh` and `RosGrpcURDF` objects implementation.
@@ -127,9 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [PR-149](https://github.com/AGH-CEAI/aegis_gym/pull/149) - Fixed spawning the box with a hardcoded size instead of reading it from the config in Reacher task.
 - [PR-142](https://github.com/AGH-CEAI/aegis_gym/pull/142) - Fixed `ConfigManager` silently dropping the default `max_iterations` and the `--debug-record-vis-obs` flag, which forced `--max-iterations` on every run and disabled visual observation recording.
 - [PR-133](https://github.com/AGH-CEAI/aegis_gym/pull/133) - Fixed a typo in `genesis_manipulator.py` in `ctrl_gripper_X()` methods which was blocking more than 2 envs from running.
-
-
-### Security
 
 ## [v202606181210]
 
