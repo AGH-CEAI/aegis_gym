@@ -93,6 +93,8 @@ class PolicyBCCfg(BaseCfg):
     # memory's output, the features without a memory), its loss weighted by this (0: no decoder)
     latent_pose_loss_weight: float = 0.0
     latent_pose_hidden_dims: list[int] = field(default_factory=lambda: [128])
+    # the decoder's frame: "world" (absolute) or "goal" (the tee relative to the episode's goal)
+    latent_pose_frame: str = "world"
     multimodal: MultimodalCfg = field(default_factory=MultimodalCfg)
 
 

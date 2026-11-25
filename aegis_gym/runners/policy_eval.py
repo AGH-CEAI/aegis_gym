@@ -15,7 +15,7 @@ from aegis_gym.config.types import Modality
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import innermost_env
 
-from .bc_policy import latent_pose_errors
+from .bc_policy import goal_planar_pose, latent_pose_errors
 from .policy_preview import InferencePolicy, LatentPosePolicy
 
 EpisodeRow = dict[str, float | int | bool]
@@ -190,9 +190,16 @@ class PolicyEvaluator:
                         else None
                     )
                     if latent_pose is not None:
+                        # in the student's decoder frame (the goal's frame needs the goals)
+                        goals = (
+                            goal_planar_pose(base)[:num]
+                            if getattr(policy, "latent_pose_frame", "world") == "goal"
+                            else None
+                        )
                         errors = latent_pose_errors(
                             latent_pose[:num],
                             base.get_modality_observation(Modality.OBJECT_POSE)[:num],
+                            goals,
                         )
                         pose_errors += th.stack(errors, dim=-1) * active.unsqueeze(-1)
                     self._reseed(wave, 2 * step + 2)

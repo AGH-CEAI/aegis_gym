@@ -274,6 +274,58 @@ def test_latent_pose_errors_in_m_and_rad_with_the_yaw_wrapped():
     assert yaw_err.tolist() == pytest.approx([math.radians(2), 0.0], abs=1e-5)
 
 
+def test_latent_pose_target_in_the_goal_frame():
+    tee = _tee_poses([(0.4, 0.2, math.pi / 2), (0.47, -0.05, math.pi / 2)])
+    # the goal turned by 90 deg: the tee 0.1 m along the goal's y world axis = its x axis
+    goals = th.tensor([[0.4, 0.1, math.pi / 2], [0.0, 0.0, 0.0]])
+    target = latent_pose_target(tee, goals)
+    assert target[0].tolist() == pytest.approx([1.0, 0.0, 0.0, 1.0], abs=1e-5)
+    # the goal at the origin: the world frame
+    assert th.allclose(target[1], latent_pose_target(tee[1:]), atol=1e-6)
+    pos_err, yaw_err = latent_pose_errors(target, tee, goals)
+    assert pos_err.abs().max() < 1e-6 and yaw_err.abs().max() < 1e-5
+    # the same prediction read in the world frame is off by the goal offset
+    pos_world, _ = latent_pose_errors(target[:1], tee[:1])
+    assert pos_world.item() > 0.1
+
+
+def test_buffer_returns_the_goal_poses_in_both_batch_kinds():
+    buffer = ExperienceBuffer(
+        num_envs=2, max_size=6, img_shape=(3, 4, 4), state_dim=2, action_dim=2
+    )
+    for step in range(6):
+        goals = th.tensor([[0.1 * step, 0.0, 0.5], [0.0, 0.2, -0.5]])
+        buffer.add(
+            th.rand(2, 3, 4, 4),
+            th.rand(2, 2),
+            th.rand(2, 7),
+            th.rand(2, 2),
+            goal_poses=goals,
+        )
+    batch = next(buffer.get_batches(num_mini_batches=1, num_epochs=1))
+    assert batch["goal_poses"].shape == (12, 3)
+    assert set(batch["goal_poses"][:, 2].tolist()) == {0.5, -0.5}
+    chunk = next(buffer.get_sequence_batches(1, 1, sequence_length=3, burn_in=1))
+    assert chunk["goal_poses"].shape == (4, 2, 3)
+    buffer.add(th.rand(2, 3, 4, 4), th.rand(2, 2), th.rand(2, 7), th.rand(2, 2))
+    assert buffer._goal_poses[buffer._ptr].abs().sum() == 0  # without: zeros
+
+
+def test_unknown_latent_pose_frame_is_rejected():
+    cfg = _policy_cfg(latent_pose_loss_weight=1.0)
+    cfg.latent_pose_frame = "tee"
+    with pytest.raises(ValueError, match="latent_pose_frame"):
+        Policy(
+            cfg_policy=cfg,
+            action_dim=2,
+            state_obs_dim=4,
+            num_cameras=3,
+            image_height=16,
+            image_width=16,
+            device=CPU,
+        )
+
+
 def test_latent_pose_decoder_reads_the_action_head_input():
     rgb, state = th.rand(NUM_ENVS, 9, 16, 16), th.rand(NUM_ENVS, 4)
     assert _policy().latent_pose_head is None
@@ -315,6 +367,11 @@ class _TrainingEnv:
 
     def __init__(self):
         self.episode_length_buf = th.arange(self.num_envs)
+        # per-env goals (x, y, z ... and the yaw), as the push_t env's
+        self.goal_pose = th.cat(
+            [th.rand(self.num_envs, 2) * 0.2, th.zeros(self.num_envs, 5)], -1
+        )
+        self.goal_yaw = th.rand(self.num_envs) * 2 * math.pi
 
     def get_state_obs(self, names: list[str]) -> th.Tensor:
         return th.cat(
@@ -361,7 +418,9 @@ class _TrainingLogger:
     def save_model(self, **kwargs) -> None: ...
 
 
-def _training_runner(tmp_path, latent_pose_loss_weight: float, memory: dict):
+def _training_runner(
+    tmp_path, latent_pose_loss_weight: float, memory: dict, frame: str = "world"
+):
     from aegis_gym.config.types import BCCfg
 
     data = yaml.safe_load(DEFAULT_BC_CFG.read_text())
@@ -379,6 +438,7 @@ def _training_runner(tmp_path, latent_pose_loss_weight: float, memory: dict):
         "action_head_state_obs_dim": None,
         "memory": memory,
         "latent_pose_loss_weight": latent_pose_loss_weight,
+        "latent_pose_frame": frame,
     }
     cfg = BCCfg.from_dict(data)
     env = _TrainingEnv()
@@ -475,6 +535,35 @@ def test_training_iterations_update_the_student(
         assert all(math.isfinite(v) for v in scalars["Loss/latent_pose"])
     else:
         assert "Loss/latent_pose" not in scalars
+
+
+@pytest.mark.parametrize(
+    "memory",
+    [
+        {"type": "none"},
+        {
+            "type": "gru",
+            "hidden_dim": 8,
+            "residual": True,
+            "sequence_length": 4,
+            "burn_in": 4,
+        },
+    ],
+    ids=["none", "gru"],
+)
+def test_training_with_the_decoder_in_the_goal_frame(tmp_path, memory):
+    if memory["type"] != "none":
+        pytest.importorskip("enc_mem_dec")
+    runner = _training_runner(tmp_path, 1.0, memory, frame="goal")
+    assert runner._policy.latent_pose_frame == "goal"
+    runner.learn(num_learning_iterations=3)
+    scalars = runner.logger.scalars
+    assert all(math.isfinite(v) for v in scalars["Loss/latent_pose"])
+    assert len(scalars["BC/latent_pose_pos_err_cm"]) == 3
+    # the collection stored the env's goals
+    stored = runner._buffer._goal_poses[runner._buffer._ptr]
+    assert th.allclose(stored[:, :2], runner.env.goal_pose[:, :2])
+    assert th.allclose(stored[:, 2], runner.env.goal_yaw)
 
 
 def test_identity_memory_is_the_memoryless_student_on_chunks():
