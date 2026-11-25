@@ -1,0 +1,19 @@
+generator_version: 2
+peg:
+  side: 0.025
+  length: 0.08
+  mass: 0.04
+  grasp_from_top: 0.0125
+  legs:
+    grid:
+    - 1
+    - 1
+    pitch: 0.04
+    length: null
+board:
+  thickness: 0.03
+  bottom: 0.005
+  margin: 0.02
+  slot_pitch: 0.06
+  clearances:
+  - 0.001

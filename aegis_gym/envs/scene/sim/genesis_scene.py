@@ -135,6 +135,9 @@ class GenesisScene(BaseScene):
             if self.use_cameras
             else gs.options.renderers.Rasterizer()
         )
+        rigid_contact = env_cfg.rigid_contact or {}
+        if rigid_contact:
+            get_logger("GenesisScene").info(f"RigidOptions overrides: {rigid_contact}")
         return gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=self.policy_dt,
@@ -147,6 +150,7 @@ class GenesisScene(BaseScene):
                 enable_joint_limit=True,
                 batch_dofs_info=True,  # Enables (n_evs, n_dofs) shape
                 batch_links_info=True,  # Enables (n_envs, n_links, ...) shapes
+                **rigid_contact,  # validated against RIGID_CONTACT_KEYS in EnvCfg
             ),
             vis_options=gs.options.VisOptions(
                 rendered_envs_idx=(
