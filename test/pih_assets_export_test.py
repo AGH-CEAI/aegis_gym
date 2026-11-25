@@ -171,13 +171,20 @@ def test_committed_assets_are_up_to_date(tmp_path, name):
     assert (_ASSETS_DIR / name).read_bytes() == (tmp_path / name).read_bytes()
 
 
-def test_committed_board_has_one_1mm_hole():
+def test_committed_board_holds_the_tolerance_family():
+    cfg = PihAssetsCfg.from_yaml()
     boxes = _collision_boxes(_ASSETS_DIR / "board.urdf")
-    walls = [
-        (xyz, size) for xyz, size in boxes if size[2] > 0.01
-    ]  # the floor is 5 mm thick
-    # the hole is the gap between the walls around the origin, along x and along y
-    gap_x = min(x - s[0] / 2 for (x, _, _), s in walls if x > 0) - max(
-        x + s[0] / 2 for (x, _, _), s in walls if x < 0
+    # one floor box per hole, its footprint is the hole: only boxes as thin as `board.bottom`
+    floors = sorted(
+        (xyz, size) for xyz, size in boxes if size[2] == pytest.approx(cfg.board.bottom)
     )
-    assert gap_x == pytest.approx(0.026, abs=1e-9)
+    assert len(floors) == len(cfg.board.clearances)
+
+    pitch, n = cfg.board.slot_pitch, len(cfg.board.clearances)
+    for k, (clearance, ((x, y, _), size)) in enumerate(
+        zip(cfg.board.clearances, floors, strict=True)
+    ):
+        assert x == pytest.approx((k - (n - 1) / 2) * pitch, abs=1e-9)
+        assert y == pytest.approx(0.0, abs=1e-9)
+        assert size[0] == pytest.approx(cfg.peg.side + clearance, abs=1e-9)
+        assert size[1] == pytest.approx(cfg.peg.side + clearance, abs=1e-9)

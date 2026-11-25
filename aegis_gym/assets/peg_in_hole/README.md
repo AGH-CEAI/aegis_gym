@@ -7,7 +7,7 @@ The peg and the board with the hole, as URDF (collision from box primitives, vis
 |---|---|
 | `nominal.yaml` | **The only file to edit**: the dimensions, in metres and kilograms |
 | `peg.urdf`, `peg.stl` | the peg: 25 x 25 x 80 mm, 40 g |
-| `board.urdf`, `board.stl` | the board: 30 mm thick, one 26 mm hole (1 mm clearance), 5 mm floor |
+| `board.urdf`, `board.stl` | the board: 249 x 69 x 30 mm, four 25 mm deep holes of 2.0 / 1.5 / 1.0 / 0.5 mm clearance per side, 5 mm floor |
 | `params.yaml` | the parameters the files were generated from |
 
 The URDF, STL and `params.yaml` files are generated: do not edit them by hand.
@@ -24,8 +24,8 @@ The URDF, STL and `params.yaml` files are generated: do not edit them by hand.
 ## Changing the assets
 
 1. Edit `nominal.yaml`. For example:
-   - another hole: `board.clearances: [0.0005]`;
-   - several holes side by side: `board.clearances: [0.005, 0.001, 0.0005]`, spaced by `board.slot_pitch`;
+   - another tolerance family: `board.clearances: [0.005, 0.001, 0.0005]`, spaced by `board.slot_pitch`;
+   - a single hole: `board.clearances: [0.001]`;
    - a peg with several legs: `peg.legs.grid: [2, 1]`, `peg.legs.pitch`, `peg.legs.length`.
 
    The config is validated when it loads, so an impossible geometry (overlapping holes, no wall between legs) gives a
@@ -91,6 +91,14 @@ self.peg = self._scene.add_entity(
 ```
 
 `table_top_z = table_size[2] - workbench_size[2]` from `config/defaults/env.yaml`.
+
+## The peg-in-hole env
+
+`PegInHoleEnv` (`aegis_gym/envs/peg_in_hole_env.py`) loads the files here as above and takes every dimension and frame
+from the generator: the slot inlets (`slots[i].pose`, moved by the board pose), the clearances (halved, the env works
+per side), the hole depth, the leg tips (the peg origin) and the grasp point, which it holds at the TCP. A variant
+goes through `env_specific_dict.asset_overrides` (the same dict as `--overrides` above), which loads it from
+`generate_pih_assets()`; `active_slots` picks the slots the episodes draw from.
 
 ## Example scene
 

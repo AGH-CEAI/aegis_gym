@@ -12,29 +12,59 @@ from aegis_gym.aux.geom import (
     transform_quat_by_quat,
 )
 from aegis_gym.aux.logging import get_logger
+from aegis_gym.aux.pih_assets import (
+    PihAssetsCfg,
+    PihGeometry,
+    build_geometry,
+    generate_pih_assets,
+)
+from aegis_gym.aux.pih_assets.geometry import leg_offsets
 from aegis_gym.aux.rand import rand_uniform
 from aegis_gym.config.types import CameraName, ExpConfig
 from aegis_gym.envs.base_env import BaseEnv, Modality, ResetReturn, StepReturn
 from aegis_gym.envs.manipulator import BaseManipulator
 from aegis_gym.envs.objects import BaseURDF, ObjectProperties, ObjectType
 
-from .peg_in_hole_geometry import (
-    PegInHoleGeometry,
-    quat_to_yaw,
-    wrap_symmetric,
-    yaw_to_quat,
-)
 from .registry import register_env
 from .scene import BaseScene
 
 
+def yaw_to_quat(yaw: th.Tensor) -> th.Tensor:
+    """[N] yaw angles -> [N, 4] (w, x, y, z) quaternions of the rotations about Z."""
+    zeros = th.zeros_like(yaw)
+    return th.stack([th.cos(yaw / 2), zeros, zeros, th.sin(yaw / 2)], dim=-1)
+
+
+def quat_to_yaw(quat: th.Tensor) -> th.Tensor:
+    """[N, 4] (w, x, y, z) quaternions -> [N] yaw angles (Z of the ZYX Euler angles)."""
+    w, x, y, z = quat.unbind(dim=-1)
+    return th.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def wrap_symmetric(angle: th.Tensor, symmetry: int) -> th.Tensor:
+    """The `angle` wrapped into [-pi/symmetry, pi/symmetry), for a part of `symmetry`-fold symmetry."""
+    period = 2 * math.pi / symmetry
+    return th.remainder(angle + period / 2, period) - period / 2
+
+
 @register_env("peg_in_hole")
 class PegInHoleEnv(BaseEnv):
+    """
+    Inserting the peg held in the gripper into a hole of the board fixed on the table.
+
+    The peg and the board are the assets of `aegis_gym.aux.pih_assets` (`assets/peg_in_hole/`):
+    a peg of one or more legs and a board with a row of slots of different clearances. The slot of
+    each episode is drawn from the `active_slots`, so the parallel envs share the geometry and
+    differ in the tolerance. The env reads the dimensions and frames from the assets, it doesn't
+    define any.
+    """
+
     DEFAULT_MODALITIES = frozenset(
         {Modality.TCP_POSE, Modality.OBJECT_POSE, Modality.TCP_WRENCH}
     )
     DEFAULT_EPISODE_LENGTH_S = 10.0
-    PREVIEW_CAMERA_POSE = ((0.85, 0.0, 0.35), (0.55, 0.0, 0.05))
+    # close oblique view of insertion; board frame is its top face centre (`board_xy`)
+    PREVIEW_CAMERA_POSE = ((0.72, -0.22, 0.20), (0.47, 0.0, 0.03))
     PRIVILEGED_OBS_GROUP = "privileged"
 
     _ACTION_DIM = 4
@@ -67,6 +97,9 @@ class PegInHoleEnv(BaseEnv):
         self._init_reward_functions()
         self._init_buffers()
         self.reset_idx(th.arange(self.num_envs, device=self.device))
+        # weld records one relative pose for every env, so grasp can only be shifted globally
+        # (`grasp_offset`). Factory and IndustReal randomize it per env (+-3 mm in fingers),
+        # which needs either a real grasp or a per-env weld: sim2real item for S54.
         self._scene.attach_object_to_tcp(self.peg)
         self.reset()
 
@@ -104,22 +137,24 @@ class PegInHoleEnv(BaseEnv):
         env_dict = self._cfg_env.env_specific_dict
 
         self.reward_scales = env_dict["reward_scales"]
-        self.geometry = PegInHoleGeometry.from_dict(env_dict["geometry"])
-        self.assets = env_dict["assets"]
+        self.asset_overrides = env_dict["asset_overrides"]
+        self.assets_cfg, self.geometry = self._load_assets_geometry()
+        # the board stands on the table, its frame is the centre of its top face
+        self.board_top_z = self.table_top_z + self.assets_cfg.board.thickness
         self.board_xy = list(env_dict["board_xy"])
         self.board_yaw = math.radians(env_dict["board_yaw_deg"])
-        self.yaw_symmetry = env_dict["yaw_symmetry"]
         self.peg_friction = env_dict["friction"]["peg"]
         self.board_friction = env_dict["friction"]["board"]
         self.grasp_offset = list(env_dict["grasp_offset"])
 
+        num_slots = len(self.geometry.slots)
         self.active_slots = list(env_dict["active_slots"])
         if not self.active_slots or not all(
-            0 <= s < self.geometry.num_slots for s in self.active_slots
+            0 <= s < num_slots for s in self.active_slots
         ):
             raise ValueError(
                 f"The `active_slots` {self.active_slots} must index the "
-                f"{self.geometry.num_slots} slots of the board."
+                f"{num_slots} slots of the board."
             )
 
         start = env_dict["start"]
@@ -169,31 +204,19 @@ class PegInHoleEnv(BaseEnv):
                 "force_limit_penalty": 50.0,
                 "action_rate": 0.1,
             },
-            "geometry": {
-                "leg_size": [0.02, 0.02],
-                "leg_length": 0.05,
-                "leg_offsets": [[0.0, 0.0]],
-                "handle_size": [0.02, 0.02, 0.04],
-                "hole_depth": 0.05,
-                # per side, one slot per value
-                "clearances": [0.002, 0.0015, 0.001, 0.0005],
-                "wall_thickness": 0.02,
-                "slot_spacing": 0.08,
-                "peg_mass": 0.05,
-            },
-            "assets": {
-                "source": "procedural",
-                "peg_urdf": None,
-                "board_urdf": None,
-            },
-            # board origin on the table top
-            "board_xy": [0.55, 0.0],
+            # overrides of `assets/peg_in_hole/nominal.yaml` (e.g. {"board": {"clearances":
+            # [0.003, 0.001]}}), generated by `generate_pih_assets()`; None: the files there
+            "asset_overrides": None,
+            # the board's top face centre on the table
+            "board_xy": [0.47, 0.0],
             "board_yaw_deg": 0.0,
-            # the peg's yaw symmetry
-            "yaw_symmetry": 4,
-            "friction": {"peg": 0.5, "board": 0.5},
+            # None: the Genesis default
+            "friction": {"peg": None, "board": None},
+            # [m] shift of grasp point from `peg_grasp_frame` of assets, i.e. where in peg
+            # gripper is assumed to hold it; same in every env (one weld constraint)
             "grasp_offset": [0.0, 0.0, 0.0],
-            "active_slots": [1],
+            # slots the episodes draw from (indices of `board.clearances` of the assets)
+            "active_slots": [0],
             # the peg tips' start pose w.r.t. the hole opening
             "start": {
                 "xy_range": 0.015,
@@ -207,9 +230,10 @@ class PegInHoleEnv(BaseEnv):
             "ema_factor": 0.2,
             # P gain [1/s] of holding the roll and pitch of the TCP
             "tcp_hold_rot_gain": 5.0,
-            # [m] the peg tips' box w.r.t. the hole opening the actions keep them in; leaving it
-            # by more than `exit_margin` (pushed by the contacts) ends the episode
-            "workspace": {"xy": 0.04, "z": [-0.06, 0.08], "exit_margin": 0.01},
+            # [m] box w.r.t. hole opening the actions keep the peg tips in; leaving it by more
+            # than `exit_margin` (pushed by contacts) ends the episode. Lower bound has to reach
+            # seated depth of the assets, env checks it.
+            "workspace": {"xy": 0.04, "z": [-0.03, 0.08], "exit_margin": 0.01},
             # inserted when deeper than this fraction of the hole depth, within the clearance
             "success_depth_ratio": 0.4,
             # [m] the tips below the opening that count as engaged
@@ -247,33 +271,29 @@ class PegInHoleEnv(BaseEnv):
     def _observe_camera_tool_right(self) -> th.Tensor:
         return self.manipulator.get_camera_image(camera=CameraName.CAMERA_TOOL_RIGHT)
 
-    def _resolve_asset_paths(self) -> tuple[Path, Path]:
-        match self.assets["source"]:
-            case "procedural":
-                return self.geometry.write_urdfs()
-            case "files":
-                paths = (
-                    self._ASSETS_DIR / self.assets["peg_urdf"],
-                    self._ASSETS_DIR / self.assets["board_urdf"],
-                )
-                for path in paths:
-                    if not path.exists():
-                        raise FileNotFoundError(f"Missing peg-in-hole asset: {path}")
-                return paths
-            case source:
-                raise ValueError(f"Unknown peg-in-hole assets source: {source}")
+    def _load_assets_geometry(self) -> tuple[PihAssetsCfg, PihGeometry]:
+        """The assets' dimensions (nominal, or with the `asset_overrides`) and their frames."""
+        cfg = PihAssetsCfg.from_yaml(overrides=self.asset_overrides)
+        return cfg, build_geometry(cfg)
+
+    def _asset_paths(self) -> tuple[Path, Path]:
+        """The (peg, board) URDFs: the files in `assets/peg_in_hole/`, or generated ones."""
+        if not self.asset_overrides:
+            return self._ASSETS_DIR / "peg.urdf", self._ASSETS_DIR / "board.urdf"
+        assets = generate_pih_assets(self.assets_cfg)
+        return assets.peg_urdf, assets.board_urdf
 
     def _setup_scene(self, cfg: ExpConfig) -> None:
         self._scene.add_manipulator(cfg=cfg.robot_cfg)
-        peg_urdf, board_urdf = self._resolve_asset_paths()
+        peg_urdf, board_urdf = self._asset_paths()
 
         board_quat = yaw_to_quat(th.tensor([self.board_yaw]))[0].tolist()
         p_board = ObjectProperties(
             dims=(),
-            pose=(*self.board_xy, self.table_top_z, *board_quat),
+            pose=(*self.board_xy, self.board_top_z, *board_quat),
             collision=True,
             fixed=True,
-            color=(0.55, 0.55, 0.6),
+            color=(0.25, 0.25, 0.3),
             urdf_path=str(board_urdf),
             friction=self.board_friction,
         )
@@ -286,7 +306,7 @@ class PegInHoleEnv(BaseEnv):
             pose=(*self.board_xy, self.table_top_z + 0.3, 1.0, 0.0, 0.0, 0.0),
             collision=True,
             fixed=False,
-            color=(0.85, 0.45, 0.05),
+            color=(0.85, 0.45, 0.1),
             urdf_path=str(peg_urdf),
             friction=self.peg_friction,
         )
@@ -296,37 +316,56 @@ class PegInHoleEnv(BaseEnv):
         self._scene.add_preview_camera(*self.PREVIEW_CAMERA_POSE)
 
     def _init_geometry_buffers(self) -> None:
-        g, dev = self.geometry, self.device
-        # hole openings (slot centers at the board top) in the world frame
-        cos, sin = math.cos(self.board_yaw), math.sin(self.board_yaw)
-        centers = g.slot_centers()
-        slots_xy = th.stack(
-            [
-                self.board_xy[0] + cos * centers[:, 0] - sin * centers[:, 1],
-                self.board_xy[1] + sin * centers[:, 0] + cos * centers[:, 1],
-            ],
-            dim=-1,
+        """The assets' frames as tensors: the slot inlets in the world, the peg's tips and grasp."""
+        cfg, geom, dev = self.assets_cfg, self.geometry, self.device
+        # slot inlet centres: the slot poses (board frame) moved by the board pose
+        slots_in_board = th.tensor([s.pose[:3] for s in geom.slots], dtype=th.float32)
+        board_yaw = th.full((len(geom.slots),), self.board_yaw)
+        slots_xy = th.tensor(self.board_xy) + self._rotate_xy(
+            slots_in_board[:, :2], board_yaw
         )
-        slots_z = th.full((g.num_slots, 1), self.table_top_z + g.hole_depth)
+        slots_z = self.board_top_z + slots_in_board[:, 2:]
         self.slots_pos = th.cat([slots_xy, slots_z], dim=-1).to(dev)
-        self.slots_clearance = th.tensor(g.clearances, device=dev)
+        # per side, the assets give the total (hole side minus leg side)
+        self.slots_clearance = th.tensor(
+            [s.clearance / 2 for s in geom.slots], device=dev
+        )
         self.active_slots_t = th.tensor(self.active_slots, device=dev)
+        # the hole frames are only shifted along the board, so the square peg fits every 90 deg,
+        # a peg of a non-square grid of legs every 180 deg
+        nx, ny = cfg.peg.legs.grid
+        self.yaw_symmetry = 4 if nx == ny else 2
 
-        # insertion point and keypoints of the peg in its frame
-        self.peg_tips = g.leg_tips().to(dev)  # [L, 3]
-        self.peg_insertion_point = g.tips_centroid().to(dev)  # [3]
-        axis_z = th.linspace(0.0, g.leg_length, self._NUM_KEYPOINTS, device=dev)
+        # the peg frame is the centre of the tip plane, the legs stand on it along Z
+        self.peg_tips = th.tensor(
+            [[x, y, 0.0] for x, y in leg_offsets(cfg)], device=dev
+        )  # [L, 3]
+        self.peg_insertion_point = self.peg_tips.mean(dim=0)  # [3]
+        leg_length = cfg.peg.leg_length
+        axis_z = th.linspace(0.0, leg_length, self._NUM_KEYPOINTS, device=dev)
         self.peg_keypoints = self.peg_insertion_point + th.stack(
             [th.zeros_like(axis_z), th.zeros_like(axis_z), axis_z], dim=-1
         )  # [K, 3]
-        # their seated positions in the hole frame
-        self.seated_depth = min(g.hole_depth, g.leg_length)
+        # their seated positions in the hole frame, the tips on the hole floor
+        hole_depth = cfg.board.depth
+        self.seated_depth = min(hole_depth, leg_length)
         self.hole_keypoints = self.peg_keypoints - self.peg_insertion_point
         self.hole_keypoints[:, 2] -= self.seated_depth
-        self.success_depth = self.success_depth_ratio * g.hole_depth
+        self.success_depth = self.success_depth_ratio * hole_depth
 
         self.tcp_down_quat = th.tensor(self._TCP_DOWN_QUAT, device=dev)
-        self.grasp_offset_t = th.tensor(self.grasp_offset, device=dev)
+        # peg origin in TCP frame (Z down): grasp point of assets sits at TCP, shifted by
+        # `grasp_offset` of config, i.e. a grasp held off the nominal one
+        grasp = th.tensor(geom.peg_grasp_frame[:3], device=dev)
+        self.grasp_offset_t = grasp + th.tensor(self.grasp_offset, device=dev)
+
+        # actions keep the tips in the workspace box; it has to reach the hole floor, otherwise
+        # the policy could never seat the peg
+        if -self.workspace_z[0] < self.seated_depth:
+            raise ValueError(
+                f"The `workspace.z` {self.workspace_z} doesn't reach the seated depth "
+                f"{self.seated_depth:.4f} m of the assets (`board.thickness - board.bottom`)."
+            )
         self.workspace_low = th.tensor(
             [-self.workspace_xy, -self.workspace_xy, self.workspace_z[0]], device=dev
         )
@@ -424,10 +463,11 @@ class PegInHoleEnv(BaseEnv):
 
         peg_pose = self._start_peg_pose(envs_idx=envs_idx, u=u[:, :4])
         tcp_pose = self._peg_to_tcp_pose(peg_pose)
-        self.manipulator.ctrl_gripper_close(envs_idx)
         self.manipulator.ctrl_go_to_home(envs_idx)
+        # The fingers stay open (home): set closed, they would land inside the peg. The steps
+        # close them onto it (`open_gripper=False`).
         self.manipulator.ctrl_reset_to_pose(
-            pose=tcp_pose, open_gripper=False, envs_idx=envs_idx
+            pose=tcp_pose, open_gripper=None, envs_idx=envs_idx
         )
         # in the grasp of the reached TCP pose, as the IK may miss the target slightly and the
         # weld would pull the peg into the grasp it was attached in

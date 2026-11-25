@@ -11,7 +11,7 @@ from aegis_gym.aux.pih_assets import (
 )
 
 _TOL = 1e-9
-# the nominal board has one hole; the geometry is checked on three slots side by side
+# nominal board holds the tolerance family; geometry is checked on three slots side by side
 _THREE_SLOTS = {"board": {"clearances": [0.005, 0.001, 0.0005]}}
 _TWO_LEGS = {
     "peg": {"legs": {"grid": [2, 1], "length": 0.03}},
@@ -44,9 +44,9 @@ def cfg(request) -> PihAssetsCfg:
     return _cfg(request.param)
 
 
-def test_nominal_is_one_hole_with_1mm_clearance():
+def test_nominal_is_the_single_leg_tolerance_family():
     cfg = _cfg()
-    assert cfg.board.clearances == (0.001,)
+    assert cfg.board.clearances == (0.004, 0.003, 0.002, 0.001)
     assert cfg.peg.legs.grid == (1, 1)
 
 

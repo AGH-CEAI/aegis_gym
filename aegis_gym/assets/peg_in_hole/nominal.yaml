@@ -17,4 +17,7 @@ board:
   bottom: 0.005          # floor under each hole; 0 makes through holes
   margin: 0.02           # wall between the outermost holes and the board edge
   slot_pitch: 0.06       # centre spacing of the slots along x
-  clearances: [0.001]    # one slot per entry: hole side minus leg side (total, like the SCAD); 26 mm hole
+  # one slot per entry: hole side minus leg side (total, like the SCAD). Whole tolerance family
+  # on one board, so parallel envs share geometry and differ only in slot they draw
+  # (`env_specific_dict.active_slots`): 2.0 / 1.5 / 1.0 / 0.5 mm per side.
+  clearances: [0.004, 0.003, 0.002, 0.001]

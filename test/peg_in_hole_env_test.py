@@ -1,20 +1,16 @@
 import math
-import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 
 import pytest
 import torch as th
 
 from aegis_gym.aux.geom import transform_quat_by_quat
+from aegis_gym.aux.pih_assets import PihAssetsCfg
+from aegis_gym.aux.pih_assets.assets import CACHE_ENV_VAR
 from aegis_gym.config.config_manager import ConfigManager
 from aegis_gym.envs import PegInHoleEnv
 from aegis_gym.envs.objects import ObjectType
-from aegis_gym.envs.peg_in_hole_geometry import (
-    PegInHoleGeometry,
-    quat_to_yaw,
-    wrap_symmetric,
-    yaw_to_quat,
-)
+from aegis_gym.envs.peg_in_hole_env import quat_to_yaw, wrap_symmetric, yaw_to_quat
 from aegis_gym.envs.scene.base_scene import BaseScene
 
 NUM_ENVS = 4
@@ -30,6 +26,7 @@ class _Manipulator:
         self.wrench = th.zeros(num_envs, 6)
         self.policy_dt, self.lin, self.ang = policy_dt, lin, ang
         self.twists = []
+        self.reset_open_gripper = []
 
     def get_tcp_pose(self) -> th.Tensor:
         return self.tcp.clone()
@@ -42,6 +39,7 @@ class _Manipulator:
     def ctrl_go_to_home(self, envs_idx) -> None: ...
 
     def ctrl_reset_to_pose(self, pose, open_gripper, envs_idx) -> None:
+        self.reset_open_gripper.append(open_gripper)
         self.tcp[envs_idx] = pose
 
     def ctrl_apply_vel_action(self, twist: th.Tensor, open_gripper) -> None:
@@ -151,53 +149,13 @@ def _env(env_dict: dict | None = None, dr: bool = False) -> PegInHoleEnv:
         PegInHoleEnv._setup_scene = original_setup
 
 
-def _geometry(**overrides) -> PegInHoleGeometry:
-    d = PegInHoleEnv.get_default_env_specific_dict()["geometry"]
-    return PegInHoleGeometry.from_dict({**d, **overrides})
+@pytest.fixture(autouse=True)
+def _assets_cache(tmp_path, monkeypatch):
+    """The assets generated for the `asset_overrides` go to a temporary cache."""
+    monkeypatch.setenv(CACHE_ENV_VAR, str(tmp_path))
 
 
-# == geometry ==
-
-
-def test_board_has_four_walls_per_hole_with_the_slot_clearances():
-    g = _geometry(leg_offsets=[[-0.03, 0.0], [0.03, 0.0]])
-    boxes = g.board_boxes()
-    assert len(boxes) == 4 * g.num_slots * g.num_legs
-
-    # the inner faces of the +X wall of slot 0's first hole are at the clearance from the leg
-    (cx, _, cz), (sx, _, sz) = boxes[0]
-    hole_x = g.slot_centers()[0, 0].item() - 0.03
-    assert cx - sx / 2 - hole_x == pytest.approx(g.leg_size[0] / 2 + g.clearances[0])
-    assert cz == pytest.approx(g.hole_depth / 2)
-    assert sz == pytest.approx(g.hole_depth)
-
-
-def test_urdfs_parse_and_only_the_legs_collide():
-    g = _geometry()
-    peg = ET.fromstring(g.peg_urdf().split("\n", 1)[1])
-    board = ET.fromstring(g.board_urdf().split("\n", 1)[1])
-
-    assert len(peg.findall("./link/visual")) == 1 + g.num_legs  # handle + legs
-    assert len(peg.findall("./link/collision")) == g.num_legs
-    assert len(board.findall("./link/collision")) == 4 * g.num_slots
-    mass = float(peg.find("./link/inertial/mass").attrib["value"])
-    assert mass == pytest.approx(g.peg_mass)
-
-
-def test_urdfs_are_written_once_per_content(tmp_path):
-    first = _geometry().write_urdfs(tmp_path)
-    again = _geometry().write_urdfs(tmp_path)
-    other = _geometry(clearances=[0.003]).write_urdfs(tmp_path)
-
-    assert first == again
-    assert first[0] == other[0]  # the same peg
-    assert first[1] != other[1]
-    assert all(p.exists() for p in (*first, *other))
-
-
-def test_geometry_rejects_non_positive_clearance():
-    with pytest.raises(ValueError):
-        _geometry(clearances=[0.001, 0.0])
+# == helpers ==
 
 
 def test_yaw_helpers():
@@ -213,14 +171,89 @@ def test_yaw_helpers():
 
 def test_default_env_dict_is_resolved_by_the_config():
     resolved = ConfigManager._resolve_env_specific_dict(
-        env_name="peg_in_hole", given={"active_slots": [0, 3]}
+        env_name="peg_in_hole",
+        given={"asset_overrides": {"board": {"clearances": [0.003, 0.001]}}},
     )
-    assert resolved["active_slots"] == [0, 3]
-    assert resolved["geometry"]["clearances"] == [0.002, 0.0015, 0.001, 0.0005]
+    assert resolved["asset_overrides"] == {"board": {"clearances": [0.003, 0.001]}}
+    assert resolved["active_slots"] == [0]
+
+
+def test_env_reads_the_nominal_assets():
+    env = _env()
+    nominal = PihAssetsCfg.from_yaml()
+
+    # board top on the table, slot inlets in a row along its X, centred on `board_xy`
+    assert env.board_top_z == pytest.approx(TABLE_TOP_Z + nominal.board.thickness)
+    n, pitch = len(nominal.board.clearances), nominal.board.slot_pitch
+    expected = th.tensor(
+        [[0.47 + (k - (n - 1) / 2) * pitch, 0.0, env.board_top_z] for k in range(n)]
+    )
+    assert th.allclose(env.slots_pos, expected, atol=1e-6)
+    # the assets give the total clearance, the env works per side
+    assert env.slots_clearance.tolist() == pytest.approx(
+        [c / 2 for c in nominal.board.clearances]
+    )
+    assert env.clearance.tolist() == pytest.approx(
+        [nominal.board.clearances[0] / 2] * NUM_ENVS
+    )
+    assert env.seated_depth == pytest.approx(nominal.board.depth)
+    # the tip is the peg origin, the TCP holds the grasp point above it
+    assert env.peg_tips.tolist() == [[0.0, 0.0, 0.0]]
+    grasp_z = nominal.peg.length - nominal.peg.grasp_from_top
+    assert env.grasp_offset_t.tolist() == pytest.approx([0.0, 0.0, grasp_z])
+    assert env.yaw_symmetry == 4
+    assert env._asset_paths()[0] == PegInHoleEnv._ASSETS_DIR / "peg.urdf"
+
+
+def test_asset_overrides_give_the_slots_along_the_board(tmp_path):
+    clearances = [0.004, 0.002]
+    env = _env(
+        env_dict={
+            "asset_overrides": {"board": {"clearances": clearances}},
+            "board_yaw_deg": 90.0,
+            "active_slots": [1],
+        }
+    )
+    pitch = PihAssetsCfg.from_yaml().board.slot_pitch
+
+    # the slots are along the board's X, the world's Y after the 90 deg yaw
+    expected = th.tensor([[0.47, -pitch / 2], [0.47, pitch / 2]])
+    assert th.allclose(env.slots_pos[:, :2], expected, atol=1e-6)
+    assert env.slots_clearance.tolist() == pytest.approx([0.002, 0.001])
+    assert (env.slot_idx == 1).all()
+    # generated into the cache, not the nominal files
+    peg_urdf, board_urdf = env._asset_paths()
+    assert peg_urdf.is_relative_to(tmp_path) and board_urdf.exists()
+
+
+def test_legs_grid_sets_the_tips_and_the_yaw_symmetry():
+    env = _env(
+        env_dict={
+            # wider slot pitch: two legs at the nominal 0.06 leave no wall between slots,
+            # which `PihAssetsCfg` rejects
+            "asset_overrides": {
+                "peg": {"legs": {"grid": [2, 1], "length": 0.03}},
+                "board": {"slot_pitch": 0.1},
+            }
+        }
+    )
+    pitch = PihAssetsCfg.from_yaml().peg.legs.pitch
+
+    expected = th.tensor([[-pitch / 2, 0.0, 0.0], [pitch / 2, 0.0, 0.0]])
+    assert th.allclose(env.peg_tips, expected)
+    assert env.yaw_symmetry == 2
+    assert env.seated_depth == pytest.approx(min(0.03, env.assets_cfg.board.depth))
+
+
+def test_reset_doesnt_close_the_fingers_into_the_peg():
+    env = _env()
+
+    assert env.manipulator.reset_open_gripper
+    assert all(g is None for g in env.manipulator.reset_open_gripper)
 
 
 def test_peg_is_attached_in_the_grasp_of_the_start_pose():
-    env = _env(env_dict={"grasp_offset": [0.0, 0.0, 0.01]})
+    env = _env()
     scene = env._scene
 
     assert scene.attached == [env.peg]
@@ -230,8 +263,14 @@ def test_peg_is_attached_in_the_grasp_of_the_start_pose():
 
 
 def test_tcp_and_peg_poses_round_trip():
+    # grasp off the grasp point of assets, to cover `grasp_offset` too
     env = _env(env_dict={"grasp_offset": [0.001, -0.002, 0.01]})
     peg = th.cat([th.tensor([[0.5, 0.1, 0.2]]), yaw_to_quat(th.tensor([0.4]))], dim=-1)
+    grasp_z = (
+        PihAssetsCfg.from_yaml().peg.length
+        - PihAssetsCfg.from_yaml().peg.grasp_from_top
+    )
+    assert env.grasp_offset_t.tolist() == pytest.approx([0.001, -0.002, grasp_z + 0.01])
 
     tcp = env._peg_to_tcp_pose(peg)
     back = env._tcp_to_peg_pose(tcp)
@@ -250,8 +289,7 @@ def test_reset_starts_above_the_hole_within_the_ranges():
     assert (env.depth >= -start["height_range"][1] - 1e-6).all()
     assert (env.tip_rel[:, :2].abs() <= start["xy_range"] + 1e-6).all()
     assert (env.yaw_err.abs() <= math.radians(start["yaw_range_deg"]) + 1e-5).all()
-    assert (env.slot_idx == 1).all()
-    assert env.clearance.tolist() == pytest.approx([0.0015] * NUM_ENVS)
+    assert (env.slot_idx == 0).all()
 
 
 def test_seeded_reset_is_reproducible_and_without_the_hole_noise():
@@ -388,4 +426,6 @@ def test_contact_penalty_ramps_up():
 
 def test_invalid_active_slots_are_rejected():
     with pytest.raises(ValueError):
-        _env(env_dict={"active_slots": [4]})
+        _env(
+            env_dict={"active_slots": [len(PihAssetsCfg.from_yaml().board.clearances)]}
+        )

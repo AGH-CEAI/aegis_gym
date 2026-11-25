@@ -64,8 +64,17 @@ logger:
   enable_policy_preview: True
 
 env:
+  num_obs: 13
+  num_actions: 4
+  rigid_contact:
+    box_box_detection: True
+    noslip_iterations: 5
   action_max_linear_speed: 0.02  # m/s
   action_max_angular_speed: 0.25  # rad/s
+  env_specific_dict:
+    # board of `assets/peg_in_hole/` holds whole tolerance family (2.0 / 1.5 / 1.0 / 0.5 mm
+    # per side); training draws the 1.5 mm slot, add others to widen it
+    active_slots: [1]
 
 dr:
   enabled: True

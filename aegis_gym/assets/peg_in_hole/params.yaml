@@ -16,4 +16,7 @@ board:
   margin: 0.02
   slot_pitch: 0.06
   clearances:
+  - 0.004
+  - 0.003
+  - 0.002
   - 0.001

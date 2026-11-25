@@ -195,7 +195,14 @@ def test_peg_in_hole_preset_config_is_applied():
     assert cfg.rl_cfg.obs_groups["critic"] == ["policy", "privileged"]
     assert cfg.env_cfg.action_max_linear_speed == 0.02
     assert cfg.env_cfg.episode_length_s == 10.0
-    assert cfg.env_cfg.env_specific_dict["active_slots"] == [1]
+    env_dict = cfg.env_cfg.env_specific_dict
+    assert env_dict["active_slots"] == [1]
+    # nominal assets, i.e. committed files, hold the tolerance family
+    assert env_dict["asset_overrides"] is None
+    assert cfg.env_cfg.rigid_contact == {
+        "box_box_detection": True,
+        "noslip_iterations": 5,
+    }
     _assert_robot_domain_randomization_enabled()
 
 
