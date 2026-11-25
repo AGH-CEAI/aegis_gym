@@ -34,17 +34,46 @@ from .bc_fusions import (
 LATENT_POSE_XY_SCALE = 10.0
 
 
-def latent_pose_target(object_poses: th.Tensor) -> th.Tensor:
-    """[N, 4] the latent pose decoder's target from the [N, 7] (x, y, z, quat) tee poses."""
-    xy = object_poses[:, :2] * LATENT_POSE_XY_SCALE
-    return planar_pose(xy, quat_to_z_euler(object_poses[:, 3:7]))
+LATENT_POSE_FRAMES = ("world", "goal")
+
+
+def goal_planar_pose(env) -> th.Tensor:
+    """[num_envs, 3] the goal's x, y [m] and yaw [rad] in the world frame."""
+    return th.cat([env.goal_pose[:, :2], env.goal_yaw.reshape(-1, 1)], dim=-1)
+
+
+def latent_pose_target(
+    object_poses: th.Tensor, goal_poses: th.Tensor | None = None
+) -> th.Tensor:
+    """
+    [N, 4] the latent pose decoder's target from the [N, 7] (x, y, z, quat) tee poses: in the world
+    frame, or with the [N, 3] (x, y, yaw) `goal_poses` in the goal's frame (the tee relative to the goal).
+    """
+    xy = object_poses[:, :2]
+    yaw = quat_to_z_euler(object_poses[:, 3:7])
+    if goal_poses is not None:
+        goal_yaw = goal_poses[:, 2]
+        cos, sin = th.cos(goal_yaw), th.sin(goal_yaw)
+        offset = xy - goal_poses[:, :2]
+        xy = th.stack(
+            [
+                cos * offset[:, 0] + sin * offset[:, 1],
+                -sin * offset[:, 0] + cos * offset[:, 1],
+            ],
+            dim=-1,
+        )
+        yaw = yaw - goal_yaw
+    return planar_pose(xy * LATENT_POSE_XY_SCALE, yaw)
 
 
 def latent_pose_errors(
-    pred: th.Tensor, object_poses: th.Tensor
+    pred: th.Tensor, object_poses: th.Tensor, goal_poses: th.Tensor | None = None
 ) -> tuple[th.Tensor, th.Tensor]:
-    """[N] the position [m] and yaw [rad] errors of the latent pose decoder's [N, 4] predictions."""
-    target = latent_pose_target(object_poses)
+    """
+    [N] the position [m] and yaw [rad] errors of the latent pose decoder's [N, 4] predictions (in the
+    goal's frame with `goal_poses`, see `latent_pose_target`).
+    """
+    target = latent_pose_target(object_poses, goal_poses)
     pos_err = th.linalg.vector_norm(pred[:, :2] - target[:, :2], dim=-1)
     yaw_err = th.atan2(pred[:, 2], pred[:, 3]) - th.atan2(target[:, 2], target[:, 3])
     yaw_err = th.atan2(th.sin(yaw_err), th.cos(yaw_err)).abs()
@@ -242,6 +271,11 @@ class Policy(nn.Module):
         )
 
         self.latent_pose_head: nn.Sequential | None = None
+        self.latent_pose_frame = self._cfg.latent_pose_frame
+        if self.latent_pose_frame not in LATENT_POSE_FRAMES:
+            raise ValueError(
+                f"latent_pose_frame '{self.latent_pose_frame}' not in {LATENT_POSE_FRAMES}"
+            )
         if self._cfg.latent_pose_loss_weight > 0:
             self.latent_pose_head = self._build_mlp(
                 input_dim=action_input_dim,
@@ -249,7 +283,8 @@ class Policy(nn.Module):
                 output_dim=4,
             )
             logger.info(
-                f"Latent pose decoder, loss weight {self._cfg.latent_pose_loss_weight}"
+                f"Latent pose decoder, loss weight {self._cfg.latent_pose_loss_weight}, "
+                f"{self.latent_pose_frame} frame"
             )
 
         self.pose_head: nn.Sequential | None = None
@@ -283,7 +318,10 @@ class Policy(nn.Module):
         return self.action_head(latent), latent
 
     def predict_latent_pose(self, latent: th.Tensor) -> th.Tensor | None:
-        """[..., 4] the tee's planar pose from the action head's input, None without the decoder."""
+        """
+        [..., 4] the tee's planar pose (in `latent_pose_frame`) from the action head's input, None
+        without the decoder.
+        """
         if self.latent_pose_head is None:
             return None
         return self.latent_pose_head(latent)
@@ -625,6 +663,8 @@ class ExperienceBuffer:
             max_size, num_envs, state_dim, dtype=dtype, device=device
         )
         self._object_poses = th.empty(max_size, num_envs, 7, dtype=dtype, device=device)
+        # the goals' x, y, yaw (for the latent pose decoder in the goal's frame)
+        self._goal_poses = th.zeros(max_size, num_envs, 3, dtype=dtype, device=device)
         self._actions = th.empty(
             max_size, num_envs, action_dim, dtype=dtype, device=device
         )
@@ -639,12 +679,20 @@ class ExperienceBuffer:
         object_poses: th.Tensor,
         actions: th.Tensor,
         episode_starts: th.Tensor | None = None,
+        goal_poses: th.Tensor | None = None,
     ) -> None:
-        """Add experience to buffer; `episode_starts` [num_envs] marks the first steps of episodes."""
+        """
+        Add experience to buffer; `episode_starts` [num_envs] marks the first steps of episodes,
+        `goal_poses` [num_envs, 3] the goals' x, y, yaw (zeros without).
+        """
         self._ptr = (self._ptr + 1) % self._max_size
         self._rgb_obs[self._ptr] = self._encode_images(rgb_obs)
         self._robot_pose[self._ptr] = robot_pose
         self._object_poses[self._ptr] = object_poses
+        if goal_poses is None:
+            self._goal_poses[self._ptr] = 0.0
+        else:
+            self._goal_poses[self._ptr] = goal_poses
         self._actions[self._ptr] = actions
         if episode_starts is None:
             self._episode_starts[self._ptr] = False
@@ -671,6 +719,7 @@ class ExperienceBuffer:
                     ),
                     "robot_pose": self._robot_pose[batch_indices].flatten(0, 1),
                     "object_poses": self._object_poses[batch_indices].flatten(0, 1),
+                    "goal_poses": self._goal_poses[batch_indices].flatten(0, 1),
                     "actions": self._actions[batch_indices].flatten(0, 1),
                 }
 
@@ -716,6 +765,7 @@ class ExperienceBuffer:
                     "rgb_obs": self._decode_images(self._rgb_obs[time_idx, env_idx]),
                     "robot_pose": self._robot_pose[time_idx, env_idx],
                     "object_poses": self._object_poses[time_idx, env_idx],
+                    "goal_poses": self._goal_poses[time_idx, env_idx],
                     "actions": self._actions[time_idx, env_idx],
                     "episode_starts": self._episode_starts[time_idx, env_idx],
                     "burn_in": burn_in,
@@ -746,7 +796,7 @@ class ExperienceBuffer:
         image_bytes = (
             math.prod(img_shape) * th.empty(0, dtype=image_dtype).element_size()
         )
-        other_bytes = (state_dim + 7 + action_dim) * th.empty(
+        other_bytes = (state_dim + 7 + 3 + action_dim) * th.empty(
             0, dtype=dtype
         ).element_size()
         episode_start_bytes = 1
@@ -757,6 +807,7 @@ class ExperienceBuffer:
         self._rgb_obs.zero_()
         self._robot_pose.zero_()
         self._object_poses.zero_()
+        self._goal_poses.zero_()
         self._actions.zero_()
         self._episode_starts.zero_()
         self._ptr = 0

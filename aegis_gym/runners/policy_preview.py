@@ -282,7 +282,8 @@ class VisualBCPolicy(LatentPosePolicy):
     """
     The BC student, acting on (camera images, `state_obs`), as a `LatentPosePolicy`. A student
     with a memory keeps its state between the calls, reset per env at the first step of an episode
-    (`episode_length_buf == 0`, also after the seeded resets).
+    (`episode_length_buf == 0`, also after the seeded resets). `latent_pose` is in the student's
+    `latent_pose_frame` ("world" or "goal").
     """
 
     def __init__(
@@ -298,6 +299,7 @@ class VisualBCPolicy(LatentPosePolicy):
         self._state_obs = state_obs
         self._has_memory = bc_policy.has_memory
         self._has_decoder = bc_policy.latent_pose_head is not None
+        self.latent_pose_frame = getattr(bc_policy, "latent_pose_frame", "world")
         self._memory_state = None
         self.latent_pose: th.Tensor | None = None
 

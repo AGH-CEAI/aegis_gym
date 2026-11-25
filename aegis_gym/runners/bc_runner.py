@@ -32,6 +32,7 @@ from .bc_policy import (
     MemoryState,
     Policy,
     ResetLastLayerTarget,
+    goal_planar_pose,
     latent_pose_errors,
     latent_pose_target,
 )
@@ -313,13 +314,15 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 latent_pose_loss = th.tensor(0.0, device=self.device)
                 pred_latent_pose = self._policy.predict_latent_pose(latent)
                 if pred_latent_pose is not None:
+                    goals = batch["goal_poses"] if self._decoder_in_goal_frame else None
                     latent_pose_loss = self.cfg_train.policy.latent_pose_loss_weight * (
                         F.mse_loss(
-                            pred_latent_pose, latent_pose_target(batch["object_poses"])
+                            pred_latent_pose,
+                            latent_pose_target(batch["object_poses"], goals),
                         )
                     )
                     pos_err, yaw_err = latent_pose_errors(
-                        pred_latent_pose.detach(), batch["object_poses"]
+                        pred_latent_pose.detach(), batch["object_poses"], goals
                     )
                     total_latent_pose_pos_err += pos_err.mean().item()
                     total_latent_pose_yaw_err += yaw_err.mean().item()
@@ -562,6 +565,10 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
         return pos_loss + quat_loss
 
+    @property
+    def _decoder_in_goal_frame(self) -> bool:
+        return getattr(self._policy, "latent_pose_frame", "world") == "goal"
+
     def _collect_with_rl_teacher(self) -> dict[str, float]:
         """
         Collect experience from environment using stereo rgb images and object poses.
@@ -600,7 +607,17 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 object_pose = self.env.get_modality_observation(Modality.OBJECT_POSE)
                 episode_starts = _episode_starts(self.env, like=label)
                 self._buffer.add(
-                    rgb_obs, state, object_pose, label, episode_starts=episode_starts
+                    rgb_obs,
+                    state,
+                    object_pose,
+                    label,
+                    episode_starts=episode_starts,
+                    # only the push_t env has a goal yaw; needed only by the decoder in the goal frame
+                    goal_poses=(
+                        goal_planar_pose(self.env)
+                        if self._decoder_in_goal_frame
+                        else None
+                    ),
                 )
 
                 student_action = self._student_step(
