@@ -1,7 +1,6 @@
 import math
-from collections.abc import Callable
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Protocol, runtime_checkable
 
 import cv2
 import numpy as np
@@ -23,7 +22,26 @@ from aegis_gym.config.types import (
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, innermost_env
 
-InferencePolicy = Callable[[TensorDict], th.Tensor]
+from .bc_policy import Policy
+
+
+class InferencePolicy(Protocol):
+    """
+    The policy as the preview and the evaluator run it: the observations to the actions. Any
+    callable matches, e.g. the RL actor module or a lambda.
+    """
+
+    def __call__(self, obs: TensorDict, /) -> th.Tensor: ...
+
+
+@runtime_checkable
+class LatentPosePolicy(InferencePolicy, Protocol):
+    """
+    An `InferencePolicy` exposing its latent pose decoder: `latent_pose` [num_envs, 4] is the
+    tee's planar pose predicted at the last call, None without the decoder.
+    """
+
+    latent_pose: th.Tensor | None
 
 
 class PolicyPreviewRecorder:
@@ -260,18 +278,17 @@ def _camera_label(modality: Modality) -> str:
     return modality.name.lower().removeprefix("camera_").removesuffix("_rgb")
 
 
-class VisualBCPolicy:
+class VisualBCPolicy(LatentPosePolicy):
     """
-    The BC student, acting on (camera images, `state_obs`), as an `InferencePolicy`. A student with
-    a memory keeps its state between the calls, reset per env at the first step of an episode
-    (`episode_length_buf == 0`, also after the seeded resets). With the latent pose decoder,
-    `latent_pose` [num_envs, 4] is its prediction at the last call (None otherwise).
+    The BC student, acting on (camera images, `state_obs`), as a `LatentPosePolicy`. A student
+    with a memory keeps its state between the calls, reset per env at the first step of an episode
+    (`episode_length_buf == 0`, also after the seeded resets).
     """
 
     def __init__(
         self,
         env: BaseEnv,
-        bc_policy: Callable,
+        bc_policy: Policy,
         state_obs: list[str],
         augment_images: bool = False,
     ):
@@ -279,8 +296,8 @@ class VisualBCPolicy:
         self._env = innermost_env(env)
         self._student = bc_policy
         self._state_obs = state_obs
-        self._has_memory = getattr(bc_policy, "has_memory", False)
-        self._has_decoder = getattr(bc_policy, "latent_pose_head", None) is not None
+        self._has_memory = bc_policy.has_memory
+        self._has_decoder = bc_policy.latent_pose_head is not None
         self._memory_state = None
         self.latent_pose: th.Tensor | None = None
 
@@ -314,10 +331,10 @@ class VisualBCPolicy:
 
 def make_visual_bc_policy(
     env: BaseEnv,
-    bc_policy: Callable,
+    bc_policy: Policy,
     state_obs: list[str],
     augment_images: bool = False,
-) -> InferencePolicy:
+) -> VisualBCPolicy:
     """
     Adapts the BC student to the preview's call (`VisualBCPolicy`). The images come from the
     innermost env, or through the `env`'s wrappers with `augment_images` (e.g. the

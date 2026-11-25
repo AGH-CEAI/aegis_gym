@@ -16,7 +16,7 @@ from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import innermost_env
 
 from .bc_policy import latent_pose_errors
-from .policy_preview import InferencePolicy
+from .policy_preview import InferencePolicy, LatentPosePolicy
 
 EpisodeRow = dict[str, float | int | bool]
 
@@ -184,7 +184,11 @@ class PolicyEvaluator:
                 for step in range(max_steps):
                     self._reseed(wave, 2 * step + 1)
                     actions = policy(obs)
-                    latent_pose = getattr(policy, "latent_pose", None)
+                    latent_pose = (
+                        policy.latent_pose
+                        if isinstance(policy, LatentPosePolicy)
+                        else None
+                    )
                     if latent_pose is not None:
                         errors = latent_pose_errors(
                             latent_pose[:num],

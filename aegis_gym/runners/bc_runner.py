@@ -656,7 +656,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self, rgb_obs: th.Tensor, state: th.Tensor, episode_starts: th.Tensor
     ) -> th.Tensor:
         """The student's actions in the rollouts; a memory's state is carried across iterations."""
-        if not getattr(self._policy, "has_memory", False):
+        if not self._policy.has_memory:
             return self._policy(rgb_obs, state)
         if self._memory_state is None:
             self._memory_state = self._policy.initial_memory_state(rgb_obs.shape[0])

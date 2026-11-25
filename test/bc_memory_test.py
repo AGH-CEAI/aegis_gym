@@ -173,6 +173,7 @@ class _RecordingMemoryStudent:
     """A student with a memory counting its steps per env: action = steps since the reset."""
 
     has_memory = True
+    latent_pose_head = None
 
     def __init__(self):
         self.starts: list[list[bool]] = []
