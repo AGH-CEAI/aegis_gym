@@ -1,7 +1,6 @@
 import math
-from collections.abc import Callable
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Protocol, runtime_checkable
 
 import cv2
 import numpy as np
@@ -23,7 +22,26 @@ from aegis_gym.config.types import (
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, innermost_env
 
-InferencePolicy = Callable[[TensorDict], th.Tensor]
+from .bc_policy import Policy
+
+
+class InferencePolicy(Protocol):
+    """
+    The policy as the preview and the evaluator run it: the observations to the actions. Any
+    callable matches, e.g. the RL actor module or a lambda.
+    """
+
+    def __call__(self, obs: TensorDict, /) -> th.Tensor: ...
+
+
+@runtime_checkable
+class LatentPosePolicy(InferencePolicy, Protocol):
+    """
+    An `InferencePolicy` exposing its latent pose decoder: `latent_pose` [num_envs, 4] is the
+    tee's planar pose predicted at the last call, None without the decoder.
+    """
+
+    latent_pose: th.Tensor | None
 
 
 class PolicyPreviewRecorder:
@@ -260,26 +278,71 @@ def _camera_label(modality: Modality) -> str:
     return modality.name.lower().removeprefix("camera_").removesuffix("_rgb")
 
 
+class VisualBCPolicy(LatentPosePolicy):
+    """
+    The BC student, acting on (camera images, `state_obs`), as a `LatentPosePolicy`. A student
+    with a memory keeps its state between the calls, reset per env at the first step of an episode
+    (`episode_length_buf == 0`, also after the seeded resets).
+    """
+
+    def __init__(
+        self,
+        env: BaseEnv,
+        bc_policy: Policy,
+        state_obs: list[str],
+        augment_images: bool = False,
+    ):
+        self._image_source = env if augment_images else innermost_env(env)
+        self._env = innermost_env(env)
+        self._student = bc_policy
+        self._state_obs = state_obs
+        self._has_memory = bc_policy.has_memory
+        self._has_decoder = bc_policy.latent_pose_head is not None
+        self._memory_state = None
+        self.latent_pose: th.Tensor | None = None
+
+    def __call__(self, _obs: TensorDict) -> th.Tensor:
+        images = self._image_source.get_modality_observations(
+            modalities=IMAGE_MODALITIES
+        )
+        rgb = th.cat([images[m] for m in IMAGE_MODALITIES], dim=1).float()
+        state = self._env.get_state_obs(self._state_obs)
+        latent = None
+        if self._has_memory:
+            if self._memory_state is None:
+                self._memory_state = self._student.initial_memory_state(rgb.shape[0])
+            step = self._student.step(
+                rgb,
+                state,
+                self._memory_state,
+                episode_starts=self._env.episode_length_buf == 0,
+                **({"return_latent": True} if self._has_decoder else {}),
+            )
+            actions, self._memory_state = step[:2]
+            latent = step[2] if self._has_decoder else None
+        elif self._has_decoder:
+            actions, latent = self._student.forward_with_latent(rgb, state)
+        else:
+            actions = self._student(rgb, state)
+        if latent is not None:
+            self.latent_pose = self._student.predict_latent_pose(latent)
+        return actions
+
+
 def make_visual_bc_policy(
     env: BaseEnv,
-    bc_policy: Callable,
+    bc_policy: Policy,
     state_obs: list[str],
     augment_images: bool = False,
-) -> InferencePolicy:
+) -> VisualBCPolicy:
     """
-    Adapts the BC student, acting on (camera images, `state_obs`), to the preview's call. The
-    images come from the innermost env, or through the `env`'s wrappers with `augment_images`
-    (e.g. the `VisionAugEnvWrapper`).
+    Adapts the BC student to the preview's call (`VisualBCPolicy`). The images come from the
+    innermost env, or through the `env`'s wrappers with `augment_images` (e.g. the
+    `VisionAugEnvWrapper`).
     """
-    image_source = env if augment_images else innermost_env(env)
-    env = innermost_env(env)
-
-    def policy(_obs: TensorDict) -> th.Tensor:
-        images = image_source.get_modality_observations(modalities=IMAGE_MODALITIES)
-        rgb = th.cat([images[m] for m in IMAGE_MODALITIES], dim=1).float()
-        return bc_policy(rgb, env.get_state_obs(state_obs))
-
-    return policy
+    return VisualBCPolicy(
+        env=env, bc_policy=bc_policy, state_obs=state_obs, augment_images=augment_images
+    )
 
 
 def preview_iteration(algorithm: Algorithm, checkpoint_iter: int) -> int:

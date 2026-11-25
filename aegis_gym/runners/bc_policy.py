@@ -1,12 +1,20 @@
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import torch as th
 from strenum import StrEnum
 from torch import nn
 
+from aegis_gym.aux.geom import planar_pose, quat_to_z_euler
 from aegis_gym.aux.logging import get_logger
-from aegis_gym.config.types import FusionCfg, PolicyBCCfg, VisionEncoderCfg
+from aegis_gym.config.types import (
+    FusionCfg,
+    MemoryCfg,
+    MultimodalCfg,
+    PolicyBCCfg,
+    VisionEncoderCfg,
+)
 
 from .bc_encoders import (
     AutoencoderCNNEncoder,
@@ -21,6 +29,117 @@ from .bc_fusions import (
     SpatialAttentionFusion,
     VectorAttentionFusion,
 )
+
+# the latent pose decoder's x, y in dm: on the scale of the sin / cos of the yaw
+LATENT_POSE_XY_SCALE = 10.0
+
+
+def latent_pose_target(object_poses: th.Tensor) -> th.Tensor:
+    """[N, 4] the latent pose decoder's target from the [N, 7] (x, y, z, quat) tee poses."""
+    xy = object_poses[:, :2] * LATENT_POSE_XY_SCALE
+    return planar_pose(xy, quat_to_z_euler(object_poses[:, 3:7]))
+
+
+def latent_pose_errors(
+    pred: th.Tensor, object_poses: th.Tensor
+) -> tuple[th.Tensor, th.Tensor]:
+    """[N] the position [m] and yaw [rad] errors of the latent pose decoder's [N, 4] predictions."""
+    target = latent_pose_target(object_poses)
+    pos_err = th.linalg.vector_norm(pred[:, :2] - target[:, :2], dim=-1)
+    yaw_err = th.atan2(pred[:, 2], pred[:, 3]) - th.atan2(target[:, 2], target[:, 3])
+    yaw_err = th.atan2(th.sin(yaw_err), th.cos(yaw_err)).abs()
+    return pos_err / LATENT_POSE_XY_SCALE, yaw_err
+
+
+MemoryState = tuple[th.Tensor, ...]
+"""The student's memory state: batch-first tensors (see `enc_mem_dec.memory.MemoryState`)."""
+
+
+def build_memory(cfg: MemoryCfg, input_dim: int) -> nn.Module | None:
+    """The `enc_mem_dec` memory of `cfg`, None for "none" (enc_mem_dec is needed otherwise only)."""
+    if cfg.type == "none":
+        if cfg.residual:
+            raise ValueError("memory.residual needs a memory, the type is 'none'")
+        return None
+    try:
+        from enc_mem_dec.memory import make_memory
+    except ImportError as e:
+        raise ImportError(
+            f"memory.type '{cfg.type}' needs the enc_mem_dec package (the worker image "
+            "geonosis:5000/aegis_gym_emd)"
+        ) from e
+    kwargs: dict[str, Any] = {}
+    if cfg.type in ("gru", "lstm"):
+        kwargs = {"hidden_dim": cfg.hidden_dim, "num_layers": cfg.num_layers}
+    elif cfg.type == "frame_stack":
+        kwargs = {"num_frames": cfg.num_frames}
+        if cfg.frame_stride != 1:  # older enc_mem_dec images have no stride
+            kwargs["stride"] = cfg.frame_stride
+    elif cfg.type == "attention_window":
+        kwargs = {
+            "window": cfg.window,
+            "model_dim": cfg.model_dim,
+            "num_heads": cfg.num_heads,
+        }
+    elif cfg.type == "hopfield":
+        kwargs = {
+            "window": cfg.window,
+            "model_dim": cfg.model_dim,
+            "update_steps": cfg.update_steps,
+        }
+    # "identity": the memoryless student trained on the chunks (the control of the memory students)
+    name = "none" if cfg.type == "identity" else cfg.type
+    return make_memory(name, input_dim=input_dim, residual=cfg.residual, **kwargs)
+
+
+def camera_modality(index: int) -> str:
+    """The multimodal fusion's name of camera `index` (the order of the stacked RGB channels)."""
+    return f"camera_{index}"
+
+
+def build_multimodal(
+    cfg: MultimodalCfg,
+    num_cameras: int,
+    cnn_builder: Callable[[], nn.Module],
+    cnn_channels: int,
+    state_obs_dims: dict[str, int],
+) -> nn.Module:
+    """
+    The `enc_mem_dec` `MultimodalFusion` of `cfg`: an encoder per camera (`cnn_builder()` with
+    `cnn_channels` output channels, pooled) and one per state input of `state_obs_dims` (in order).
+    """
+    try:
+        from enc_mem_dec.multimodal import (
+            ImageModalityEncoder,
+            MultimodalFusion,
+            StateModalityEncoder,
+        )
+    except ImportError as e:
+        raise ImportError(
+            f"multimodal.fusion '{cfg.fusion}' needs the enc_mem_dec package with `multimodal` "
+            "(the worker image geonosis:5000/aegis_gym_emd)"
+        ) from e
+    encoders: dict[str, nn.Module] = {
+        camera_modality(i): ImageModalityEncoder(
+            cnn_builder(),
+            backbone_channels=cnn_channels,
+            output_dim=cfg.feature_dim,
+            pooling=cfg.image_pooling,
+        )
+        for i in range(num_cameras)
+    }
+    for name, dim in state_obs_dims.items():
+        encoders[name] = StateModalityEncoder(
+            dim, output_dim=cfg.feature_dim, hidden_dims=cfg.state_hidden_dims
+        )
+    return MultimodalFusion(
+        encoders,
+        fusion=cfg.fusion,
+        latent_dim=cfg.latent_dim,
+        prior_expert=cfg.prior_expert,
+        gate_hidden_dim=cfg.gate_hidden_dim,
+        sample=cfg.sample,
+    )
 
 
 class ResetLastLayerTarget(StrEnum):
@@ -57,7 +176,12 @@ class Policy(nn.Module):
         image_height: int,
         image_width: int,
         device: th.device,
+        state_obs_dims: dict[str, int] | None = None,
     ):
+        """
+        `state_obs_dims`: the dimension of each `state_obs` input (their sum is `state_obs_dim`); needed
+        by the multimodal fusion with more than one state input.
+        """
         super().__init__()
 
         logger = get_logger("Policy")
@@ -73,12 +197,6 @@ class Policy(nn.Module):
         logger.info(f"Fusion type: {self.fusion_type}")
         logger.info(f"Use pose head: {self.use_pose_head}")
 
-        self.vision_encoder = self._build_vision_encoder().to(device)
-        self.feature_fusion = self._build_fusion(
-            image_height=image_height, image_width=image_width
-        )
-
-        vision_obs_dim = self.feature_fusion.output_dim
         configured_dim = self._cfg.action_head_state_obs_dim
         if configured_dim is not None and configured_dim != state_obs_dim:
             raise ValueError(
@@ -86,10 +204,35 @@ class Policy(nn.Module):
                 f"{self._cfg.state_obs} ({state_obs_dim}); set it to {state_obs_dim} or null"
             )
 
-        action_input_dim = vision_obs_dim + state_obs_dim
+        self.vision_encoder: BaseVisionEncoder | None = None
+        self.feature_fusion: BaseFusionModule | None = None
+        self.multimodal: nn.Module | None = None
+        # the multimodal fusion's output of the last `_features()` call (its experts' KL, weights)
+        self.last_fusion = None
+        if self._cfg.multimodal.fusion != "none":
+            self.multimodal = self._build_multimodal(state_obs_dim, state_obs_dims)
+            features_dim = self.multimodal.output_dim
+            vision_obs_dim = None
+            logger.info(
+                f"Multimodal fusion: {self._cfg.multimodal.fusion} of {self.multimodal.encoders.names}"
+            )
+        else:
+            self.vision_encoder = self._build_vision_encoder().to(device)
+            self.feature_fusion = self._build_fusion(
+                image_height=image_height, image_width=image_width
+            )
+            vision_obs_dim = self.feature_fusion.output_dim
+            features_dim = vision_obs_dim + state_obs_dim
+        self.memory = build_memory(self._cfg.memory, input_dim=features_dim)
+        action_input_dim = (
+            features_dim if self.memory is None else self.memory.output_dim
+        )
 
         logger.info(f"Vision obs dim: {vision_obs_dim}")
         logger.info(f"State obs dim: {state_obs_dim}")
+        logger.info(
+            f"Memory: {self._cfg.memory.type if self.memory is None else self.memory.name}"
+        )
 
         logger.info(f"Action head input dim: {action_input_dim}")
         self.action_head = self._build_mlp(
@@ -97,6 +240,17 @@ class Policy(nn.Module):
             hidden_dims=self._cfg.action_head_hidden_dims,
             output_dim=action_dim,
         )
+
+        self.latent_pose_head: nn.Sequential | None = None
+        if self._cfg.latent_pose_loss_weight > 0:
+            self.latent_pose_head = self._build_mlp(
+                input_dim=action_input_dim,
+                hidden_dims=self._cfg.latent_pose_hidden_dims,
+                output_dim=4,
+            )
+            logger.info(
+                f"Latent pose decoder, loss weight {self._cfg.latent_pose_loss_weight}"
+            )
 
         self.pose_head: nn.Sequential | None = None
         if self.use_pose_head:
@@ -109,13 +263,141 @@ class Policy(nn.Module):
             )
         self.to(device)
 
+    @property
+    def has_memory(self) -> bool:
+        return self.memory is not None
+
     def forward(
         self, rgb_obs: th.Tensor, state_obs: th.Tensor | None = None
     ) -> th.Tensor:
-        features = self.vision_encoder(rgb_obs)
-        fused = self.feature_fusion(features)
-        fused = th.cat([fused, state_obs], dim=-1)
-        return self.action_head(fused)
+        """The memoryless student's actions; with a memory see `step()` and `sequence()`."""
+        return self.forward_with_latent(rgb_obs, state_obs)[0]
+
+    def forward_with_latent(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+    ) -> tuple[th.Tensor, th.Tensor]:
+        """The memoryless student's actions and the action head's input."""
+        if self.has_memory:
+            raise RuntimeError("The student has a memory: use step() or sequence().")
+        latent = self._features(rgb_obs, state_obs)
+        return self.action_head(latent), latent
+
+    def predict_latent_pose(self, latent: th.Tensor) -> th.Tensor | None:
+        """[..., 4] the tee's planar pose from the action head's input, None without the decoder."""
+        if self.latent_pose_head is None:
+            return None
+        return self.latent_pose_head(latent)
+
+    def initial_memory_state(self, batch_size: int) -> MemoryState:
+        # the parameters' device: `self.device` is the one at the construction (before `.to()`)
+        device = next(self.parameters()).device
+        return self.memory.initial_state(batch_size, device)
+
+    def step(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        memory_state: MemoryState,
+        episode_starts: th.Tensor,
+        return_latent: bool = False,
+    ) -> tuple[th.Tensor, MemoryState] | tuple[th.Tensor, MemoryState, th.Tensor]:
+        """
+        One step of the student with a memory: the actions and the next memory state, reset first
+        for the `episode_starts` [batch] (bool); with `return_latent`, also the action head's input.
+        """
+        memory_state = self.memory.reset(memory_state, episode_starts)
+        features = self._features(rgb_obs, state_obs)
+        y, memory_state = self.memory.step(features, memory_state)
+        if return_latent:
+            return self.action_head(y), memory_state, y
+        return self.action_head(y), memory_state
+
+    def sequence(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        episode_starts: th.Tensor,
+        burn_in: int,
+        return_latents: bool = False,
+    ) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+        """
+        The actions [time - burn_in, batch, action_dim] on chunks [time, batch, ...] of episode
+        steps, from the initial memory state: the first `burn_in` steps only warm the state up
+        (without gradients), the state is reset at the `episode_starts` [time, batch]. With
+        `return_latents`, also the action head's inputs [time - burn_in, batch, ...].
+        """
+        batch_size = rgb_obs.shape[1]
+        state = self.initial_memory_state(batch_size)
+        if burn_in > 0:
+            with th.no_grad():
+                features = self._chunk_features(rgb_obs[:burn_in], state_obs[:burn_in])
+                _, state = self.memory.sequence(
+                    features, state, episode_starts[:burn_in]
+                )
+        features = self._chunk_features(rgb_obs[burn_in:], state_obs[burn_in:])
+        y, _ = self.memory.sequence(features, state, episode_starts[burn_in:])
+        actions = self.action_head(y)
+        return (actions, y) if return_latents else actions
+
+    def _features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
+        if self.multimodal is not None:
+            return self._multimodal_features(rgb_obs, state_obs)
+        fused = self.feature_fusion(self.vision_encoder(rgb_obs))
+        return th.cat([fused, state_obs], dim=-1)
+
+    def _multimodal_features(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+    ) -> th.Tensor:
+        inputs = {
+            camera_modality(i): camera
+            for i, camera in enumerate(rgb_obs.chunk(self.num_cameras, dim=1))
+        }
+        inputs |= dict(
+            zip(
+                self._state_obs_dims,
+                state_obs.split(list(self._state_obs_dims.values()), dim=-1),
+            )
+        )
+        out = self.multimodal(inputs)
+        self.last_fusion = out
+        # acting (collection, preview, evaluation runs without gradients): the joint's mean, a
+        # deterministic student; the sample only in the training step
+        if out.joint is not None and not th.is_grad_enabled():
+            return out.joint.mean
+        return out.latent
+
+    def expert_kl(self) -> th.Tensor | None:
+        """The experts' KL to N(0, I) of the last features, None without experts."""
+        if self.last_fusion is None or self.last_fusion.experts is None:
+            return None
+        return self.last_fusion.expert_kl()
+
+    def fusion_stats(self) -> dict[str, float]:
+        """
+        Of the last features, per modality: `share_<name>`, its share of the joint mean (the
+        normalized weighted precision, mean over the batch and the latent dims) and with gpoe
+        `weight_<name>`, its gate weight.
+        """
+        out = self.last_fusion
+        if out is None or out.experts is None:
+            return {}
+        names = self.multimodal.encoders.names + (
+            ["prior"] if self._cfg.multimodal.prior_expert else []
+        )
+        log_precision = -out.experts.log_var.detach()
+        if out.log_weights is not None:
+            log_precision = log_precision + out.log_weights.detach()
+        shares = th.softmax(log_precision, dim=-2).flatten(0, -3).mean(dim=(0, -1))
+        stats = {f"share_{n}": v.item() for n, v in zip(names, shares)}
+        if out.weights is not None:
+            weights = out.weights.detach().flatten(0, -3).mean(dim=(0, -1))
+            stats |= {f"weight_{n}": v.item() for n, v in zip(names, weights)}
+        return stats
+
+    def _chunk_features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
+        num_steps, batch_size = rgb_obs.shape[:2]
+        features = self._features(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
+        return features.view(num_steps, batch_size, -1)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
         if not self.use_pose_head:
@@ -132,11 +414,49 @@ class Policy(nn.Module):
         """Get the dtype of the policy's parameters."""
         return next(self.parameters()).dtype
 
+    def _vision_cfg(self) -> VisionEncoderCfg:
+        if self.fusion_type == "attention_spatial":
+            return self._cfg.vision_encoder_spatial
+        return self._cfg.vision_encoder
+
+    def _build_multimodal(
+        self, state_obs_dim: int, state_obs_dims: dict[str, int] | None
+    ) -> nn.Module:
+        if self.use_pose_head:
+            raise ValueError(
+                "use_pose_head reads the vision encoder's features: off with multimodal.fusion"
+            )
+        if self.encoder_type == "autoencoder":
+            raise ValueError(
+                "the autoencoder encoder doesn't go with multimodal.fusion"
+            )
+        names = list(self._cfg.state_obs)
+        if state_obs_dims is None:
+            if len(names) != 1:
+                raise ValueError(
+                    f"multimodal.fusion with the state_obs {names} needs state_obs_dims"
+                )
+            state_obs_dims = {names[0]: state_obs_dim}
+        if (
+            list(state_obs_dims) != names
+            or sum(state_obs_dims.values()) != state_obs_dim
+        ):
+            raise ValueError(
+                f"state_obs_dims {state_obs_dims} don't match state_obs {names} ({state_obs_dim})"
+            )
+        self._state_obs_dims = dict(state_obs_dims)
+        vision_cfg = self._vision_cfg()
+        return build_multimodal(
+            self._cfg.multimodal,
+            num_cameras=self.num_cameras,
+            cnn_builder=lambda: self._build_cnn(vision_cfg),
+            cnn_channels=vision_cfg.conv_layers[-1].out_channels,
+            state_obs_dims=self._state_obs_dims,
+        )
+
     def _build_vision_encoder(self) -> BaseVisionEncoder:
 
-        vision_cfg = self._cfg.vision_encoder
-        if self.fusion_type == "attention_spatial":
-            vision_cfg = self._cfg.vision_encoder_spatial
+        vision_cfg = self._vision_cfg()
 
         def cnn_builder() -> nn.Sequential:
             return self._build_cnn(vision_cfg)
@@ -270,7 +590,10 @@ class Policy(nn.Module):
 
 
 class ExperienceBuffer:
-    """A first-in-first-out buffer for experience replay."""
+    """
+    A first-in-first-out buffer for experience replay: a ring over the steps, each of all the envs,
+    so every env's column is in time order (the episode starts are stored for the memory students).
+    """
 
     def __init__(
         self,
@@ -305,6 +628,9 @@ class ExperienceBuffer:
         self._actions = th.empty(
             max_size, num_envs, action_dim, dtype=dtype, device=device
         )
+        self._episode_starts = th.zeros(
+            max_size, num_envs, dtype=th.bool, device=device
+        )
 
     def add(
         self,
@@ -312,13 +638,18 @@ class ExperienceBuffer:
         robot_pose: th.Tensor,
         object_poses: th.Tensor,
         actions: th.Tensor,
+        episode_starts: th.Tensor | None = None,
     ) -> None:
-        """Add experience to buffer."""
+        """Add experience to buffer; `episode_starts` [num_envs] marks the first steps of episodes."""
         self._ptr = (self._ptr + 1) % self._max_size
         self._rgb_obs[self._ptr] = self._encode_images(rgb_obs)
         self._robot_pose[self._ptr] = robot_pose
         self._object_poses[self._ptr] = object_poses
         self._actions[self._ptr] = actions
+        if episode_starts is None:
+            self._episode_starts[self._ptr] = False
+        else:
+            self._episode_starts[self._ptr] = episode_starts
         self._size = min(self._size + 1, self._max_size)
 
     def get_batches(
@@ -341,6 +672,53 @@ class ExperienceBuffer:
                     "robot_pose": self._robot_pose[batch_indices].flatten(0, 1),
                     "object_poses": self._object_poses[batch_indices].flatten(0, 1),
                     "actions": self._actions[batch_indices].flatten(0, 1),
+                }
+
+    def get_sequence_batches(
+        self,
+        num_mini_batches: int,
+        num_epochs: int,
+        sequence_length: int,
+        burn_in: int,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        Mini-batches of chunks in time order, `[burn_in + sequence_length, num_chunks, ...]` per
+        key, plus the `burn_in` actually used: while the buffer holds fewer steps, the chunks and
+        then the burn-in get shorter. Each epoch tiles every env's column with non-overlapping
+        trained parts at a random phase; the burn-in steps precede them (overlapping the previous
+        chunk's). A chunk never crosses the ring's write position (between the newest and the
+        oldest step).
+        """
+        length = min(sequence_length, self._size)
+        burn_in = min(burn_in, self._size - length)
+        # the physical index of the oldest step
+        oldest = (self._ptr - self._size + 1) % self._max_size
+        steps = th.arange(burn_in + length, device=self._device)
+        for _ in range(num_epochs):
+            phase = int(th.randint(0, length, (1,)))
+            # the logical starts of the trained parts, every one with a full burn-in before it
+            first = burn_in + (phase if burn_in + phase + length <= self._size else 0)
+            starts = th.arange(
+                first, self._size - length + 1, length, device=self._device
+            )
+            chunks = th.cartesian_prod(
+                starts, th.arange(self._num_envs, device=self._device)
+            )
+            chunks = chunks.view(-1, 2)[th.randperm(len(chunks), device=self._device)]
+            batch_size = max(1, math.ceil(len(chunks) / num_mini_batches))
+            for begin in range(0, len(chunks), batch_size):
+                batch = chunks[begin : begin + batch_size]
+                time_idx = (
+                    oldest + batch[:, 0].unsqueeze(0) - burn_in + steps.unsqueeze(1)
+                ) % self._max_size
+                env_idx = batch[:, 1].unsqueeze(0)
+                yield {
+                    "rgb_obs": self._decode_images(self._rgb_obs[time_idx, env_idx]),
+                    "robot_pose": self._robot_pose[time_idx, env_idx],
+                    "object_poses": self._object_poses[time_idx, env_idx],
+                    "actions": self._actions[time_idx, env_idx],
+                    "episode_starts": self._episode_starts[time_idx, env_idx],
+                    "burn_in": burn_in,
                 }
 
     def _encode_images(self, images: th.Tensor) -> th.Tensor:
@@ -371,7 +749,8 @@ class ExperienceBuffer:
         other_bytes = (state_dim + 7 + action_dim) * th.empty(
             0, dtype=dtype
         ).element_size()
-        return steps * (image_bytes + other_bytes)
+        episode_start_bytes = 1
+        return steps * (image_bytes + other_bytes + episode_start_bytes)
 
     def clear(self) -> None:
         """Clear the buffer."""
@@ -379,6 +758,7 @@ class ExperienceBuffer:
         self._robot_pose.zero_()
         self._object_poses.zero_()
         self._actions.zero_()
+        self._episode_starts.zero_()
         self._ptr = 0
         self._size = 0
 

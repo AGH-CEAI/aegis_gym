@@ -58,6 +58,15 @@ class _FakeEnv:
         return self.get_observations(), th.zeros(NUM_ENVS), dones, self.extras
 
 
+class _FixedStudent:
+    """A memoryless student with fixed actions."""
+
+    has_memory = False
+
+    def __call__(self, rgb: th.Tensor, state: th.Tensor) -> th.Tensor:
+        return th.tensor([[0.5, 0.0], [0.0, 0.0]])
+
+
 def _collecting_runner(
     teacher_mixing: bool, clip: bool = False, stored: list | None = None
 ) -> BehaviorCloningRunner:
@@ -71,9 +80,9 @@ def _collecting_runner(
     # env 0: the student is close to the teacher, env 1: far (the teacher takes over)
     teacher_actions = th.tensor([[0.5, 0.0], [2.0, 0.0]])
     runner._teacher = lambda obs: teacher_actions
-    runner._policy = lambda rgb, pose: th.tensor([[0.5, 0.0], [0.0, 0.0]])
+    runner._policy = _FixedStudent()
     stored = stored if stored is not None else []
-    runner._buffer = SimpleNamespace(add=lambda *args: stored.append(args))
+    runner._buffer = SimpleNamespace(add=lambda *args, **kwargs: stored.append(args))
     return runner
 
 
@@ -166,6 +175,7 @@ def test_buffer_memory_estimate_matches_the_allocation():
             buffer._robot_pose,
             buffer._object_poses,
             buffer._actions,
+            buffer._episode_starts,
         )
     )
 

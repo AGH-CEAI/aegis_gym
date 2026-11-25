@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch as th
 
+from aegis_gym.config.types import Modality
 from aegis_gym.runners.policy_eval import (
     PolicyEvaluator,
     _episode_rows,
@@ -217,3 +218,47 @@ def test_episode_rows_take_the_env_flags_from_its_episode_rates():
     assert [row["episode_length_s"] for row in rows] == [2.0, 3.0]
     assert "success_rate" not in rows[0] and "rew_progress" not in rows[0]
     assert PolicyEvaluator._summarize(rows)["tee_off_table_rate"] == 0.5
+
+
+class _TeeEnv(_SeededEnv):
+    """The tee at the origin with the yaw 0 in every env."""
+
+    def __init__(self):
+        super().__init__()
+        self._tee_pose = th.zeros(NUM_ENVS, 7)
+        self._tee_pose[:, 3] = 1.0  # wxyz
+
+    def get_modality_observation(self, modality: Modality) -> th.Tensor:
+        assert modality == Modality.OBJECT_POSE
+        return self._tee_pose
+
+
+class _DecodingPolicy:
+    """Predicts the tee 3 cm off in x (0.3 dm), with the right yaw."""
+
+    def __init__(self):
+        self.latent_pose = th.tensor([[0.3, 0.0, 0.0, 1.0]]).repeat(NUM_ENVS, 1)
+
+    def __call__(self, obs: th.Tensor) -> th.Tensor:
+        return th.zeros(NUM_ENVS, 2)
+
+
+def test_latent_pose_errors_are_recorded_per_episode(tmp_path):
+    metrics = _evaluator(_TeeEnv(), tmp_path).evaluate(
+        policy=_DecodingPolicy(), iteration=0
+    )
+
+    assert metrics["mean_latent_pose_err_cm"] == pytest.approx(3.0, abs=1e-4)
+    assert metrics["mean_latent_pose_yaw_err_deg"] == pytest.approx(0.0, abs=1e-4)
+    with (tmp_path / "policy_eval_000000.csv").open() as f:
+        rows = list(csv.DictReader(f))
+    assert all(
+        float(r["latent_pose_err_cm"]) == pytest.approx(3.0, abs=1e-4) for r in rows
+    )
+
+
+def test_policies_without_a_latent_pose_record_no_pose_errors(tmp_path):
+    metrics = _evaluator(_TeeEnv(), tmp_path).evaluate(
+        policy=lambda obs: th.zeros(NUM_ENVS, 2), iteration=0
+    )
+    assert "mean_latent_pose_err_cm" not in metrics

@@ -11,10 +11,12 @@ from clearml import Task
 from tqdm import tqdm
 
 from aegis_gym.aux.logging import get_logger
+from aegis_gym.config.types import Modality
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import innermost_env
 
-from .policy_preview import InferencePolicy
+from .bc_policy import latent_pose_errors
+from .policy_preview import InferencePolicy, LatentPosePolicy
 
 EpisodeRow = dict[str, float | int | bool]
 
@@ -176,10 +178,23 @@ class PolicyEvaluator:
                 active = th.ones(num, dtype=th.bool, device=base.device)
                 returns = th.zeros(num, device=base.device)
                 lengths = th.zeros(num, dtype=th.long, device=base.device)
+                # the latent pose decoder's errors summed over the episode's steps
+                pose_errors = th.zeros(num, 2, device=base.device)
 
                 for step in range(max_steps):
                     self._reseed(wave, 2 * step + 1)
                     actions = policy(obs)
+                    latent_pose = (
+                        policy.latent_pose
+                        if isinstance(policy, LatentPosePolicy)
+                        else None
+                    )
+                    if latent_pose is not None:
+                        errors = latent_pose_errors(
+                            latent_pose[:num],
+                            base.get_modality_observation(Modality.OBJECT_POSE)[:num],
+                        )
+                        pose_errors += th.stack(errors, dim=-1) * active.unsqueeze(-1)
                     self._reseed(wave, 2 * step + 2)
                     obs, rewards, dones, extras = base.step(actions)
 
@@ -187,7 +202,7 @@ class PolicyEvaluator:
                     lengths += active.long()
                     ended = dones[:num].bool() & active
                     if ended.any():
-                        rows += _episode_rows(
+                        ended_rows = _episode_rows(
                             ended=ended,
                             dones=dones.bool(),
                             extras=extras,
@@ -196,6 +211,14 @@ class PolicyEvaluator:
                             lengths=lengths,
                             policy_dt=policy_dt,
                         )
+                        if latent_pose is not None:
+                            _add_latent_pose_errors(
+                                ended_rows,
+                                th.nonzero(ended).flatten(),
+                                pose_errors,
+                                lengths,
+                            )
+                        rows += ended_rows
                         progress.update(int(ended.sum()))
                     active &= ~ended
                     if not active.any():
@@ -295,6 +318,19 @@ class PolicyEvaluator:
         self._logger.info(
             f"The task {task.id} is {status}: the CSV is the artifact `{name}` of {current.id}."
         )
+
+
+def _add_latent_pose_errors(
+    rows: list[EpisodeRow],
+    envs: th.Tensor,
+    pose_errors: th.Tensor,
+    lengths: th.Tensor,
+) -> None:
+    """The episode means of the latent pose decoder's errors, into the `rows` of the `envs`."""
+    for row, i in zip(rows, envs.tolist(), strict=True):
+        mean = pose_errors[i] / max(int(lengths[i]), 1)
+        row["latent_pose_err_cm"] = 100 * float(mean[0])
+        row["latent_pose_yaw_err_deg"] = math.degrees(float(mean[1]))
 
 
 def _episode_rows(

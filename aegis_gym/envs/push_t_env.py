@@ -232,6 +232,7 @@ class PushTEnv(BaseEnv):
         return {
             **super()._build_state_obs_fns(),
             "reference_offset": self._observe_reference_offset,
+            "contact_force": self._observe_contact_force,
             "tee_pose": self._observe_planar_tee_pose,
             "goal_pose": self._observe_planar_goal_pose,
         }
@@ -252,6 +253,15 @@ class PushTEnv(BaseEnv):
     def _observe_planar_goal_pose(self) -> th.Tensor:
         """[N, 4] the goal in the world frame, (x, y, sin yaw, cos yaw)."""
         return planar_pose(self.goal_pose[:, :2], self.goal_yaw)
+
+    def _observe_contact_force(self) -> th.Tensor:
+        """
+        [N, 2] the tared F/T force in the world XY, scaled to the A1 spring deflection [m] by
+        `force_obs_scale`; deployable (the F/T sensor over the gRPC bridge).
+        """
+        sensor_quat = self.get_modality_observation(Modality.TCP_POSE)[:, 3:]
+        force = transform_by_quat(self.manipulator.get_ft_wrench()[:, :3], sensor_quat)
+        return force[:, :2] * self.force_obs_scale
 
     def _observe_camera_scene(self) -> th.Tensor:
         return self.manipulator.get_camera_image(camera=CameraName.CAMERA_SCENE)
@@ -775,11 +785,7 @@ class PushTEnv(BaseEnv):
         if self.observe_reference:
             obs_components.append(self._observe_reference_offset())
         if self.observe_force:
-            force = transform_by_quat(
-                self.manipulator.get_ft_wrench()[:, :3],
-                obs[Modality.TCP_POSE][:, 3:],  # the sensor's output frame
-            )
-            obs_components.append(force[:, :2] * self.force_obs_scale)
+            obs_components.append(self._observe_contact_force())
         obs_tensor = th.cat(obs_components, dim=-1)
         self.extras["observations"]["critic"] = obs_tensor
         return obs_tensor

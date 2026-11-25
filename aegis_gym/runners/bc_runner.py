@@ -24,12 +24,16 @@ from aegis_gym.config.types import (
     Modality,
 )
 from aegis_gym.envs import BaseEnv
+from aegis_gym.envs.wrappers import innermost_env
 
 from .base_runner import BasePolicyRunner
 from .bc_policy import (
     ExperienceBuffer,
+    MemoryState,
     Policy,
     ResetLastLayerTarget,
+    latent_pose_errors,
+    latent_pose_target,
 )
 from .writer_cfg import resolve_log_writer_cfg
 
@@ -81,9 +85,18 @@ class BehaviorCloningRunner(BasePolicyRunner):
         self._use_teacher_mixing = self.cfg_train.use_teacher_mixing
         self._clip_teacher_actions = self.cfg_train.clip_teacher_actions
         self._state_obs = self.cfg_train.policy.state_obs
+        self._memory_cfg = self.cfg_train.policy.memory
+        self._memory_state: MemoryState | None = None
         get_logger("BCRunner").info(
             f"Student inputs {self._state_obs}, clipped teacher labels "
-            f"{self._clip_teacher_actions}, image buffer {self.cfg_train.image_buffer_dtype}"
+            f"{self._clip_teacher_actions}, image buffer {self.cfg_train.image_buffer_dtype}, "
+            f"memory {self._memory_cfg.type}"
+            + (
+                ""
+                if self._memory_cfg.type == "none"
+                else f" (residual {self._memory_cfg.residual}, chunks of "
+                f"{self._memory_cfg.sequence_length} + burn-in {self._memory_cfg.burn_in})"
+            )
         )
 
         encoder_type = self.cfg_train.policy.encoder_type
@@ -112,7 +125,10 @@ class BehaviorCloningRunner(BasePolicyRunner):
         cfg = ConfigManager.get_config()
         im_h, im_w = cfg.env_cfg.image_resolution
 
-        state_dim = self.env.get_state_obs(self._state_obs).shape[-1]
+        state_obs_dims = {
+            name: self.env.get_state_obs([name]).shape[-1] for name in self._state_obs
+        }
+        state_dim = sum(state_obs_dims.values())
 
         # Multi-task policy with action and pose heads
         self._policy = Policy(
@@ -123,6 +139,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             image_height=im_h,
             image_width=im_w,
             device=self.device,
+            state_obs_dims=state_obs_dims,
         )
 
         # Initialize optimizer
@@ -157,31 +174,56 @@ class BehaviorCloningRunner(BasePolicyRunner):
             * self.env.num_envs
             // self.cfg_train.num_mini_batches
         )
-        rgb_shape = (batch_size, *self._buffer.img_shape)
+        # with a memory: the chunks of the trained steps, each with its burn-in steps before
+        memory = self._memory_cfg
+        num_chunks = math.ceil(batch_size / memory.sequence_length)
+        lead = (
+            (memory.burn_in + memory.sequence_length, num_chunks)
+            if self._policy.has_memory
+            else (batch_size,)
+        )
+
+        def zeros(*shape: int) -> th.Tensor:
+            return th.zeros(*lead, *shape, dtype=self._policy.dtype, device=self.device)
+
         batch = {
-            "rgb_obs": th.zeros(
-                rgb_shape, dtype=self._policy.dtype, device=self.device
-            ),
-            "robot_pose": th.zeros(
-                batch_size,
-                self._buffer.state_dim,
-                dtype=self._policy.dtype,
-                device=self.device,
-            ),
+            "rgb_obs": zeros(*self._buffer.img_shape),
+            "robot_pose": zeros(self._buffer.state_dim),
         }
         # the dummy batch must not move the BatchNorm statistics
         state = copy.deepcopy(self._policy.state_dict())
         th.cuda.reset_peak_memory_stats(self.device)
         try:
-            loss = self._policy(batch["rgb_obs"], batch["robot_pose"]).sum()
+            if self._policy.has_memory:
+                starts = th.zeros(lead, dtype=th.bool, device=self.device)
+                actions, latent = self._policy.sequence(
+                    batch["rgb_obs"],
+                    batch["robot_pose"],
+                    starts,
+                    memory.burn_in,
+                    return_latents=True,
+                )
+                latent = latent.flatten(0, 1)
+                batch = {k: v[memory.burn_in :].flatten(0, 1) for k, v in batch.items()}
+            else:
+                actions, latent = self._policy.forward_with_latent(
+                    batch["rgb_obs"], batch["robot_pose"]
+                )
+            loss = actions.sum()
+            pred_latent_pose = self._policy.predict_latent_pose(latent)
+            if pred_latent_pose is not None:
+                loss = loss + pred_latent_pose.sum()
             for pred_pose in self._policy.predict_pose(batch["rgb_obs"]):
                 loss = loss + pred_pose.sum()
             loss = loss + self._compute_recon_loss(batch)[0]
+            expert_kl = self._policy.expert_kl()
+            if expert_kl is not None:
+                loss = loss + expert_kl
             loss.backward()
         except th.cuda.OutOfMemoryError as e:
             free, total = th.cuda.mem_get_info(self.device)
             raise RuntimeError(
-                f"A full mini-batch ({batch_size} samples = buffer_size "
+                f"A full mini-batch ({batch_size} trained samples = buffer_size "
                 f"{self.cfg_train.buffer_size} x {self.env.num_envs} envs / num_mini_batches "
                 f"{self.cfg_train.num_mini_batches}) doesn't fit into the GPU ({total / gb:.1f} "
                 "GB). Use fewer envs, a smaller `buffer_size` or more `num_mini_batches`."
@@ -228,6 +270,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
         eval_interval: int = 0,
     ) -> None:
         self._buffer.clear()
+        self._memory_state = None
         self._check_update_fits()
         use_preview = preview is not None and preview_interval > 0
         use_eval = evaluate is not None and eval_interval > 0
@@ -247,22 +290,53 @@ class BehaviorCloningRunner(BasePolicyRunner):
             total_recon_loss = 0.0
             total_pose_pos_err = 0.0
             total_pose_rot_err = 0.0
+            total_latent_pose_loss = th.tensor(0.0, device=self.device)
+            total_latent_pose_pos_err = 0.0
+            total_latent_pose_yaw_err = 0.0
+            total_expert_kl = th.tensor(0.0, device=self.device)
+            total_expert_kl_loss = th.tensor(0.0, device=self.device)
+            fusion_sums: dict[str, float] = {}
             num_batches = 0
             last_recons = None
             last_batch = None
 
             start_time = time.time()
-            generator = self._buffer.get_batches(
-                self.cfg_train.num_mini_batches, self.cfg_train.num_epochs
-            )
-
-            for batch in generator:
+            for batch in self._training_batches():
                 # Forward pass for both action and pose prediction
-                pred_action = self._policy(batch["rgb_obs"], batch["robot_pose"])
+                if self._policy.has_memory:
+                    pred_action, latent, batch = self._predict_chunk_actions(batch)
+                else:
+                    pred_action, latent = self._policy.forward_with_latent(
+                        batch["rgb_obs"], batch["robot_pose"]
+                    )
                 pred_poses = self._policy.predict_pose(batch["rgb_obs"])
+                latent_pose_loss = th.tensor(0.0, device=self.device)
+                pred_latent_pose = self._policy.predict_latent_pose(latent)
+                if pred_latent_pose is not None:
+                    latent_pose_loss = self.cfg_train.policy.latent_pose_loss_weight * (
+                        F.mse_loss(
+                            pred_latent_pose, latent_pose_target(batch["object_poses"])
+                        )
+                    )
+                    pos_err, yaw_err = latent_pose_errors(
+                        pred_latent_pose.detach(), batch["object_poses"]
+                    )
+                    total_latent_pose_pos_err += pos_err.mean().item()
+                    total_latent_pose_yaw_err += yaw_err.mean().item()
 
                 # Compute action prediction loss
                 action_loss = F.mse_loss(pred_action, batch["actions"])
+
+                # the multimodal fusion's experts: their KL to N(0, I), weighted into the loss
+                expert_kl_loss = th.tensor(0.0, device=self.device)
+                expert_kl = self._policy.expert_kl()
+                if expert_kl is not None:
+                    expert_kl_loss = (
+                        self.cfg_train.policy.multimodal.kl_weight * expert_kl
+                    )
+                    total_expert_kl += expert_kl.detach()
+                    for name, value in self._policy.fusion_stats().items():
+                        fusion_sums[name] = fusion_sums.get(name, 0.0) + value
 
                 # Compute pose estimation loss (position + orientation)
                 pose_loss = th.tensor(0.0, device=self.device)
@@ -285,7 +359,13 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     last_batch = batch
 
                 # Combined loss with weights
-                total_loss = action_loss + pose_loss + recon_loss
+                total_loss = (
+                    action_loss
+                    + pose_loss
+                    + recon_loss
+                    + latent_pose_loss
+                    + expert_kl_loss
+                )
 
                 # Backward pass
                 self._optimizer.zero_grad()
@@ -298,6 +378,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 total_action_loss += action_loss
                 total_pose_loss += pose_loss
                 total_recon_loss += recon_loss
+                total_latent_pose_loss += latent_pose_loss.detach()
+                total_expert_kl_loss += expert_kl_loss.detach()
                 num_batches += 1
 
             self._save_reconstructions(batch=last_batch, recons=last_recons, it=it)
@@ -313,6 +395,18 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 bc_stats["pose_rot_err_deg"] = math.degrees(
                     total_pose_rot_err / num_batches
                 )
+            if self._policy.latent_pose_head is not None:
+                bc_stats["latent_pose_pos_err_cm"] = (
+                    100 * total_latent_pose_pos_err / num_batches
+                )
+                bc_stats["latent_pose_yaw_err_deg"] = math.degrees(
+                    total_latent_pose_yaw_err / num_batches
+                )
+
+            if self._policy.multimodal is not None and fusion_sums:
+                bc_stats["expert_kl"] = total_expert_kl.item() / num_batches
+                for name, value in fusion_sums.items():
+                    bc_stats[f"fusion_{name}"] = value / num_batches
 
             if self.logger is not None:
                 self._log_metrics(
@@ -320,6 +414,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     avg_action_loss=total_action_loss / num_batches,
                     avg_pose_loss=total_pose_loss / num_batches,
                     avg_recon_loss=total_recon_loss / num_batches,
+                    avg_latent_pose_loss=total_latent_pose_loss / num_batches,
+                    avg_expert_kl_loss=total_expert_kl_loss / num_batches,
                     current_lr=self._optimizer.param_groups[0]["lr"],
                     fps=(self._num_steps_per_env * self.env.num_envs) / (forward_time),
                     forward_time=forward_time,
@@ -372,6 +468,41 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 f" Iteration = {self._best_model_iter}\n"
                 f" {_format_score(self._best_model_score)}\n"
             )
+
+    def _training_batches(self):
+        """The buffer's mini-batches: shuffled steps, or chunks in time order with a memory."""
+        if not self._policy.has_memory:
+            return self._buffer.get_batches(
+                self.cfg_train.num_mini_batches, self.cfg_train.num_epochs
+            )
+        return self._buffer.get_sequence_batches(
+            num_mini_batches=self.cfg_train.num_mini_batches,
+            num_epochs=self.cfg_train.num_epochs,
+            sequence_length=self._memory_cfg.sequence_length,
+            burn_in=self._memory_cfg.burn_in,
+        )
+
+    def _predict_chunk_actions(
+        self, batch: dict[str, Any]
+    ) -> tuple[th.Tensor, th.Tensor, dict[str, th.Tensor]]:
+        """
+        The student's actions and the action head's inputs on a mini-batch of chunks, and the
+        batch of the trained (after the burn-in) steps, flattened as the memoryless mini-batches.
+        """
+        burn_in = batch["burn_in"]
+        actions, latents = self._policy.sequence(
+            batch["rgb_obs"],
+            batch["robot_pose"],
+            batch["episode_starts"],
+            burn_in,
+            return_latents=True,
+        )
+        trained = {
+            key: value[burn_in:].flatten(0, 1)
+            for key, value in batch.items()
+            if isinstance(value, th.Tensor) and key != "episode_starts"
+        }
+        return actions.flatten(0, 1), latents.flatten(0, 1), trained
 
     def _discard_interrupted_episodes(self) -> None:
         """
@@ -467,9 +598,14 @@ class BehaviorCloningRunner(BasePolicyRunner):
 
                 state = self.env.get_state_obs(self._state_obs)
                 object_pose = self.env.get_modality_observation(Modality.OBJECT_POSE)
-                self._buffer.add(rgb_obs, state, object_pose, label)
+                episode_starts = _episode_starts(self.env, like=label)
+                self._buffer.add(
+                    rgb_obs, state, object_pose, label, episode_starts=episode_starts
+                )
 
-                student_action = self._policy(rgb_obs.float(), state)
+                student_action = self._student_step(
+                    rgb_obs.float(), state, episode_starts
+                )
 
                 action = student_action
                 if self._use_teacher_mixing:
@@ -515,6 +651,19 @@ class BehaviorCloningRunner(BasePolicyRunner):
         if self._use_teacher_mixing:
             stats["teacher_intervention_rate"] = sums["intervention"] / n
         return stats
+
+    def _student_step(
+        self, rgb_obs: th.Tensor, state: th.Tensor, episode_starts: th.Tensor
+    ) -> th.Tensor:
+        """The student's actions in the rollouts; a memory's state is carried across iterations."""
+        if not self._policy.has_memory:
+            return self._policy(rgb_obs, state)
+        if self._memory_state is None:
+            self._memory_state = self._policy.initial_memory_state(rgb_obs.shape[0])
+        action, self._memory_state = self._policy.step(
+            rgb_obs, state, self._memory_state, episode_starts
+        )
+        return action
 
     def _compute_recon_loss(
         self, batch: dict[str, th.Tensor]
@@ -601,12 +750,32 @@ class BehaviorCloningRunner(BasePolicyRunner):
         forward_time: float,
         backward_time: float,
         bc_stats: dict[str, float],
+        avg_latent_pose_loss: th.Tensor | None = None,
+        avg_expert_kl_loss: th.Tensor | None = None,
     ) -> None:
-        total_loss = avg_action_loss + avg_pose_loss + avg_recon_loss
+        if avg_latent_pose_loss is None:
+            avg_latent_pose_loss = th.zeros_like(avg_action_loss)
+        if avg_expert_kl_loss is None:
+            avg_expert_kl_loss = th.zeros_like(avg_action_loss)
+        total_loss = (
+            avg_action_loss
+            + avg_pose_loss
+            + avg_recon_loss
+            + avg_latent_pose_loss
+            + avg_expert_kl_loss
+        )
 
         self.logger.writer.add_scalar("Loss/action", avg_action_loss.item(), it)
         self.logger.writer.add_scalar("Loss/pose", avg_pose_loss.item(), it)
         self.logger.writer.add_scalar("Loss/recon", avg_recon_loss.item(), it)
+        if self._policy.latent_pose_head is not None:
+            self.logger.writer.add_scalar(
+                "Loss/latent_pose", avg_latent_pose_loss.item(), it
+            )
+        if self._policy.multimodal is not None and self._policy.multimodal.num_experts:
+            self.logger.writer.add_scalar(
+                "Loss/expert_kl", avg_expert_kl_loss.item(), it
+            )
         self.logger.writer.add_scalar("Loss/total", total_loss.item(), it)
         self.logger.writer.add_scalar("Train/learning_rate", current_lr, it)
         self.logger.writer.add_scalar("Train/buffer_size", self._buffer.size, it)
@@ -762,6 +931,17 @@ class BehaviorCloningRunner(BasePolicyRunner):
 _IMAGE_BUFFER_DTYPES = {"float32": th.float32, "uint8": th.uint8}
 # the rest of the free GPU memory is left for the training (activations, optimizer)
 _BUFFER_MAX_FREE_SHARE = 0.7
+
+
+def _episode_starts(env: BaseEnv, like: th.Tensor) -> th.Tensor:
+    """
+    [num_envs] whether the env's current step is the first of its episode (all False for an env
+    without the episode counter); `like` [num_envs, ...] gives the size and device then.
+    """
+    episode_length = getattr(innermost_env(env), "episode_length_buf", None)
+    if episode_length is None:
+        return th.zeros(like.shape[0], dtype=th.bool, device=like.device)
+    return episode_length == 0
 
 
 def _flatten_dict(d: dict, prefix: str = "") -> dict[str, Any]:
