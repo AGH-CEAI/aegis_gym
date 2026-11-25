@@ -2,7 +2,6 @@ import sys
 from pathlib import Path
 
 import cv2  # noqa: F401
-import genesis as gs
 import torch as th
 from clearml import Task
 
@@ -244,6 +243,9 @@ def create_env(cfg: ExpConfig) -> BaseEnv:
 
     scene = None
     if control_type == Control.SIM:
+        # the `sim-genesis` extra: importing train/eval needs no simulator (e.g. the tests)
+        import genesis as gs
+
         gs.init(logging_level="info", precision="32", seed=cfg.rl_cfg.seed)
         scene = GenesisScene(cfg=cfg, device=cfg.get_device())
     if control_type == Control.ROS:
