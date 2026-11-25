@@ -3,7 +3,7 @@ import math
 import pytest
 import torch as th
 
-from aegis_gym.envs.push_t_visibility import (
+from aegis_gym.envs.utils.push_t_visibility import (
     TEE_RECTANGLES,
     place_tee_points,
     project_points,
