@@ -174,6 +174,7 @@ def test_buffer_memory_estimate_matches_the_allocation():
             buffer._rgb_obs,
             buffer._robot_pose,
             buffer._object_poses,
+            buffer._goal_poses,
             buffer._actions,
             buffer._episode_starts,
         )
