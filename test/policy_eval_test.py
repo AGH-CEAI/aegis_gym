@@ -262,3 +262,33 @@ def test_policies_without_a_latent_pose_record_no_pose_errors(tmp_path):
         policy=lambda obs: th.zeros(NUM_ENVS, 2), iteration=0
     )
     assert "mean_latent_pose_err_cm" not in metrics
+
+
+def test_an_image_condition_is_in_the_titles_and_reads_the_images_through_the_wrappers(
+    tmp_path,
+):
+    nominal = _evaluator(_SeededEnv(), tmp_path)
+    blackout = PolicyEvaluator(
+        env=_SeededEnv(), seeds=SEEDS, out_dir=tmp_path, condition="blackout_cam_scene"
+    )
+
+    assert blackout.title_suffix == "_blackout_cam_scene"
+    assert blackout.augments_images and not nominal.augments_images
+
+
+def test_the_gate_statistics_are_the_mean_over_the_steps(tmp_path):
+    weights = iter([0.2, 0.4] * 100)
+
+    class _GatedPolicy:
+        def __call__(self, obs: th.Tensor) -> th.Tensor:
+            self.weight = next(weights)
+            return th.zeros(NUM_ENVS, 2)
+
+        def fusion_stats(self) -> dict[str, float]:
+            return {"weight_cam_scene": self.weight}
+
+    metrics = _evaluator(_SeededEnv(), tmp_path).evaluate(
+        policy=_GatedPolicy(), iteration=0, titles=["eval"]
+    )
+
+    assert metrics["gate_weight_cam_scene"] == pytest.approx(0.3, abs=0.02)

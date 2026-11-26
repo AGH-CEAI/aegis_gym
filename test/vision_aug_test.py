@@ -254,3 +254,18 @@ def test_unknown_dropout_fill_is_rejected():
 
     with pytest.raises(ValueError, match="checkerboard"):
         wrapper._augment(_images())
+
+
+def test_only_the_listed_cameras_drop():
+    wrapper = _wrapper(
+        _no_photometric(
+            camera_dropout=CameraDropoutCfg(prob=1.0, cameras=["cam_scene"])
+        )
+    )
+
+    out = wrapper._augment(_images())
+
+    assert (out["cam_scene"] == 0.0).all()
+    assert all(
+        (out[m.value] == 0.5).all() for m in IMAGE_MODALITIES if m.value != "cam_scene"
+    )

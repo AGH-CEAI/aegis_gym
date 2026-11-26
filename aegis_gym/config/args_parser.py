@@ -64,6 +64,8 @@ class LaunchArgs:
     evaluate_checkpoints: bool | None = None
     eval_episodes: int | None = None
     eval_dr_seed: int | None = None
+    eval_camera_blackout: str | None = None
+    eval_blackout_fill: str | None = None
 
     def get_raw_args(self) -> Any:
         return self._args_raw
@@ -295,6 +297,21 @@ def parse_arguments(
         ),
     )
 
+    p.add_argument(
+        "--eval-camera-blackout",
+        default=None,
+        help=(
+            "With `--evaluate-checkpoints`: this camera (e.g. `cam_scene`) replaced in every episode "
+            "(`--eval-blackout-fill`), the policy not told; reported as `..._blackout_<camera>` with "
+            "the gPoE gate weights (`gate_weight_<modality>`). The nominal domain only."
+        ),
+    )
+    p.add_argument(
+        "--eval-blackout-fill",
+        default=None,
+        help="With `--eval-camera-blackout`: black, color (a solid colour per episode; default) or noise.",
+    )
+
     if extra_argparser is not None:
         extra_argparser(p)
 
@@ -349,4 +366,6 @@ def parse_arguments(
         evaluate_checkpoints=args.evaluate_checkpoints,
         eval_episodes=args.eval_episodes,
         eval_dr_seed=args.eval_dr_seed,
+        eval_camera_blackout=args.eval_camera_blackout,
+        eval_blackout_fill=args.eval_blackout_fill,
     )

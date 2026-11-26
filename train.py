@@ -120,6 +120,7 @@ def create_policy_evaluator(
     num_episodes: int | None = None,
     report_task: Task | None = None,
     out_dir: Path | None = None,
+    condition: str = "",
 ) -> PolicyEvaluator | None:
     """
     The evaluator of the student during the training (`final=False`) or of the trained models on
@@ -154,6 +155,7 @@ def create_policy_evaluator(
         out_dir=out_dir or Path(cfg_log.local_log_dir) / "policy_eval",
         domain_randomization_seed=domain_randomization_seed,
         report_task=report_task,
+        condition=condition,
     )
 
 
@@ -173,7 +175,7 @@ def evaluate_bc_student(
             env=env,
             bc_policy=student,
             state_obs=cfg.bc_cfg.policy.state_obs,
-            augment_images=evaluator.randomizes_domain,
+            augment_images=evaluator.augments_images,
         ),
         iteration=iteration,
         **evaluate_kwargs,

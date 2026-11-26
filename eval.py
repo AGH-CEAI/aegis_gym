@@ -20,9 +20,13 @@ from aegis_gym.config import (
     parse_arguments,
 )
 from aegis_gym.config.types import (
+    IMAGE_MODALITIES,
     POLICY_PREVIEW_SEEDS,
     Algorithm,
+    CameraDropoutCfg,
+    CutoutCfg,
     ExpConfig,
+    ImageAugCfg,
 )
 from aegis_gym.envs import BaseEnv
 from aegis_gym.envs.wrappers import ObsPreviewEnvWrapper, VisionAugEnvWrapper
@@ -187,7 +191,21 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
         num_episodes = DEFAULT_FINAL_EVAL_EPISODES
 
     is_bc = args.algorithm == Algorithm.BC
-    if is_bc and args.eval_dr_seed is not None and cfg.dr_cfg.enabled:
+    condition = ""
+    if is_bc and args.eval_camera_blackout:
+        if args.eval_dr_seed is not None:
+            raise ValueError(
+                "`--eval-camera-blackout` runs in the nominal domain, without `--eval-dr-seed`."
+            )
+        env = VisionAugEnvWrapper(
+            env=env,
+            cfg_image_aug=camera_blackout_aug(
+                args.eval_camera_blackout, args.eval_blackout_fill or "color"
+            ),
+            cfg_env=cfg.env_cfg,
+        )
+        condition = f"blackout_{args.eval_camera_blackout}"
+    elif is_bc and args.eval_dr_seed is not None and cfg.dr_cfg.enabled:
         env = VisionAugEnvWrapper(
             env=env, cfg_image_aug=cfg.dr_cfg.image_aug, cfg_env=cfg.env_cfg
         )
@@ -200,6 +218,7 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
         report_task=target,
         # per task: the evaluations of several tasks in one experiment don't overwrite each other
         out_dir=Path(cfg.logger_cfg.local_log_dir) / "policy_eval" / target.id,
+        condition=condition,
     )
     if evaluator is None:
         raise RuntimeError("The policy evaluation isn't available for this setup.")
@@ -249,6 +268,25 @@ def evaluate_checkpoints(env: BaseEnv, cfg: ExpConfig, target: Task) -> None:
             )
         target.flush(wait_for_uploads=True)
     logger.info(f"Evaluation reported to: {target.get_output_log_web_page()}")
+
+
+def camera_blackout_aug(camera: str, fill: str) -> ImageAugCfg:
+    """Only `camera` replaced (`fill`) for whole episodes, no other image augmentation."""
+    if camera not in {m.value for m in IMAGE_MODALITIES}:
+        raise ValueError(
+            f"Unknown camera '{camera}', available: {[m.value for m in IMAGE_MODALITIES]}"
+        )
+    return ImageAugCfg(
+        enabled=True,
+        brightness_jitter=0.0,
+        contrast_jitter=0.0,
+        gaussian_noise_std=0.0,
+        gamma_range=0.0,
+        channel_jitter=0.0,
+        blur_prob=0.0,
+        cutout=CutoutCfg(prob=0.0),
+        camera_dropout=CameraDropoutCfg(prob=1.0, fill=fill, cameras=[camera]),
+    )
 
 
 def make_checkpoint_runner_loader(

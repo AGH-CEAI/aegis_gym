@@ -25,6 +25,7 @@ image_aug:
         min_steps: 0
         max_steps: 0
         fill: "black"  # black, color, noise (new per frame), freeze (the last image before the drop)
+        cameras: []  # the cameras that may drop, e.g. ["cam_scene"]; empty: all
 pd_gains:
     enabled: True
     kp_noise: 0.10

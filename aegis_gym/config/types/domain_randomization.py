@@ -26,6 +26,8 @@ class CameraDropoutCfg(BaseCfg):
     # black, color (a random solid colour per camera), noise (uniform, new per frame), freeze (the last image
     # before the drop, as a stalled stream)
     fill: str = "black"
+    # the cameras that may drop (`CameraName` values, e.g. "cam_scene"); empty: all
+    cameras: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True, frozen=True)

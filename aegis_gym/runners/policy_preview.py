@@ -330,6 +330,11 @@ class VisualBCPolicy(LatentPosePolicy):
             self.latent_pose = self._student.predict_latent_pose(latent)
         return actions
 
+    def fusion_stats(self) -> dict[str, float]:
+        """The student's gPoE statistics of the last step (`Policy.fusion_stats()`), {} without."""
+        stats = getattr(self._student, "fusion_stats", None)
+        return stats() if stats is not None else {}
+
 
 def make_visual_bc_policy(
     env: BaseEnv,

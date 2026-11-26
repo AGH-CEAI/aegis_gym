@@ -55,13 +55,19 @@ class PolicyEvaluator:
         out_dir: Path,
         domain_randomization_seed: int | None = None,
         report_task: Task | None = None,
+        condition: str = "",
     ):
+        """
+        `condition`: an image condition set up by the caller in the `env`'s wrappers (e.g. a camera
+        blacked out by the `VisionAugEnvWrapper`), appended to the titles (`_<condition>`).
+        """
         self._env = env
         self._base = innermost_env(env)
         self._seeds = list(seeds)
         self._out_dir = Path(out_dir)
         self._dr_seed = domain_randomization_seed
         self._report_task = report_task
+        self._condition = condition
         self._logger = get_logger("PolicyEval")
         if not self._seeds:
             raise ValueError("The policy evaluation needs at least one seed.")
@@ -77,7 +83,13 @@ class PolicyEvaluator:
     @property
     def title_suffix(self) -> str:
         """`_dr<seed>` with the domain randomization, so its results aren't mixed with nominal."""
-        return f"_dr{self._dr_seed}" if self.randomizes_domain else ""
+        dr = f"_dr{self._dr_seed}" if self.randomizes_domain else ""
+        return dr + (f"_{self._condition}" if self._condition else "")
+
+    @property
+    def augments_images(self) -> bool:
+        """The policy reads the images through the `env`'s wrappers (else the innermost env's)."""
+        return self.randomizes_domain or bool(self._condition)
 
     @property
     def num_episodes(self) -> int:
@@ -109,6 +121,7 @@ class PolicyEvaluator:
                 rows = self._run_episodes(policy=policy, desc=titles[0])
             self._env.reset()
         metrics = self._summarize(rows)
+        metrics |= self._fusion_means
         metrics["duration_s"] = time.time() - start
         for title in titles:
             self._report(
@@ -163,6 +176,9 @@ class PolicyEvaluator:
         max_steps = int(base.max_episode_length) + 1
         policy_dt = base.get_policy_dt()
         rows: list[EpisodeRow] = []
+        fusion_sums: dict[str, float] = {}
+        fusion_steps = 0
+        fusion_stats = getattr(policy, "fusion_stats", None)
 
         base.reset()
         progress = tqdm(total=len(self._seeds), desc=desc, unit="episode")
@@ -184,6 +200,11 @@ class PolicyEvaluator:
                 for step in range(max_steps):
                     self._reseed(wave, 2 * step + 1)
                     actions = policy(obs)
+                    if fusion_stats is not None:
+                        # the mean over the wave's envs of this step (also the ended ones)
+                        for key, value in fusion_stats().items():
+                            fusion_sums[key] = fusion_sums.get(key, 0.0) + value
+                        fusion_steps += 1
                     latent_pose = (
                         policy.latent_pose
                         if isinstance(policy, LatentPosePolicy)
@@ -242,6 +263,10 @@ class PolicyEvaluator:
                         }
                     )
                     progress.update()
+        # the gPoE gate weights / joint shares per modality, mean over the steps
+        self._fusion_means = {
+            f"gate_{k}": v / fusion_steps for k, v in fusion_sums.items()
+        }
         return sorted(rows, key=lambda row: row["seed"])
 
     @staticmethod

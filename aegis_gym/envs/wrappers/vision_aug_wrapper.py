@@ -153,8 +153,12 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         cfg = self._cfg.camera_dropout
         dev = self.device
         shape = (n, len(IMAGE_MODALITIES))
+        may_drop = th.tensor(
+            [not cfg.cameras or m.value in cfg.cameras for m in IMAGE_MODALITIES],
+            device=dev,
+        )
         return {
-            "dropout_active": th.rand(shape, device=dev) < cfg.prob,
+            "dropout_active": (th.rand(shape, device=dev) < cfg.prob) & may_drop,
             "dropout_start": th.randint(0, cfg.max_start_steps + 1, shape, device=dev),
             "dropout_steps": th.randint(
                 cfg.min_steps, cfg.max_steps + 1, shape, device=dev
