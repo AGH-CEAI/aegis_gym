@@ -40,9 +40,9 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         if not image_keys:
             return obs
 
-        images = obs.select(*image_keys)
-        augmented = images.apply(self._apply_image_augmentation)
-        obs.update(augmented)
+        for key in image_keys:
+            camera = IMAGE_MODALITIES.index(Modality(key))
+            obs[key] = self._apply_image_augmentation(obs[key], camera)
         return obs
 
     def reset(self) -> ResetReturn:
@@ -75,11 +75,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             "gamma_range": th.zeros(N, device=self.device),
             "blur_active": th.zeros(N, dtype=th.bool, device=self.device),
             "channel_jitter": th.zeros(N, 3, device=self.device),
-            "cutout_active": th.zeros(N, dtype=th.bool, device=self.device),
-            "cutout_y": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_x": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_h": th.zeros(N, dtype=th.long, device=self.device),
-            "cutout_w": th.zeros(N, dtype=th.long, device=self.device),
+            **self._sample_cutouts(N),
         }
 
     def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
@@ -112,26 +108,34 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             active * (th.rand(n, 3, device=dev) * 2.0 - 1.0) * ch
         )
 
-        cutout_cfg = self._cfg.cutout
-        prob = cutout_cfg.prob
-        min_sz = cutout_cfg.min_size
-        max_sz = cutout_cfg.max_size
+        for key, value in self._sample_cutouts(n).items():
+            self._aug_profile[key][envs_idx] = value
+
+    def _sample_cutouts(self, n: int) -> dict[str, th.Tensor]:
+        """
+        The cut-out boxes of `n` envs: [n, P, K] (P cameras with `per_camera`, else 1; K = `count`)
+        activity, corners and sizes [px], [n, P, K, 3] fill colours.
+        """
+        cfg = self._cfg.cutout
+        dev = self.device
         H, W = self.image_resolution
+        shape = (n, len(IMAGE_MODALITIES) if cfg.per_camera else 1, cfg.count)
+        num_boxes = th.randint(1, cfg.count + 1, shape[:2] + (1,), device=dev)
+        active = (th.rand(shape[:2] + (1,), device=dev) < cfg.prob) & (
+            th.arange(cfg.count, device=dev) < num_boxes
+        )
+        hs = th.randint(cfg.min_size, cfg.max_size + 1, shape, device=dev).clamp(max=H)
+        ws = th.randint(cfg.min_size, cfg.max_size + 1, shape, device=dev).clamp(max=W)
+        return {
+            "cutout_active": active,
+            "cutout_h": hs,
+            "cutout_w": ws,
+            "cutout_y": (th.rand(shape, device=dev) * (H - hs + 1)).long(),
+            "cutout_x": (th.rand(shape, device=dev) * (W - ws + 1)).long(),
+            "cutout_color": th.rand(shape + (3,), device=dev),
+        }
 
-        active = th.rand(n, device=dev) < prob
-        self._aug_profile["cutout_active"][envs_idx] = active
-
-        hs = th.randint(min_sz, max_sz + 1, (n,), device=dev)
-        ws = th.randint(min_sz, max_sz + 1, (n,), device=dev)
-        ys = (th.rand(n, device=dev) * (H - hs).clamp(min=1)).long()
-        xs = (th.rand(n, device=dev) * (W - ws).clamp(min=1)).long()
-
-        self._aug_profile["cutout_h"][envs_idx] = hs
-        self._aug_profile["cutout_w"][envs_idx] = ws
-        self._aug_profile["cutout_y"][envs_idx] = ys
-        self._aug_profile["cutout_x"][envs_idx] = xs
-
-    def _apply_image_augmentation(self, im: th.Tensor) -> th.Tensor:
+    def _apply_image_augmentation(self, im: th.Tensor, camera: int = 0) -> th.Tensor:
         aug = self._cfg
         if not aug.enabled:
             return im
@@ -192,8 +196,8 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             im = th.where(blur_active.view(N, 1, 1, 1), blurred, im)
 
         # -- Cutout --
-        if aug.cutout.prob > 0.0 or (prof and prof["cutout_active"].any()):
-            im = self._apply_cutout(im)
+        if aug.cutout.prob > 0.0:
+            im = self._apply_cutout(im, camera)
 
         return im.clamp(0.0, 1.0)
 
@@ -215,46 +219,34 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         pad = kernel_size // 2
         return F.conv2d(im, kernel, padding=pad, groups=C)
 
-    def _apply_cutout(self, im: th.Tensor) -> th.Tensor:
-        N, _C, H, W = im.shape
-        device = im.device
-        prof = self._aug_profile
-
-        # --- Resolve box coordinates (profile replay or fresh sample) ---
-        if prof and "cutout_active" in prof:
-            # Replay per-episode profile (already on correct device)
-            active = prof["cutout_active"]  # (N,) bool
-            hs = prof["cutout_h"]  # (N,) long
-            ws = prof["cutout_w"]  # (N,) long
-            ys = prof["cutout_y"]  # (N,) long
-            xs = prof["cutout_x"]  # (N,) long
-        else:
-            if not prof:
-                return im  # DR disabled / no per-episode aug
-            cutout_cfg = self._cfg.cutout
-            active = th.rand(N, device=device) < cutout_cfg.prob
-            hs = th.randint(
-                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
-            )
-            ws = th.randint(
-                cutout_cfg.min_size, cutout_cfg.max_size + 1, (N,), device=device
-            )
-            ys = (th.rand(N, device=device) * (H - hs).clamp(min=1)).long()
-            xs = (th.rand(N, device=device) * (W - ws).clamp(min=1)).long()
-
+    def _apply_cutout(self, im: th.Tensor, camera: int) -> th.Tensor:
+        N, C, H, W = im.shape
+        boxes = self._aug_profile if self._aug_profile else self._sample_cutouts(N)
+        p = camera if self._cfg.cutout.per_camera else 0
+        active = boxes["cutout_active"][:, p]  # [N, K]
         if not active.any():
             return im
-
-        # --- Build vectorized binary mask: 0 = zeroed region ---
-        row_idx = th.arange(H, device=device).view(1, H, 1)  # (1, H, 1)
-        col_idx = th.arange(W, device=device).view(1, 1, W)  # (1, 1, W)
-
+        ys, xs = boxes["cutout_y"][:, p], boxes["cutout_x"][:, p]
+        hs, ws = boxes["cutout_h"][:, p], boxes["cutout_w"][:, p]
+        rows = th.arange(H, device=im.device).view(1, 1, H, 1)
+        cols = th.arange(W, device=im.device).view(1, 1, 1, W)
         in_box = (
-            (row_idx >= ys.view(N, 1, 1))
-            & (row_idx < (ys + hs).view(N, 1, 1))
-            & (col_idx >= xs.view(N, 1, 1))
-            & (col_idx < (xs + ws).view(N, 1, 1))
-        )  # (N, H, W)
-
-        mask = ~(in_box & active.view(N, 1, 1))  # (N, H, W)
-        return im * mask.unsqueeze(1)  # broadcast over C
+            (rows >= ys[..., None, None])
+            & (rows < (ys + hs)[..., None, None])
+            & (cols >= xs[..., None, None])
+            & (cols < (xs + ws)[..., None, None])
+            & active[..., None, None]
+        )  # [N, K, H, W]
+        fill = self._cfg.cutout.fill
+        if fill == "black":
+            return im * ~in_box.any(dim=1, keepdim=True)
+        if fill == "noise":
+            return th.where(in_box.any(dim=1, keepdim=True), th.rand_like(im), im)
+        if fill == "color":
+            colors = boxes["cutout_color"][:, p]  # [N, K, 3]
+            for k in range(in_box.shape[1]):  # later boxes on top
+                im = th.where(in_box[:, k : k + 1], colors[:, k, :C, None, None], im)
+            return im
+        raise ValueError(
+            f"Unknown cut-out fill '{fill}', available: black, color, noise"
+        )

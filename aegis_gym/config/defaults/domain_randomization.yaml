@@ -13,8 +13,11 @@ image_aug:
     blur_sigma: 0.8
     cutout:
         prob: 0.3
-        min_size: 4
-        max_size: 12
+        min_size: 4  # [px], per box side
+        max_size: 12  # [px], up to the image side
+        count: 1  # boxes per image: 1..count
+        fill: "black"  # black, color (a random solid colour per box), noise (new per frame)
+        per_camera: False  # each camera its own boxes (else the same on all)
 pd_gains:
     enabled: True
     kp_noise: 0.10

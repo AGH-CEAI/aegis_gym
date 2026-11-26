@@ -6,8 +6,13 @@ from .base_cfg import BaseCfg, ToggleCfg
 @dataclass(slots=True, frozen=True)
 class CutoutCfg(BaseCfg):
     prob: float = 0.3
-    min_size: int = 4
-    max_size: int = 12
+    min_size: int = 4  # [px], per box side
+    max_size: int = 12  # [px], up to the image side
+    # boxes per image: 1..count, drawn with the other cut-out parameters
+    count: int = 1
+    fill: str = "black"  # black, color (a random solid colour per box), noise (uniform, new per frame)
+    # each camera gets its own boxes (else the same boxes on all the cameras)
+    per_camera: bool = False
 
 
 @dataclass(slots=True, frozen=True)
