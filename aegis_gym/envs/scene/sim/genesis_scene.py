@@ -406,6 +406,16 @@ class GenesisScene(BaseScene):
             raise ValueError(f"The entity {entity_idx} has no segmentation labels.")
         self._mask_labels = th.tensor(labels, device=self.device)
 
+    def get_camera_view(
+        self, camera: CameraName
+    ) -> tuple[th.Tensor, float, tuple[int, int]]:
+        """[B, 4, 4] camera -> world (OpenGL convention), the vertical fov [deg], (width, height)."""
+        cam = self._cameras[camera]
+        transform = th.as_tensor(cam.get_transform(), device=self.device).float()
+        if transform.dim() == 2:
+            transform = transform.unsqueeze(0).expand(self.num_envs, 4, 4)
+        return transform, float(cam.fov), tuple(cam.res)
+
     def get_object_mask(self, camera: CameraName) -> th.Tensor | None:
         """[B, H, W] bool, the pixels of the `enable_object_masks()` entity in the last image of `camera`."""
         return self._object_masks.get(camera)

@@ -4,9 +4,16 @@ import torch as th
 import torch.nn.functional as F
 from tensordict import TensorDict
 
-from aegis_gym.config.types import IMAGE_MODALITIES, EnvCfg, ImageAugCfg, Modality
+from aegis_gym.config.types import (
+    IMAGE_MODALITIES,
+    CameraName,
+    EnvCfg,
+    ImageAugCfg,
+    Modality,
+)
 
 from ..base_env import BaseEnv, ResetReturn, StepReturn
+from ..utils.push_t_visibility import project_points
 from .base_wrapper import BaseEnvWrapper
 
 
@@ -86,6 +93,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             "channel_jitter": th.zeros(N, 3, device=self.device),
             **self._sample_cutouts(N),
             **self._sample_camera_dropout(N),
+            **self._sample_arm_distractors(N),
         }
 
     def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
@@ -118,9 +126,12 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             active * (th.rand(n, 3, device=dev) * 2.0 - 1.0) * ch
         )
 
-        for key, value in (
-            self._sample_cutouts(n) | self._sample_camera_dropout(n)
-        ).items():
+        drawn = (
+            self._sample_cutouts(n)
+            | self._sample_camera_dropout(n)
+            | self._sample_arm_distractors(n)
+        )
+        for key, value in drawn.items():
             self._aug_profile[key][envs_idx] = value
         self._episode_steps[envs_idx] = 0
 
@@ -165,6 +176,73 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             ),
             "dropout_color": th.rand(shape + (3,), device=dev),
         }
+
+    def _sample_arm_distractors(self, n: int) -> dict[str, th.Tensor]:
+        """[n, K] activity, anchor link, width [px], grey level; [n, K, 3] anchor offset and segment [m]."""
+        cfg = self._cfg.arm_distractors
+        dev = self.device
+        shape = (n, cfg.count)
+
+        def uniform(low_high: list[float], size: tuple) -> th.Tensor:
+            low, high = low_high
+            return low + (high - low) * th.rand(size, device=dev)
+
+        num = th.randint(1, cfg.count + 1, (n, 1), device=dev)
+        direction = th.randn(shape + (3,), device=dev)
+        # sagging sideways rather than straight down (a vertical segment is a dot in the top-down scene camera)
+        direction[..., 2] = -0.5 * direction[..., 2].abs()
+        direction = direction / direction.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        return {
+            "distr_active": (th.rand((n, 1), device=dev) < cfg.prob)
+            & (th.arange(cfg.count, device=dev) < num),
+            "distr_link": th.randint(len(cfg.links), shape, device=dev),
+            "distr_offset": uniform([-cfg.offset, cfg.offset], shape + (3,)),
+            "distr_segment": direction * uniform(cfg.length, shape).unsqueeze(-1),
+            "distr_width": th.randint(
+                cfg.width[0], cfg.width[1] + 1, shape, device=dev
+            ),
+            "distr_value": uniform(cfg.value, shape),
+        }
+
+    def _apply_arm_distractors(self, im: th.Tensor, camera: int) -> th.Tensor:
+        cfg = self._cfg.arm_distractors
+        prof = self._aug_profile
+        name = IMAGE_MODALITIES[camera].value
+        if name not in cfg.cameras or not prof["distr_active"].any():
+            return im
+        _N, _C, H, W = im.shape
+        links = self._env.get_robot_link_positions(cfg.links)  # [N, L, 3]
+        index = prof["distr_link"].unsqueeze(-1).expand(-1, -1, 3)
+        start = th.gather(links, 1, index) + prof["distr_offset"]
+        end = start + prof["distr_segment"]
+        transform, fov, (width, height) = self._env.get_camera_view(CameraName(name))
+        K = start.shape[1]
+        pixels, in_front = project_points(
+            transform, th.cat([start, end], dim=1), fov, width, height
+        )
+        scale = th.tensor([W / width, H / height], device=im.device)
+        a, b = (pixels * scale).split(K, dim=1)  # [N, K, 2] (column, row) in this image
+        visible = prof["distr_active"] & in_front[:, :K] & in_front[:, K:]
+        cols, rows = th.meshgrid(
+            th.arange(W, device=im.device),
+            th.arange(H, device=im.device),
+            indexing="xy",
+        )
+        grid = th.stack([cols, rows], dim=-1).float()  # [H, W, 2]
+        ab = (b - a)[:, :, None, None]
+        ap = grid - a[:, :, None, None]
+        t = ((ap * ab).sum(-1) / (ab * ab).sum(-1).clamp(min=1e-6)).clamp(0.0, 1.0)
+        distance = (ap - t.unsqueeze(-1) * ab).norm(
+            dim=-1
+        )  # [N, K, H, W] to the segment
+        on = (distance <= prof["distr_width"][:, :, None, None] / 2) & visible[
+            :, :, None, None
+        ]
+        for k in range(K):  # later ones on top
+            im = th.where(
+                on[:, k : k + 1], prof["distr_value"][:, k, None, None, None], im
+            )
+        return im
 
     def _apply_camera_dropout(self, im: th.Tensor, camera: int) -> th.Tensor:
         prof = self._aug_profile
@@ -262,6 +340,9 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             im = th.where(blur_active.view(N, 1, 1, 1), blurred, im)
 
         # -- Cutout --
+        if prof and aug.arm_distractors.prob > 0.0:
+            im = self._apply_arm_distractors(im, camera)
+
         if aug.cutout.prob > 0.0:
             im = self._apply_cutout(im, camera)
 

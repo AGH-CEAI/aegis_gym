@@ -8,6 +8,7 @@ from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
 from aegis_gym.config.types import (
+    CameraName,
     CamerasSetup,
     DomainRandomizationCfg,
     EnvCfg,
@@ -273,6 +274,22 @@ class BaseEnv(VecEnv):
         """Draws all the scene's domain randomizations for the `envs_idx` now."""
         for rand_type in self._scene.get_available_randomizations():
             self._scene.randomize_domain(rand_type=rand_type, env_idx=envs_idx)
+
+    def get_camera_view(
+        self, camera: CameraName
+    ) -> tuple[th.Tensor, float, tuple[int, int]]:
+        """The sim camera's pose, fov and resolution (`GenesisScene.get_camera_view()`)."""
+        get_view = getattr(self._scene, "get_camera_view", None)
+        if get_view is None:
+            raise NotImplementedError("The camera view needs the simulated scene.")
+        return get_view(camera)
+
+    def get_robot_link_positions(self, links: Sequence[str]) -> th.Tensor:
+        """[N, L, 3] the world positions of the robot's `links` (the sim only)."""
+        get_link = getattr(self.manipulator, "get_robot_link", None)
+        if get_link is None:
+            raise NotImplementedError("The robot links need the simulated manipulator.")
+        return th.stack([get_link(name).get_pos() for name in links], dim=1)
 
     def is_preview_available(self) -> bool:
         """Whether the policy preview can be rendered (`render_preview()`)."""

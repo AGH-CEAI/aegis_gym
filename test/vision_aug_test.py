@@ -7,6 +7,7 @@ from tensordict import TensorDict
 import aegis_gym.config  # noqa: F401
 from aegis_gym.config.types import (
     IMAGE_MODALITIES,
+    ArmDistractorCfg,
     CameraDropoutCfg,
     CutoutCfg,
     ImageAugCfg,
@@ -269,3 +270,49 @@ def test_only_the_listed_cameras_drop():
     assert all(
         (out[m.value] == 0.5).all() for m in IMAGE_MODALITIES if m.value != "cam_scene"
     )
+
+
+def _distractor_wrapper(**cfg) -> VisionAugEnvWrapper:
+    """A camera at the origin looking along -z (fov 90 deg), the anchor link 1 m in front of it."""
+    aug = _no_photometric()
+    aug = ImageAugCfg(
+        **{f: getattr(aug, f) for f in aug.__slots__}
+        | {"arm_distractors": ArmDistractorCfg(**cfg)}
+    )
+    wrapper = _wrapper(aug)
+    wrapper._env.get_robot_link_positions = lambda links: th.tensor(
+        [0.0, 0.0, -1.0]
+    ).expand(NUM_ENVS, len(links), 3)
+    wrapper._env.get_camera_view = lambda camera: (
+        th.eye(4).expand(NUM_ENVS, 4, 4),
+        90.0,
+        RES,
+    )
+    prof = wrapper._aug_profile
+    prof["distr_offset"][:] = 0.0
+    prof["distr_segment"][:] = th.tensor(
+        [0.5, 0.0, 0.0]
+    )  # to the right, 1/4 of the image
+    prof["distr_width"][:] = 2
+    prof["distr_value"][:] = 0.1
+    return wrapper
+
+
+def test_an_arm_distractor_is_a_segment_from_the_projected_link():
+    wrapper = _distractor_wrapper(prob=1.0, links=["wrist_1_link"])
+
+    out = wrapper._augment(_images())["cam_scene"][0, 0]  # [H, W]
+
+    painted = (out == 0.1).nonzero()
+    assert painted[:, 0].min() >= 7 and painted[:, 0].max() <= 9  # the centre rows
+    # from the centre (8) to the right (12), with the round caps of the 1 px radius
+    assert painted[:, 1].min() == 7 and painted[:, 1].max() == 13
+    assert (out[:, :7] == 0.5).all()
+
+
+def test_arm_distractors_only_on_their_cameras_and_with_prob_0_none():
+    on = _distractor_wrapper(prob=1.0)._augment(_images())
+    off = _distractor_wrapper(prob=0.0)._augment(_images())
+
+    assert (on["cam_tool_left"] == 0.5).all() and (on["cam_scene"] == 0.1).any()
+    assert all((off[m.value] == 0.5).all() for m in IMAGE_MODALITIES)

@@ -31,6 +31,34 @@ class CameraDropoutCfg(BaseCfg):
 
 
 @dataclass(slots=True, frozen=True)
+class ArmDistractorCfg(BaseCfg):
+    """
+    Dark shapes attached to the robot in the images (the cable / energy chain wrapped around the tool,
+    without its physics): a segment from a robot link (+ a random offset) in a random, mostly
+    horizontal direction, drawn `width` px wide; drawn per episode, then moving with the link. Local by
+    default: the tool's links and the camera mounts. The sim only (privileged poses).
+    """
+
+    prob: float = 0.0  # per episode
+    count: int = 1  # distractors: 1..count
+    cameras: list[str] = field(default_factory=lambda: ["cam_scene"])
+    links: list[str] = field(
+        default_factory=lambda: [
+            "wrist_3_link",
+            "tool0",
+            "adapter_mount_left",
+            "adapter_mount_right",
+            "adapter_mount_front",
+            "robotiq_hande_coupler",
+        ]
+    )
+    length: list[float] = field(default_factory=lambda: [0.04, 0.15])  # [m]
+    offset: float = 0.03  # [m], +- per axis from the link origin
+    width: list[int] = field(default_factory=lambda: [6, 14])  # [px]
+    value: list[float] = field(default_factory=lambda: [0.0, 0.2])  # the grey level
+
+
+@dataclass(slots=True, frozen=True)
 class ImageAugCfg(ToggleCfg):
     per_episode_aug: bool = True
     brightness_jitter: float = 0.25
@@ -43,6 +71,7 @@ class ImageAugCfg(ToggleCfg):
     blur_sigma: float = 0.8
     cutout: CutoutCfg = field(default_factory=CutoutCfg)
     camera_dropout: CameraDropoutCfg = field(default_factory=CameraDropoutCfg)
+    arm_distractors: ArmDistractorCfg = field(default_factory=ArmDistractorCfg)
 
 
 @dataclass(slots=True, frozen=True)
