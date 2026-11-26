@@ -62,6 +62,10 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
 
     def step(self, actions: th.Tensor) -> StepReturn:
         res = self._env.step(actions)
+        # the env resets its ended episodes itself (its own `apply_domain_randomization()`, not this one)
+        ended = res[2].bool().nonzero().flatten()
+        if len(ended):
+            self._resample_aug_profile(ended)
         return res
 
     def _init_aug_profile(self) -> dict[str, th.Tensor]:

@@ -141,3 +141,17 @@ def test_unknown_fill_is_rejected():
 
     with pytest.raises(ValueError, match="checkerboard"):
         wrapper._augment(_images())
+
+
+def test_an_auto_reset_episode_gets_new_boxes_the_others_keep_theirs():
+    wrapper = _wrapper(_no_photometric(prob=1.0, max_size=8))
+    dones = th.zeros(NUM_ENVS, dtype=th.bool)
+    dones[0] = True
+    wrapper._env.step = lambda actions: (None, None, dones, {})
+    before = {k: v.clone() for k, v in wrapper._aug_profile.items()}
+
+    wrapper.step(th.zeros(NUM_ENVS, 2))
+
+    corners = ("cutout_y", "cutout_x", "cutout_h", "cutout_w")
+    assert any(not th.equal(before[k][0], wrapper._aug_profile[k][0]) for k in corners)
+    assert all(th.equal(before[k][1:], wrapper._aug_profile[k][1:]) for k in before)
