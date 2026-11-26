@@ -79,3 +79,9 @@ ft_sensor_impulses:
     # max 1.4 N. Per sensor axis [x, y, z]: Poisson rate, uniform magnitude, random sign.
     rate: [1.0, 1.0, 0.3]  # [1/s]
     magnitude_range: [0.2, 0.5]  # [N]
+object_color:
+    enabled: False
+    # per episode, the object's pixels recoloured (keeping the rendered shading); push_t needs the
+    # tee rendered grey (env `tee_render_color`); RGB in [0, 1], else uniform with 1 - palette_prob
+    palette: []
+    palette_prob: 1.0

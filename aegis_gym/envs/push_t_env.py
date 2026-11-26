@@ -67,6 +67,13 @@ class PushTEnv(BaseEnv):
         self._setup_scene(cfg=cfg)
         self._scene.build()
         self.manipulator: BaseManipulator = self._scene.get_manipulator()
+        # the sim only: the real tee is what it is
+        if self.tee_color is not None and hasattr(self._scene, "enable_object_masks"):
+            self._scene.enable_object_masks(
+                self.object._obj.idx,
+                nominal_color=self.tee_color,
+                render_color=self.tee_render_color,
+            )
 
         self._build_tee_canonical_mask(mesh_path=str(self._TEE_STL_PATH))
         self._build_tee_footprint_moments()
@@ -155,6 +162,9 @@ class PushTEnv(BaseEnv):
         )
         self.observe_force = env_dict["observe_force"]
         self.force_obs_scale = env_dict["force_obs_scale"]
+        self.tee_render_color = tuple(env_dict["tee_render_color"])
+        tee_color = env_dict["tee_color"]
+        self.tee_color = tuple(tee_color) if tee_color is not None else None
 
     @classmethod
     def get_default_env_specific_dict(cls) -> dict:
@@ -220,6 +230,12 @@ class PushTEnv(BaseEnv):
             "observe_force": False,
             # [m/N] the observed force is scaled to the static spring deflection, 1 / K of A1
             "force_obs_scale": 0.002,
+            # the tee's colour in the sim render; neutral grey for the tee recolouring (the image
+            # augmentation's `tee_color`), which keeps the rendered shading
+            "tee_render_color": [0.02, 0.02, 0.02],
+            # the tee's nominal colour by recolouring (null: the render colour, no recolouring);
+            # the domain randomization `object_color` draws others per episode
+            "tee_color": None,
         }
 
     def _observe_tcp_pose(self) -> th.Tensor:
@@ -263,6 +279,11 @@ class PushTEnv(BaseEnv):
         force = transform_by_quat(self.manipulator.get_ft_wrench()[:, :3], sensor_quat)
         return force[:, :2] * self.force_obs_scale
 
+    def get_tee_mask(self, camera: CameraName) -> th.Tensor | None:
+        """[N, H, W] bool, the tee's pixels in the last image of `camera` (with `tee_color`, the sim)."""
+        get_mask = getattr(self._scene, "get_object_mask", None)
+        return get_mask(camera) if get_mask is not None else None
+
     def _observe_camera_scene(self) -> th.Tensor:
         return self.manipulator.get_camera_image(camera=CameraName.CAMERA_SCENE)
 
@@ -293,7 +314,7 @@ class PushTEnv(BaseEnv):
             pose=self.goal_pose_tuple,
             collision=True,
             fixed=False,
-            color=(0.02, 0.02, 0.02),
+            color=self.tee_render_color,
             urdf_path=str(self._TEE_URDF_PATH),
             friction=self.tee_friction,
         )

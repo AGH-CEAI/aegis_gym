@@ -21,6 +21,7 @@ class RandomizationType(StrEnum):
     FT_SENSOR_DRIFT = auto()
     CAMERAS_EXTRINSICS = auto()
     SCENE_LIGHTING = auto()
+    OBJECT_COLOR = auto()
 
 
 class BaseScene(ABC):

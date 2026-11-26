@@ -19,6 +19,7 @@ from .domain_randomization import (
     DomainRandomizationCfg,
     ImageAugCfg,
     MaxSpeedCfg,
+    ObjectColorCfg,
     PDGainCfg,
 )
 from .enum_types import (
@@ -81,6 +82,7 @@ __all__ = [
     "MemoryCfg",
     "Modality",
     "MultimodalCfg",
+    "ObjectColorCfg",
     "PDGainCfg",
     "PolicyBCCfg",
     "PolicyCfg",

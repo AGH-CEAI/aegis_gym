@@ -106,6 +106,16 @@ class FtSensorBiasCfg(ToggleCfg):
 
 
 @dataclass(slots=True, frozen=True)
+class ObjectColorCfg(ToggleCfg):
+    """The manipulated object's colour per episode, by recolouring its pixels (the sim render
+    keeps one colour for all the envs): from `palette` (RGB in [0, 1]) with `palette_prob`, else
+    uniform. Needs the object rendered in a neutral grey (push_t: `tee_render_color`)."""
+
+    palette: list[list[float]] = field(default_factory=list)
+    palette_prob: float = 1.0
+
+
+@dataclass(slots=True, frozen=True)
 class FtSensorDriftCfg(ToggleCfg):
     """Zero drift since the last tare: a per-episode linear rate (uniform in +-range) plus a
     random walk; both start from zero at every tare and at every episode reset."""
@@ -144,3 +154,4 @@ class DomainRandomizationCfg(ToggleCfg):
     ft_sensor_bias: FtSensorBiasCfg = field(default_factory=FtSensorBiasCfg)
     ft_sensor_drift: FtSensorDriftCfg = field(default_factory=FtSensorDriftCfg)
     ft_sensor_impulses: FtSensorImpulseCfg = field(default_factory=FtSensorImpulseCfg)
+    object_color: ObjectColorCfg = field(default_factory=ObjectColorCfg)

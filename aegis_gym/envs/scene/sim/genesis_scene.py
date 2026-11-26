@@ -50,6 +50,7 @@ class GenesisScene(BaseScene):
             RandomizationType.MANIPULATOR_PD_GAINS: self._rand_manipulator_pd_gains,
             RandomizationType.FT_SENSOR_BIAS: self._rand_ft_sensor_bias,
             RandomizationType.FT_SENSOR_DRIFT: self._rand_ft_sensor_drift,
+            RandomizationType.OBJECT_COLOR: self._rand_object_color,
         }
         self._cfg_env = cfg_env
         self._cfg_dr = cfg_dr
@@ -67,6 +68,13 @@ class GenesisScene(BaseScene):
         )
 
         self._cameras: dict[CameraName, Camera] = {}
+        self._mask_labels: th.Tensor | None = None  # see `enable_object_masks()`
+        self._object_masks: dict[CameraName, th.Tensor] = {}
+        self._object_colors: th.Tensor | None = (
+            None  # [N, 3], see `enable_object_masks()`
+        )
+        self._object_nominal_color: th.Tensor | None = None
+        self._object_render_gray = 1.0
         self._cameras_modalities: dict[CameraName, tuple[CameraModality]] = {}
         self._dr_cam_base_offsets: dict[CameraName, np.ndarray] = {}
         self._dr_cam_extrinsics_active: bool = self._cfg_dr.cameras_extrinsics.enabled
@@ -337,6 +345,8 @@ class GenesisScene(BaseScene):
         no_offset = th.zeros(self.num_envs, 6, device=self.device)
         self.manipulator.set_ft_residual_bias(no_offset)
         self.manipulator.set_ft_drift(rate=no_offset, walk_std=no_offset[0])
+        if self._object_colors is not None:
+            self._object_colors[:] = self._object_nominal_color
 
     def add_preview_camera(
         self, pos: tuple[float, float, float], lookat: tuple[float, float, float]
@@ -368,16 +378,59 @@ class GenesisScene(BaseScene):
             rgb = rgb.unsqueeze(0)
         return rgb[..., :3].to(dtype=th.uint8)
 
+    def enable_object_masks(
+        self,
+        entity_idx: int,
+        nominal_color: tuple[float, float, float] | None = None,
+        render_color: tuple[float, float, float] | None = None,
+    ) -> None:
+        """
+        From now on the cameras render the segmentation with the RGB (in the same render call) and
+        `get_object_mask()` gives the pixels of the entity `entity_idx` (Genesis' `entity.idx`).
+        With `nominal_color`, its pixels are recoloured to it (the per-env `OBJECT_COLOR`
+        randomization draws others), keeping the shading of its `render_color` (neutral grey).
+        """
+        if nominal_color is not None:
+            self._object_nominal_color = th.tensor(nominal_color, device=self.device)
+            self._object_colors = self._object_nominal_color.repeat(self.num_envs, 1)
+            self._object_render_gray = float(np.mean(render_color))
+        camera = next(iter(self._cameras.values()))
+        # no public API maps the segmentation labels to the entities
+        idxc_map = camera._batch_renderer._geom_retriever.seg_color_map.idxc_map
+        labels = [
+            label
+            for label, key in idxc_map.items()
+            if (key[0] if isinstance(key, tuple) else key) == entity_idx
+        ]
+        if not labels:
+            raise ValueError(f"The entity {entity_idx} has no segmentation labels.")
+        self._mask_labels = th.tensor(labels, device=self.device)
+
+    def get_object_mask(self, camera: CameraName) -> th.Tensor | None:
+        """[B, H, W] bool, the pixels of the `enable_object_masks()` entity in the last image of `camera`."""
+        return self._object_masks.get(camera)
+
     def observe_camera(self, camera: CameraName, modality: CameraModality) -> th.Tensor:
         if not modality == CameraModality.RGB:
             raise ValueError(
                 "The current implementation of Genesis Simulator doesn't support different cameras modalities!"
             )
-        rgb, _, _, _ = self._cameras[camera].render(
-            rgb=True, depth=False, segmentation=False, normal=False
+        with_masks = self._mask_labels is not None
+        rgb, _, seg, _ = self._cameras[camera].render(
+            rgb=True, depth=False, segmentation=with_masks, normal=False
         )
+        if with_masks:
+            seg = th.as_tensor(seg, device=self.device).long()
+            seg = seg[..., 0] if seg.dim() == 4 else seg
+            self._object_masks[camera] = th.isin(seg, self._mask_labels)
         rgb = rgb.permute(0, 3, 1, 2)[:, :3]  # (B, 3, H, W)
         rgb = th.clamp(rgb, 0.0, 255.0).div_(255.0)
+        if self._object_colors is not None:
+            shading = rgb.mean(dim=1, keepdim=True) / self._object_render_gray
+            recoloured = (self._object_colors[:, :, None, None] * shading).clamp(
+                0.0, 1.0
+            )
+            rgb = th.where(self._object_masks[camera].unsqueeze(1), recoloured, rgb)
         return rgb
 
     def _shutdown(self) -> None:
@@ -531,6 +584,19 @@ class GenesisScene(BaseScene):
         )
 
         self.manipulator.set_joints_pd_gains(kp_gain=kp_scale, kv_gain=kv_scale)
+
+    def _rand_object_color(self, envs_idx: th.Tensor) -> None:
+        cfg = self._cfg_dr.object_color
+        if not cfg.enabled or self._object_colors is None:
+            return
+        n = len(envs_idx)
+        colors = th.rand(n, 3, device=self.device)
+        if cfg.palette:
+            palette = th.tensor(cfg.palette, device=self.device, dtype=th.float32)
+            from_palette = th.rand(n, device=self.device) < cfg.palette_prob
+            picked = palette[th.randint(len(palette), (n,), device=self.device)]
+            colors = th.where(from_palette.unsqueeze(1), picked, colors)
+        self._object_colors[envs_idx] = colors
 
     def _rand_ft_sensor_bias(self, envs_idx: th.Tensor) -> None:
         cfg = self._cfg_dr.ft_sensor_bias
