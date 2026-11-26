@@ -277,3 +277,40 @@ def test_training_iterations_update_the_multimodal_student(
     if fusion == "gpoe":
         assert any(k.startswith("multimodal.gate.") for k in changed)
         assert len(scalars["BC/fusion_weight_reference_offset"]) == 5
+
+
+def test_modality_dropout_leaves_modalities_out_in_training_only():
+    policy = _policy("gpoe", modality_dropout=0.5).train()
+    rgb, state = _inputs(256)
+
+    policy(rgb, state)
+    weights = policy.last_fusion.weights  # [B, experts, latent]
+    left_out = (weights == 0).all(dim=-1)
+    with th.no_grad():
+        policy.eval()(rgb, state)
+
+    assert 0.3 < left_out.float().mean() < 0.6
+    assert (~left_out).any(dim=1).all()  # at least one modality stays
+    assert not (policy.last_fusion.weights == 0).any()
+
+
+def test_modality_dropout_only_of_the_named_modalities():
+    policy = _policy(
+        "gpoe", modality_dropout=1.0, modality_dropout_names=["camera_0"]
+    ).train()
+    rgb, state = _inputs(32)
+
+    policy(rgb, state)
+    left_out = (policy.last_fusion.weights == 0).all(dim=-1)
+
+    assert left_out[:, 0].all() and not left_out[:, 1:].any()
+
+
+def test_modality_dropout_is_the_same_on_all_the_steps_of_a_chunk():
+    policy = _policy("gpoe", modality_dropout=0.5).train()
+    rgb, state = th.rand(5, 32, 9, 16, 16), th.rand(5, 32, 9)
+
+    policy._chunk_features(rgb, state)
+    left_out = (policy.last_fusion.weights == 0).all(dim=-1).view(5, 32, -1)
+
+    assert (left_out == left_out[:1]).all()

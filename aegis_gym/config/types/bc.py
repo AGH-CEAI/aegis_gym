@@ -69,6 +69,12 @@ class MultimodalCfg(BaseCfg):
     sample: bool = True
     # poe, gpoe: the weight of the experts' KL to N(0, I) in the BC loss
     kl_weight: float = 0.0
+    # in the training step: each modality left out (its expert out of the product, its features zeroed)
+    # with this probability, per sample (per chunk with a memory); at least one stays; needs the
+    # enc_mem_dec presence mask
+    modality_dropout: float = 0.0
+    # the fusion's names that may drop (camera_<i>, the state_obs entries); empty: all
+    modality_dropout_names: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

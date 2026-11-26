@@ -146,6 +146,9 @@ policy:
     prior_expert: False  # poe, gpoe: N(0, I) as one more expert
     sample: True  # poe, gpoe: a sample of the joint in the training step, the mean when acting
     kl_weight: 0.0  # poe, gpoe: the experts' KL to N(0, I) in the loss
+    # training only: each modality left out with this probability per sample / chunk (at least one stays)
+    modality_dropout: 0.0
+    modality_dropout_names: []  # camera_<i>, state_obs entries; empty: all
 # training settings
 buffer_size: 1000
 save_freq: 50

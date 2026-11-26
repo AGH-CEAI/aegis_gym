@@ -383,8 +383,34 @@ class Policy(nn.Module):
         fused = self.feature_fusion(self.vision_encoder(rgb_obs))
         return th.cat([fused, state_obs], dim=-1)
 
+    def _modality_presence(
+        self, batch_size: int, device: th.device
+    ) -> dict[str, th.Tensor] | None:
+        """The training step's modality dropout: [batch_size] bool per modality, None when off."""
+        cfg = self._cfg.multimodal
+        if cfg.modality_dropout <= 0.0 or not self.training or not th.is_grad_enabled():
+            return None
+        names = self.multimodal.encoders.names
+        droppable = [
+            n
+            for n in names
+            if not cfg.modality_dropout_names or n in cfg.modality_dropout_names
+        ]
+        present = (
+            th.rand(batch_size, len(droppable), device=device) >= cfg.modality_dropout
+        )
+        if len(droppable) == len(names):
+            # at least one modality stays: a random one of those all dropped
+            none = ~present.any(dim=1)
+            keep = th.randint(len(droppable), (batch_size,), device=device)
+            present[none, keep[none]] = True
+        return dict(zip(droppable, present.unbind(dim=1)))
+
     def _multimodal_features(
-        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        present: dict[str, th.Tensor] | None = None,
     ) -> th.Tensor:
         inputs = {
             camera_modality(i): camera
@@ -396,7 +422,13 @@ class Policy(nn.Module):
                 state_obs.split(list(self._state_obs_dims.values()), dim=-1),
             )
         )
-        out = self.multimodal(inputs)
+        if present is None:
+            present = self._modality_presence(rgb_obs.shape[0], rgb_obs.device)
+        out = (
+            self.multimodal(inputs, present=present)
+            if present is not None
+            else self.multimodal(inputs)
+        )
         self.last_fusion = out
         # acting (collection, preview, evaluation runs without gradients): the joint's mean, a
         # deterministic student; the sample only in the training step
@@ -434,7 +466,18 @@ class Policy(nn.Module):
 
     def _chunk_features(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> th.Tensor:
         num_steps, batch_size = rgb_obs.shape[:2]
-        features = self._features(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
+        if self.multimodal is not None:
+            # one modality dropout per chunk, the same on all its steps
+            present = self._modality_presence(batch_size, rgb_obs.device)
+            if present is not None:
+                present = {
+                    k: v.expand(num_steps, -1).flatten() for k, v in present.items()
+                }
+            features = self._multimodal_features(
+                rgb_obs.flatten(0, 1), state_obs.flatten(0, 1), present
+            )
+        else:
+            features = self._features(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
         return features.view(num_steps, batch_size, -1)
 
     def predict_pose(self, rgb_obs: th.Tensor) -> tuple[th.Tensor, ...]:
