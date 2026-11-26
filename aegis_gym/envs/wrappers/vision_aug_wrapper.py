@@ -21,6 +21,10 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         self.image_resolution = cfg_env.image_resolution
         self.device = env.device
         self._aug_profile: dict[str, th.Tensor] = self._init_aug_profile()
+        self._episode_steps = th.zeros(self.num_envs, dtype=th.long, device=self.device)
+        self._last_frames: dict[
+            int, th.Tensor
+        ] = {}  # per camera, for the `freeze` dropout
 
     def get_observations(self) -> TensorDict:
         obs = self.get_modality_observations()
@@ -63,6 +67,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
     def step(self, actions: th.Tensor) -> StepReturn:
         res = self._env.step(actions)
         # the env resets its ended episodes itself (its own `apply_domain_randomization()`, not this one)
+        self._episode_steps += 1
         ended = res[2].bool().nonzero().flatten()
         if len(ended):
             self._resample_aug_profile(ended)
@@ -80,6 +85,7 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             "blur_active": th.zeros(N, dtype=th.bool, device=self.device),
             "channel_jitter": th.zeros(N, 3, device=self.device),
             **self._sample_cutouts(N),
+            **self._sample_camera_dropout(N),
         }
 
     def _resample_aug_profile(self, envs_idx: th.Tensor) -> None:
@@ -112,8 +118,11 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             active * (th.rand(n, 3, device=dev) * 2.0 - 1.0) * ch
         )
 
-        for key, value in self._sample_cutouts(n).items():
+        for key, value in (
+            self._sample_cutouts(n) | self._sample_camera_dropout(n)
+        ).items():
             self._aug_profile[key][envs_idx] = value
+        self._episode_steps[envs_idx] = 0
 
     def _sample_cutouts(self, n: int) -> dict[str, th.Tensor]:
         """
@@ -138,6 +147,55 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
             "cutout_x": (th.rand(shape, device=dev) * (W - ws + 1)).long(),
             "cutout_color": th.rand(shape + (3,), device=dev),
         }
+
+    def _sample_camera_dropout(self, n: int) -> dict[str, th.Tensor]:
+        """The camera drops of `n` envs: [n, P] (P cameras) activity, start and length [steps], [n, P, 3] fill colours."""
+        cfg = self._cfg.camera_dropout
+        dev = self.device
+        shape = (n, len(IMAGE_MODALITIES))
+        return {
+            "dropout_active": th.rand(shape, device=dev) < cfg.prob,
+            "dropout_start": th.randint(0, cfg.max_start_steps + 1, shape, device=dev),
+            "dropout_steps": th.randint(
+                cfg.min_steps, cfg.max_steps + 1, shape, device=dev
+            ),
+            "dropout_color": th.rand(shape + (3,), device=dev),
+        }
+
+    def _apply_camera_dropout(self, im: th.Tensor, camera: int) -> th.Tensor:
+        prof = self._aug_profile
+        start, steps = (
+            prof["dropout_start"][:, camera],
+            prof["dropout_steps"][:, camera],
+        )
+        t = self._episode_steps
+        dropped = (
+            prof["dropout_active"][:, camera]
+            & (t >= start)
+            & ((steps <= 0) | (t < start + steps))
+        )
+        fill = self._cfg.camera_dropout.fill
+        if fill == "freeze":
+            last = self._last_frames.get(camera)
+            if last is None or last.shape != im.shape:
+                last = self._last_frames[camera] = im.clone()
+            last.copy_(th.where(dropped.view(-1, 1, 1, 1), last, im))
+            return last.clone()
+        if not dropped.any():
+            return im
+        if fill == "black":
+            replacement = th.zeros_like(im)
+        elif fill == "color":
+            replacement = prof["dropout_color"][
+                :, camera, : im.shape[1], None, None
+            ].expand_as(im)
+        elif fill == "noise":
+            replacement = th.rand_like(im)
+        else:
+            raise ValueError(
+                f"Unknown camera dropout fill '{fill}', available: black, color, noise, freeze"
+            )
+        return th.where(dropped.view(-1, 1, 1, 1), replacement, im)
 
     def _apply_image_augmentation(self, im: th.Tensor, camera: int = 0) -> th.Tensor:
         aug = self._cfg
@@ -202,6 +260,9 @@ class VisionAugEnvWrapper(BaseEnvWrapper):
         # -- Cutout --
         if aug.cutout.prob > 0.0:
             im = self._apply_cutout(im, camera)
+
+        if prof and aug.camera_dropout.prob > 0.0:
+            im = self._apply_camera_dropout(im, camera)
 
         return im.clamp(0.0, 1.0)
 

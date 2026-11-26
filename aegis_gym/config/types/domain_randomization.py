@@ -16,6 +16,19 @@ class CutoutCfg(BaseCfg):
 
 
 @dataclass(slots=True, frozen=True)
+class CameraDropoutCfg(BaseCfg):
+    # per camera and episode; the policy is not told (a useless image to recognise, not a missing input)
+    prob: float = 0.0
+    # the dropped steps: from a start in [0, max_start_steps] for min_steps..max_steps; max_steps 0: the episode
+    max_start_steps: int = 0
+    min_steps: int = 0
+    max_steps: int = 0
+    # black, color (a random solid colour per camera), noise (uniform, new per frame), freeze (the last image
+    # before the drop, as a stalled stream)
+    fill: str = "black"
+
+
+@dataclass(slots=True, frozen=True)
 class ImageAugCfg(ToggleCfg):
     per_episode_aug: bool = True
     brightness_jitter: float = 0.25
@@ -27,6 +40,7 @@ class ImageAugCfg(ToggleCfg):
     blur_kernel_size: int = 3
     blur_sigma: float = 0.8
     cutout: CutoutCfg = field(default_factory=CutoutCfg)
+    camera_dropout: CameraDropoutCfg = field(default_factory=CameraDropoutCfg)
 
 
 @dataclass(slots=True, frozen=True)

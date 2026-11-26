@@ -18,6 +18,13 @@ image_aug:
         count: 1  # boxes per image: 1..count
         fill: "black"  # black, color (a random solid colour per box), noise (new per frame)
         per_camera: False  # each camera its own boxes (else the same on all)
+    # per camera and episode, the policy not told; max_steps 0: the whole episode
+    camera_dropout:
+        prob: 0.0
+        max_start_steps: 0  # the drop starts in [0, max_start_steps]
+        min_steps: 0
+        max_steps: 0
+        fill: "black"  # black, color, noise (new per frame), freeze (the last image before the drop)
 pd_gains:
     enabled: True
     kp_noise: 0.10

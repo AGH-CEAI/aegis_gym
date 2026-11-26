@@ -5,14 +5,21 @@ import torch as th
 from tensordict import TensorDict
 
 import aegis_gym.config  # noqa: F401
-from aegis_gym.config.types import IMAGE_MODALITIES, CutoutCfg, ImageAugCfg
+from aegis_gym.config.types import (
+    IMAGE_MODALITIES,
+    CameraDropoutCfg,
+    CutoutCfg,
+    ImageAugCfg,
+)
 from aegis_gym.envs.wrappers import VisionAugEnvWrapper
 
 NUM_ENVS = 64
 RES = (16, 16)
 
 
-def _no_photometric(**cutout) -> ImageAugCfg:
+def _no_photometric(
+    camera_dropout: CameraDropoutCfg | None = None, **cutout
+) -> ImageAugCfg:
     """Only the cut-out, the other augmentations off."""
     return ImageAugCfg(
         enabled=True,
@@ -23,7 +30,8 @@ def _no_photometric(**cutout) -> ImageAugCfg:
         gamma_range=0.0,
         channel_jitter=0.0,
         blur_prob=0.0,
-        cutout=CutoutCfg(**cutout),
+        cutout=CutoutCfg(**({"prob": 0.0} | cutout)),
+        camera_dropout=camera_dropout or CameraDropoutCfg(),
     )
 
 
@@ -155,3 +163,94 @@ def test_an_auto_reset_episode_gets_new_boxes_the_others_keep_theirs():
     corners = ("cutout_y", "cutout_x", "cutout_h", "cutout_w")
     assert any(not th.equal(before[k][0], wrapper._aug_profile[k][0]) for k in corners)
     assert all(th.equal(before[k][1:], wrapper._aug_profile[k][1:]) for k in before)
+
+
+def _dropout_wrapper(**dropout) -> VisionAugEnvWrapper:
+    wrapper = _wrapper(
+        _no_photometric(camera_dropout=CameraDropoutCfg(prob=1.0, **dropout))
+    )
+    wrapper._env.step = lambda actions: (
+        None,
+        None,
+        th.zeros(NUM_ENVS, dtype=th.bool),
+        {},
+    )
+    return wrapper
+
+
+def _steps(wrapper: VisionAugEnvWrapper, n: int) -> None:
+    for _ in range(n):
+        wrapper.step(th.zeros(NUM_ENVS, 2))
+
+
+def test_a_dropped_camera_is_black_for_the_whole_episode():
+    wrapper = _dropout_wrapper()
+    _steps(wrapper, 5)
+
+    out = wrapper._augment(_images())
+
+    assert all((out[m.value] == 0.0).all() for m in IMAGE_MODALITIES)
+
+
+def test_no_camera_drops_with_prob_0():
+    wrapper = _wrapper(_no_photometric(camera_dropout=CameraDropoutCfg(prob=0.0)))
+
+    out = wrapper._augment(_images())
+
+    assert all((out[m.value] == 0.5).all() for m in IMAGE_MODALITIES)
+
+
+def test_a_drop_segment_starts_and_ends_on_its_steps():
+    wrapper = _dropout_wrapper(max_start_steps=0, min_steps=3, max_steps=3)
+    key = IMAGE_MODALITIES[0].value
+    seen = []
+    for _ in range(5):
+        seen.append(bool((wrapper._augment(_images())[key] == 0.0).all()))
+        _steps(wrapper, 1)
+
+    assert seen == [True, True, True, False, False]
+
+
+def test_a_new_episode_restarts_the_drop_clock():
+    wrapper = _dropout_wrapper(max_start_steps=0, min_steps=2, max_steps=2)
+    key = IMAGE_MODALITIES[0].value
+    _steps(wrapper, 4)
+    assert (wrapper._augment(_images())[key] == 0.5).all()
+
+    wrapper.resample_augmentation()
+
+    assert (wrapper._augment(_images())[key] == 0.0).all()
+
+
+def test_color_fill_is_one_solid_colour_per_camera():
+    wrapper = _dropout_wrapper(fill="color")
+
+    out = wrapper._augment(_images())
+
+    for i, m in enumerate(IMAGE_MODALITIES):
+        colors = wrapper._aug_profile["dropout_color"][:, i]
+        assert th.allclose(
+            out[m.value], colors[:, :, None, None].expand_as(out[m.value])
+        )
+
+
+def test_freeze_repeats_the_last_image_before_the_drop():
+    wrapper = _dropout_wrapper(
+        max_start_steps=2, min_steps=0, max_steps=0, fill="freeze"
+    )
+    wrapper._aug_profile["dropout_start"][:] = 2
+    key = IMAGE_MODALITIES[0].value
+    frames = []
+    for value in (0.1, 0.2, 0.3, 0.4):
+        frames.append(wrapper._augment(_images(value))[key])
+        _steps(wrapper, 1)
+
+    assert th.allclose(frames[1], th.full_like(frames[1], 0.2))
+    assert th.allclose(frames[2], frames[1]) and th.allclose(frames[3], frames[1])
+
+
+def test_unknown_dropout_fill_is_rejected():
+    wrapper = _dropout_wrapper(fill="checkerboard")
+
+    with pytest.raises(ValueError, match="checkerboard"):
+        wrapper._augment(_images())

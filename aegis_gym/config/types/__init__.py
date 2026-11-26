@@ -10,6 +10,7 @@ from .bc import (
 )
 from .debug import DebugCfg
 from .domain_randomization import (
+    CameraDropoutCfg,
     CameraFovValueCfg,
     CameraPoseCfg,
     CamerasExtrinsicsCfg,
@@ -55,6 +56,7 @@ __all__ = [
     "BCCfg",
     "BaseCfg",
     "CNNLayerCfg",
+    "CameraDropoutCfg",
     "CameraFovValueCfg",
     "CameraLink",
     "CameraModality",
