@@ -714,6 +714,11 @@ class ExperienceBuffer:
         self._episode_starts = th.zeros(
             max_size, num_envs, dtype=th.bool, device=device
         )
+        # what followed each step (`set_last_transition()`): the executed action and the reward
+        self._executed_actions = th.zeros(
+            max_size, num_envs, action_dim, dtype=dtype, device=device
+        )
+        self._rewards = th.zeros(max_size, num_envs, dtype=dtype, device=device)
 
     def add(
         self,
@@ -741,7 +746,16 @@ class ExperienceBuffer:
             self._episode_starts[self._ptr] = False
         else:
             self._episode_starts[self._ptr] = episode_starts
+        self._executed_actions[self._ptr] = 0.0
+        self._rewards[self._ptr] = 0.0
         self._size = min(self._size + 1, self._max_size)
+
+    def set_last_transition(
+        self, executed_actions: th.Tensor, rewards: th.Tensor
+    ) -> None:
+        """The action [num_envs, action_dim] executed in the last added step and its reward [num_envs]."""
+        self._executed_actions[self._ptr] = executed_actions
+        self._rewards[self._ptr] = rewards
 
     def get_batches(
         self, num_mini_batches: int, num_epochs: int
@@ -764,6 +778,10 @@ class ExperienceBuffer:
                     "object_poses": self._object_poses[batch_indices].flatten(0, 1),
                     "goal_poses": self._goal_poses[batch_indices].flatten(0, 1),
                     "actions": self._actions[batch_indices].flatten(0, 1),
+                    "executed_actions": self._executed_actions[batch_indices].flatten(
+                        0, 1
+                    ),
+                    "rewards": self._rewards[batch_indices].flatten(0, 1),
                 }
 
     def get_sequence_batches(
@@ -811,6 +829,8 @@ class ExperienceBuffer:
                     "goal_poses": self._goal_poses[time_idx, env_idx],
                     "actions": self._actions[time_idx, env_idx],
                     "episode_starts": self._episode_starts[time_idx, env_idx],
+                    "executed_actions": self._executed_actions[time_idx, env_idx],
+                    "rewards": self._rewards[time_idx, env_idx],
                     "burn_in": burn_in,
                 }
 
@@ -839,7 +859,8 @@ class ExperienceBuffer:
         image_bytes = (
             math.prod(img_shape) * th.empty(0, dtype=image_dtype).element_size()
         )
-        other_bytes = (state_dim + 7 + 3 + action_dim) * th.empty(
+        # the state, object pose, goal x / y / yaw, label, executed action, reward
+        other_bytes = (state_dim + 7 + 3 + 2 * action_dim + 1) * th.empty(
             0, dtype=dtype
         ).element_size()
         episode_start_bytes = 1
@@ -853,6 +874,8 @@ class ExperienceBuffer:
         self._goal_poses.zero_()
         self._actions.zero_()
         self._episode_starts.zero_()
+        self._executed_actions.zero_()
+        self._rewards.zero_()
         self._ptr = 0
         self._size = 0
 

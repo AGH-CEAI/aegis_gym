@@ -232,7 +232,10 @@ def test_collection_carries_the_student_memory_and_stores_the_episode_starts():
     runner._teacher = lambda obs: th.zeros(env.num_envs, 2)
     runner._policy = student
     runner._memory_state = None
-    runner._buffer = SimpleNamespace(add=lambda *args, **kwargs: stored.append(kwargs))
+    runner._buffer = SimpleNamespace(
+        add=lambda *args, **kwargs: stored.append(kwargs),
+        set_last_transition=lambda actions, rewards: None,
+    )
     executed = []
 
     def step(actions):

@@ -654,6 +654,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 )
 
                 next_obs, reward, done, extras = self.env.step(action)
+                # the env clamps the actions to [-1, 1]
+                self._buffer.set_last_transition(action.clamp(-1.0, 1.0), reward)
                 self.logger.process_env_step(rewards=reward, dones=done, extras=extras)
                 obs = next_obs
 

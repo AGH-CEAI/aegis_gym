@@ -68,7 +68,10 @@ class _FixedStudent:
 
 
 def _collecting_runner(
-    teacher_mixing: bool, clip: bool = False, stored: list | None = None
+    teacher_mixing: bool,
+    clip: bool = False,
+    stored: list | None = None,
+    transitions: list | None = None,
 ) -> BehaviorCloningRunner:
     runner = object.__new__(BehaviorCloningRunner)
     runner.env = _FakeEnv()
@@ -82,7 +85,13 @@ def _collecting_runner(
     runner._teacher = lambda obs: teacher_actions
     runner._policy = _FixedStudent()
     stored = stored if stored is not None else []
-    runner._buffer = SimpleNamespace(add=lambda *args, **kwargs: stored.append(args))
+    transitions = transitions if transitions is not None else []
+    runner._buffer = SimpleNamespace(
+        add=lambda *args, **kwargs: stored.append(args),
+        set_last_transition=lambda actions, rewards: transitions.append(
+            (actions, rewards)
+        ),
+    )
     return runner
 
 
@@ -177,6 +186,8 @@ def test_buffer_memory_estimate_matches_the_allocation():
             buffer._goal_poses,
             buffer._actions,
             buffer._episode_starts,
+            buffer._executed_actions,
+            buffer._rewards,
         )
     )
 
@@ -261,3 +272,46 @@ def test_discard_interrupted_episodes():
 
     assert not runner.logger.cur_reward_sum.any()
     assert not runner.logger.cur_episode_length.any()
+
+
+def test_the_executed_actions_and_rewards_follow_each_stored_step():
+    transitions = []
+    _collecting_runner(
+        teacher_mixing=True, transitions=transitions
+    )._collect_with_rl_teacher()
+
+    assert len(transitions) == 3
+    actions, rewards = transitions[0]
+    # env 0 the student's 0.5, env 1 the teacher's 2.0 clamped to what the env executes
+    assert actions.tolist() == [[0.5, 0.0], [1.0, 0.0]]
+    assert rewards.tolist() == [0.0, 0.0]
+
+
+def test_the_buffer_returns_the_executed_actions_and_rewards():
+    buffer = ExperienceBuffer(
+        num_envs=NUM_ENVS,
+        max_size=2,
+        img_shape=(3, 4, 4),
+        state_dim=7,
+        action_dim=2,
+        dtype=th.float32,
+    )
+    for step in range(2):
+        buffer.add(
+            th.rand(NUM_ENVS, 3, 4, 4),
+            th.zeros(NUM_ENVS, 7),
+            th.zeros(NUM_ENVS, 7),
+            th.zeros(NUM_ENVS, 2),
+        )
+        buffer.set_last_transition(
+            th.full((NUM_ENVS, 2), float(step)), th.full((NUM_ENVS,), 10.0 + step)
+        )
+
+    batch = next(
+        buffer.get_sequence_batches(
+            num_mini_batches=1, num_epochs=1, sequence_length=2, burn_in=0
+        )
+    )
+
+    assert batch["executed_actions"][:, 0, 0].tolist() == [0.0, 1.0]
+    assert batch["rewards"][:, 0].tolist() == [10.0, 11.0]
