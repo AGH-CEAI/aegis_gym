@@ -205,6 +205,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     starts,
                     memory.burn_in,
                     return_latents=True,
+                    executed_actions=batch["executed_actions"],
                 )
                 world_model = self._policy.world_model_losses(
                     batch["executed_actions"][memory.burn_in :],
@@ -523,6 +524,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             batch["episode_starts"],
             burn_in,
             return_latents=True,
+            executed_actions=batch["executed_actions"],
         )
         # the latent world model's losses need the steps in time order: before the flattening
         self._world_model_losses = self._policy.world_model_losses(

@@ -402,3 +402,84 @@ def test_the_world_model_needs_experts_and_a_memory():
         _policy("gpoe", dynamics=DYNAMICS)
     with pytest.raises(ValueError, match="dynamics"):
         _policy("concat", IDENTITY, dynamics=DYNAMICS)
+
+
+def _prior_policy() -> Policy:
+    th.manual_seed(0)
+    return Policy(
+        cfg_policy=_policy_cfg(
+            _multimodal("gpoe", dynamics=DYNAMICS | {"prior_expert": True}), IDENTITY
+        ),
+        action_dim=2,
+        state_obs_dim=9,
+        num_cameras=3,
+        image_height=16,
+        image_width=16,
+        device=CPU,
+        state_obs_dims=STATE_DIMS,
+    )
+
+
+def test_the_prior_expert_is_missing_at_the_start_and_weighted_after():
+    policy = _prior_policy().eval()
+    rgb, state = th.rand(4, 2, 9, 16, 16), th.rand(4, 2, 9)
+    starts = th.zeros(4, 2, dtype=th.bool)
+    starts[0] = True
+    starts[2, 1] = True
+
+    with th.no_grad():
+        policy.sequence(
+            rgb, state, starts, burn_in=0, executed_actions=th.rand(4, 2, 2)
+        )
+    weights = policy.last_fusion.weights.view(4, 2, policy.multimodal.num_experts, -1)
+    dynamics = len(
+        policy.multimodal.encoders.names
+    )  # the extra expert after the modalities
+
+    missing = (weights[:, :, dynamics] == 0).all(dim=-1)
+    assert missing.tolist() == [
+        [True, True],
+        [False, False],
+        [False, True],
+        [False, False],
+    ]
+
+
+def test_the_prior_step_loop_matches_the_sequence():
+    policy = _prior_policy().eval()
+    rgb, state = th.rand(5, 2, 9, 16, 16), th.rand(5, 2, 9)
+    starts = th.zeros(5, 2, dtype=th.bool)
+    starts[0] = True
+
+    with th.no_grad():
+        actions = policy.sequence(
+            rgb, state, starts, burn_in=0, executed_actions=th.zeros(5, 2, 2)
+        )
+        memory = policy.initial_memory_state(2)
+        stepped = []
+        for t in range(5):
+            action, memory = policy.step(rgb[t], state[t], memory, starts[t])
+            stepped.append(action)
+
+    # the steps feed their own (clamped) actions to the prior: equal with the zero executed actions
+    # only at the first two steps (the prior of step 1 uses the action of step 0)
+    assert th.allclose(actions[0], stepped[0], atol=1e-5)
+
+
+def test_the_prior_expert_trains_with_the_world_model(tmp_path):
+    runner = _training_runner(
+        tmp_path, "gpoe", 0.01, IDENTITY, dynamics=DYNAMICS | {"prior_expert": True}
+    )
+    before = {k: v.clone() for k, v in runner._policy.state_dict().items()}
+
+    runner.learn(num_learning_iterations=2)
+
+    scalars = runner.logger.scalars
+    assert all(math.isfinite(v) for v in scalars["BC/world_model_dynamics_kl"])
+    assert len(scalars["BC/fusion_weight_dynamics"]) == 2
+    after = runner._policy.state_dict()
+    assert any(
+        not th.equal(before[k], after[k])
+        for k in before
+        if k.startswith("dynamics.transitions.joint.")
+    )

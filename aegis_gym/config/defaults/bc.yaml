@@ -156,6 +156,7 @@ policy:
       reward_weight: 1.0  # the reward decoders' NLL; 0: none
       hidden_dims: [512, 512]
       detach_policy: False  # the encoders trained only by the world model
+      prior_expert: False  # the joint transition's prediction as one more gPoE expert (a recurrent belief)
 # training settings
 buffer_size: 1000
 save_freq: 50

@@ -65,6 +65,9 @@ class DynamicsCfg(BaseCfg):
     # the encoders trained only by the world model (the paper's stopped policy gradient): the action
     # head and the latent pose decoder get the features detached
     detach_policy: bool = False
+    # the joint transition's prediction of this step, p(z_t | z_t-1, a_t-1), as one more gPoE expert
+    # ("dynamics"; a recurrent belief, a memory as an expert); missing at an episode start
+    prior_expert: bool = False
 
 
 @dataclass(slots=True)

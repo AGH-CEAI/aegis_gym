@@ -1,6 +1,6 @@
 import math
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, NamedTuple
 
 import torch as th
 from strenum import StrEnum
@@ -83,6 +83,20 @@ def latent_pose_errors(
 MemoryState = tuple[th.Tensor, ...]
 """The student's memory state: batch-first tensors (see `enc_mem_dec.memory.MemoryState`)."""
 
+DYNAMICS_EXPERT = "dynamics"
+
+
+class PriorMemoryState(NamedTuple):
+    """
+    The memory state with the world model's prior expert: the memory's own, the last step's joint
+    latent [batch, latent] and executed action [batch, action] and whether they exist [batch].
+    """
+
+    memory: MemoryState
+    latent: th.Tensor
+    action: th.Tensor
+    valid: th.Tensor
+
 
 def build_memory(cfg: MemoryCfg, input_dim: int) -> nn.Module | None:
     """The `enc_mem_dec` memory of `cfg`, None for "none" (enc_mem_dec is needed otherwise only)."""
@@ -161,6 +175,11 @@ def build_multimodal(
         encoders[name] = StateModalityEncoder(
             dim, output_dim=cfg.feature_dim, hidden_dims=cfg.state_hidden_dims
         )
+    extra = (
+        {"extra_experts": [DYNAMICS_EXPERT]}
+        if cfg.dynamics.enabled and cfg.dynamics.prior_expert
+        else {}
+    )
     return MultimodalFusion(
         encoders,
         fusion=cfg.fusion,
@@ -168,6 +187,30 @@ def build_multimodal(
         prior_expert=cfg.prior_expert,
         gate_hidden_dim=cfg.gate_hidden_dim,
         sample=cfg.sample,
+        **extra,
+    )
+
+
+def _stack_fusions(outs: list) -> Any:
+    """The `FusionOutput`s of the steps [batch, ...] -> one of [time * batch, ...] (time-major)."""
+    first = outs[0]
+
+    def cat(values: list[th.Tensor]) -> th.Tensor:
+        return th.cat(values, dim=0)
+
+    gaussian = type(first.experts)
+    return type(first)(
+        latent=cat([o.latent for o in outs]),
+        features={k: cat([o.features[k] for o in outs]) for k in first.features},
+        experts=gaussian(
+            cat([o.experts.mean for o in outs]), cat([o.experts.log_var for o in outs])
+        ),
+        joint=gaussian(
+            cat([o.joint.mean for o in outs]), cat([o.joint.log_var for o in outs])
+        ),
+        log_weights=(
+            None if first.log_weights is None else cat([o.log_weights for o in outs])
+        ),
     )
 
 
@@ -352,10 +395,25 @@ class Policy(nn.Module):
             return None
         return self.latent_pose_head(latent)
 
-    def initial_memory_state(self, batch_size: int) -> MemoryState:
+    @property
+    def has_prior_expert(self) -> bool:
+        """The world model's joint transition is a gPoE expert (`dynamics.prior_expert`)."""
+        return self.dynamics is not None and self._cfg.multimodal.dynamics.prior_expert
+
+    def initial_memory_state(self, batch_size: int) -> MemoryState | PriorMemoryState:
         # the parameters' device: `self.device` is the one at the construction (before `.to()`)
         device = next(self.parameters()).device
-        return self.memory.initial_state(batch_size, device)
+        state = self.memory.initial_state(batch_size, device)
+        if not self.has_prior_expert:
+            return state
+        latent_dim = self._cfg.multimodal.latent_dim
+        action_dim = self.action_head[-1].out_features
+        return PriorMemoryState(
+            state,
+            th.zeros(batch_size, latent_dim, device=device),
+            th.zeros(batch_size, action_dim, device=device),
+            th.zeros(batch_size, dtype=th.bool, device=device),
+        )
 
     def step(
         self,
@@ -369,12 +427,49 @@ class Policy(nn.Module):
         One step of the student with a memory: the actions and the next memory state, reset first
         for the `episode_starts` [batch] (bool); with `return_latent`, also the action head's input.
         """
+        if self.has_prior_expert:
+            return self._prior_step(
+                rgb_obs, state_obs, memory_state, episode_starts, return_latent
+            )
         memory_state = self.memory.reset(memory_state, episode_starts)
         features = self._features(rgb_obs, state_obs)
         y, memory_state = self.memory.step(features, memory_state)
         if return_latent:
             return self.action_head(y), memory_state, y
         return self.action_head(y), memory_state
+
+    def _prior_step(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        prior_state: PriorMemoryState,
+        episode_starts: th.Tensor,
+        return_latent: bool,
+    ) -> (
+        tuple[th.Tensor, PriorMemoryState]
+        | tuple[th.Tensor, PriorMemoryState, th.Tensor]
+    ):
+        """`step()` with the prior expert; the next prior uses the student's own action (clamped)."""
+        memory_state = self.memory.reset(prior_state.memory, episode_starts)
+        features = self._fuse_with_prior(
+            self._encode(rgb_obs, state_obs),
+            prior_state.latent,
+            prior_state.action,
+            prior_state.valid & ~episode_starts,
+            self._modality_presence(rgb_obs.shape[0], rgb_obs.device),
+        )
+        self.last_fusion = self._last_step_fusion
+        y, memory_state = self.memory.step(features, memory_state)
+        actions = self.action_head(y)
+        next_state = PriorMemoryState(
+            memory_state,
+            features,
+            actions.detach().clamp(-1.0, 1.0),
+            th.ones_like(prior_state.valid),
+        )
+        if return_latent:
+            return actions, next_state, y
+        return actions, next_state
 
     def sequence(
         self,
@@ -383,14 +478,29 @@ class Policy(nn.Module):
         episode_starts: th.Tensor,
         burn_in: int,
         return_latents: bool = False,
+        executed_actions: th.Tensor | None = None,
     ) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
         """
         The actions [time - burn_in, batch, action_dim] on chunks [time, batch, ...] of episode
         steps, from the initial memory state: the first `burn_in` steps only warm the state up
         (without gradients), the state is reset at the `episode_starts` [time, batch]. With
-        `return_latents`, also the action head's inputs [time - burn_in, batch, ...].
+        `return_latents`, also the action head's inputs [time - burn_in, batch, ...]. The prior expert
+        needs the `executed_actions` [time, batch, action_dim].
         """
         batch_size = rgb_obs.shape[1]
+        if self.has_prior_expert:
+            if executed_actions is None:
+                raise ValueError(
+                    "The prior expert needs the executed actions of the chunks."
+                )
+            return self._prior_sequence(
+                rgb_obs,
+                state_obs,
+                episode_starts,
+                burn_in,
+                executed_actions,
+                return_latents,
+            )
         state = self.initial_memory_state(batch_size)
         if burn_in > 0:
             with th.no_grad():
@@ -433,6 +543,127 @@ class Policy(nn.Module):
             keep = th.randint(len(droppable), (batch_size,), device=device)
             present[none, keep[none]] = True
         return dict(zip(droppable, present.unbind(dim=1)))
+
+    def _prior_sequence(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        episode_starts: th.Tensor,
+        burn_in: int,
+        executed_actions: th.Tensor,
+        return_latents: bool,
+    ) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+        """`sequence()` with the prior expert: the fusion step by step (the encoders once per part)."""
+        batch_size = rgb_obs.shape[1]
+        prior = self.initial_memory_state(batch_size)
+        state, latent, action, valid = prior
+        if burn_in > 0:
+            with th.no_grad():
+                features, latent, valid = self._fuse_chunk_with_prior(
+                    rgb_obs[:burn_in],
+                    state_obs[:burn_in],
+                    episode_starts[:burn_in],
+                    executed_actions[:burn_in],
+                    latent,
+                    action,
+                    valid,
+                    present=None,
+                )
+                _, state = self.memory.sequence(
+                    features, state, episode_starts[:burn_in]
+                )
+                action = executed_actions[burn_in - 1]
+        present = self._modality_presence(batch_size, rgb_obs.device)
+        features, _, _ = self._fuse_chunk_with_prior(
+            rgb_obs[burn_in:],
+            state_obs[burn_in:],
+            episode_starts[burn_in:],
+            executed_actions[burn_in:],
+            latent,
+            action,
+            valid,
+            present,
+        )
+        if self.dynamics is not None and self._cfg.multimodal.dynamics.detach_policy:
+            features = features.detach()
+        y, _ = self.memory.sequence(features, state, episode_starts[burn_in:])
+        actions = self.action_head(y)
+        return (actions, y) if return_latents else actions
+
+    def _fuse_chunk_with_prior(
+        self,
+        rgb_obs: th.Tensor,
+        state_obs: th.Tensor,
+        episode_starts: th.Tensor,
+        executed_actions: th.Tensor,
+        latent: th.Tensor,
+        action: th.Tensor,
+        valid: th.Tensor,
+        present: dict[str, th.Tensor] | None,
+    ) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+        """
+        The fused latents [time, batch, latent] of a chunk part, step by step from the carried last
+        `latent`, `action` and `valid`; `last_fusion` holds all its steps (flattened as the other
+        chunk paths). Returns the latents, the last latent and validity.
+        """
+        num_steps, batch_size = rgb_obs.shape[:2]
+        encoded = self._encode(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
+        encoded = {k: v.view(num_steps, batch_size, -1) for k, v in encoded.items()}
+        self._last_presence = (
+            {k: v.expand(num_steps, -1).flatten() for k, v in present.items()}
+            if present is not None
+            else None
+        )
+        latents, outs = [], []
+        for t in range(num_steps):
+            valid = valid & ~episode_starts[t]
+            latent = self._fuse_with_prior(
+                {k: v[t] for k, v in encoded.items()}, latent, action, valid, present
+            )
+            latents.append(latent)
+            outs.append(self._last_step_fusion)
+            action, valid = executed_actions[t], th.ones_like(valid)
+        self.last_fusion = _stack_fusions(outs)
+        return th.stack(latents), latent, valid
+
+    def _encode(self, rgb_obs: th.Tensor, state_obs: th.Tensor) -> dict[str, th.Tensor]:
+        """The multimodal encoders' features of a batch."""
+        return self.multimodal.encoders(self._multimodal_inputs(rgb_obs, state_obs))
+
+    def _fuse_with_prior(
+        self,
+        encoded: dict[str, th.Tensor],
+        last_latent: th.Tensor,
+        last_action: th.Tensor,
+        has_last: th.Tensor,
+        present: dict[str, th.Tensor] | None,
+    ) -> th.Tensor:
+        """One step's fusion with the joint transition's prediction as the `dynamics` expert."""
+        prior = self.dynamics.predict_joint(last_latent, last_action)
+        out = self.multimodal.fuse(
+            encoded,
+            present=(present or {}) | {DYNAMICS_EXPERT: has_last},
+            extras={DYNAMICS_EXPERT: prior},
+        )
+        self._last_step_fusion = out
+        if out.joint is not None and not th.is_grad_enabled():
+            return out.joint.mean
+        return out.latent
+
+    def _multimodal_inputs(
+        self, rgb_obs: th.Tensor, state_obs: th.Tensor
+    ) -> dict[str, th.Tensor]:
+        inputs = {
+            camera_modality(i): camera
+            for i, camera in enumerate(rgb_obs.chunk(self.num_cameras, dim=1))
+        }
+        inputs |= dict(
+            zip(
+                self._state_obs_dims,
+                state_obs.split(list(self._state_obs_dims.values()), dim=-1),
+            )
+        )
+        return inputs
 
     def _multimodal_features(
         self,
@@ -531,8 +762,10 @@ class Policy(nn.Module):
         out = self.last_fusion
         if out is None or out.experts is None:
             return {}
-        names = self.multimodal.encoders.names + (
-            ["prior"] if self._cfg.multimodal.prior_expert else []
+        names = (
+            self.multimodal.encoders.names
+            + list(getattr(self.multimodal, "extra_experts", []))
+            + (["prior"] if self._cfg.multimodal.prior_expert else [])
         )
         log_precision = -out.experts.log_var.detach()
         if out.log_weights is not None:
