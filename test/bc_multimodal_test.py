@@ -189,7 +189,7 @@ def test_multimodal_config_errors():
 
 
 def _training_runner(
-    tmp_path, fusion: str, kl_weight: float, memory: dict
+    tmp_path, fusion: str, kl_weight: float, memory: dict, **multimodal
 ) -> BehaviorCloningRunner:
     data = yaml.safe_load(DEFAULT_BC_CFG.read_text())
     data |= {
@@ -206,7 +206,7 @@ def _training_runner(
         "action_head_state_obs_dim": None,
         "state_obs": STATE_OBS,
         "memory": memory,
-        "multimodal": _multimodal(fusion, kl_weight=kl_weight),
+        "multimodal": _multimodal(fusion, kl_weight=kl_weight, **multimodal),
     }
     cfg = BCCfg.from_dict(data)
     env = _TrainingEnv()
@@ -314,3 +314,91 @@ def test_modality_dropout_is_the_same_on_all_the_steps_of_a_chunk():
     left_out = (policy.last_fusion.weights == 0).all(dim=-1).view(5, 32, -1)
 
     assert (left_out == left_out[:1]).all()
+
+
+DYNAMICS = {
+    "enabled": True,
+    "kl_weight": 0.1,
+    "reward_weight": 0.5,
+    "hidden_dims": [16],
+}
+IDENTITY = {"type": "identity", "sequence_length": 4, "burn_in": 4}
+
+
+@pytest.mark.parametrize("dropout", [0.0, 0.3], ids=["all", "modality_dropout"])
+def test_training_with_the_world_model_updates_its_transitions_and_rewards(
+    tmp_path, dropout
+):
+    runner = _training_runner(
+        tmp_path, "gpoe", 0.01, IDENTITY, dynamics=DYNAMICS, modality_dropout=dropout
+    )
+    before = {k: v.clone() for k, v in runner._policy.state_dict().items()}
+
+    runner.learn(num_learning_iterations=3)
+
+    scalars = runner.logger.scalars
+    for name in ("BC/world_model_dynamics_kl", "BC/world_model_reward_nll"):
+        assert len(scalars[name]) == 3 and all(math.isfinite(v) for v in scalars[name])
+    after = runner._policy.state_dict()
+    changed = {k for k in before if not th.equal(before[k], after[k])}
+    assert any(k.startswith("dynamics.transitions.joint.") for k in changed)
+    assert any(k.startswith("dynamics.rewards.camera_0.") for k in changed)
+
+
+def _world_model_policy(detach: bool) -> Policy:
+    th.manual_seed(0)
+    return Policy(
+        cfg_policy=_policy_cfg(
+            _multimodal("gpoe", dynamics=DYNAMICS | {"detach_policy": detach}), IDENTITY
+        ),
+        action_dim=2,
+        state_obs_dim=9,
+        num_cameras=3,
+        image_height=16,
+        image_width=16,
+        device=CPU,
+        state_obs_dims=STATE_DIMS,
+    ).train()
+
+
+def _encoder_grad(policy: Policy) -> float:
+    return sum(
+        p.grad.abs().sum().item()
+        for p in policy.multimodal.encoders.parameters()
+        if p.grad is not None
+    )
+
+
+@pytest.mark.parametrize("detach", [False, True])
+def test_detached_policy_trains_the_encoders_only_by_the_world_model(detach):
+    policy = _world_model_policy(detach)
+    rgb, state = th.rand(4, 3, 9, 16, 16), th.rand(4, 3, 9)
+    starts = th.zeros(4, 3, dtype=th.bool)
+
+    actions = policy.sequence(rgb, state, starts, burn_in=0)
+    actions.sum().backward(retain_graph=True)
+    action_grad = _encoder_grad(policy)
+    policy.zero_grad()
+    losses = policy.world_model_losses(th.rand(4, 3, 2), th.rand(4, 3), starts)
+    (losses["dynamics_kl"] + losses["reward_nll"]).backward()
+
+    assert (action_grad == 0.0) == detach
+    assert _encoder_grad(policy) > 0.0
+
+
+def test_a_transition_into_an_episode_start_is_not_counted():
+    policy = _world_model_policy(detach=False)
+    rgb, state = th.rand(2, 3, 9, 16, 16), th.rand(2, 3, 9)
+    starts = th.ones(2, 3, dtype=th.bool)
+
+    policy.sequence(rgb, state, starts, burn_in=0)
+    losses = policy.world_model_losses(th.rand(2, 3, 2), th.rand(2, 3), starts)
+
+    assert losses["dynamics_kl"].item() == 0.0 and losses["reward_nll"].item() == 0.0
+
+
+def test_the_world_model_needs_experts_and_a_memory():
+    with pytest.raises(ValueError, match="dynamics"):
+        _policy("gpoe", dynamics=DYNAMICS)
+    with pytest.raises(ValueError, match="dynamics"):
+        _policy("concat", IDENTITY, dynamics=DYNAMICS)

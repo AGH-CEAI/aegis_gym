@@ -190,6 +190,8 @@ class BehaviorCloningRunner(BasePolicyRunner):
         batch = {
             "rgb_obs": zeros(*self._buffer.img_shape),
             "robot_pose": zeros(self._buffer.state_dim),
+            "executed_actions": zeros(self._buffer.action_dim),
+            "rewards": zeros(),
         }
         # the dummy batch must not move the BatchNorm statistics
         state = copy.deepcopy(self._policy.state_dict())
@@ -203,6 +205,11 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     starts,
                     memory.burn_in,
                     return_latents=True,
+                )
+                world_model = self._policy.world_model_losses(
+                    batch["executed_actions"][memory.burn_in :],
+                    batch["rewards"][memory.burn_in :],
+                    starts[memory.burn_in :],
                 )
                 latent = latent.flatten(0, 1)
                 batch = {k: v[memory.burn_in :].flatten(0, 1) for k, v in batch.items()}
@@ -220,6 +227,10 @@ class BehaviorCloningRunner(BasePolicyRunner):
             expert_kl = self._policy.expert_kl()
             if expert_kl is not None:
                 loss = loss + expert_kl
+            if self._policy.has_memory:
+                loss = loss + sum(
+                    world_model.values(), th.tensor(0.0, device=self.device)
+                )
             loss.backward()
         except th.cuda.OutOfMemoryError as e:
             free, total = th.cuda.mem_get_info(self.device)
@@ -296,6 +307,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
             total_latent_pose_yaw_err = 0.0
             total_expert_kl = th.tensor(0.0, device=self.device)
             total_expert_kl_loss = th.tensor(0.0, device=self.device)
+            world_model_sums: dict[str, float] = {}
             fusion_sums: dict[str, float] = {}
             num_batches = 0
             last_recons = None
@@ -361,6 +373,14 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     last_recons = recons
                     last_batch = batch
 
+                world_model_loss = th.tensor(0.0, device=self.device)
+                if self._policy.has_memory:
+                    world_model_loss = self._weighted_world_model_loss()
+                    for name, value in self._world_model_losses.items():
+                        world_model_sums[name] = (
+                            world_model_sums.get(name, 0.0) + value.item()
+                        )
+
                 # Combined loss with weights
                 total_loss = (
                     action_loss
@@ -368,6 +388,7 @@ class BehaviorCloningRunner(BasePolicyRunner):
                     + recon_loss
                     + latent_pose_loss
                     + expert_kl_loss
+                    + world_model_loss
                 )
 
                 # Backward pass
@@ -405,6 +426,9 @@ class BehaviorCloningRunner(BasePolicyRunner):
                 bc_stats["latent_pose_yaw_err_deg"] = math.degrees(
                     total_latent_pose_yaw_err / num_batches
                 )
+
+            for name, value in world_model_sums.items():
+                bc_stats[f"world_model_{name}"] = value / num_batches
 
             if self._policy.multimodal is not None and fusion_sums:
                 bc_stats["expert_kl"] = total_expert_kl.item() / num_batches
@@ -500,12 +524,29 @@ class BehaviorCloningRunner(BasePolicyRunner):
             burn_in,
             return_latents=True,
         )
+        # the latent world model's losses need the steps in time order: before the flattening
+        self._world_model_losses = self._policy.world_model_losses(
+            batch["executed_actions"][burn_in:],
+            batch["rewards"][burn_in:],
+            batch["episode_starts"][burn_in:],
+        )
         trained = {
             key: value[burn_in:].flatten(0, 1)
             for key, value in batch.items()
             if isinstance(value, th.Tensor) and key != "episode_starts"
         }
         return actions.flatten(0, 1), latents.flatten(0, 1), trained
+
+    def _weighted_world_model_loss(self) -> th.Tensor:
+        """The world model's losses of the last chunk mini-batch, weighted (0 without the model)."""
+        losses = getattr(self, "_world_model_losses", {})
+        cfg = self.cfg_train.policy.multimodal.dynamics
+        loss = th.tensor(0.0, device=self.device)
+        if "dynamics_kl" in losses:
+            loss = loss + cfg.kl_weight * losses["dynamics_kl"]
+        if "reward_nll" in losses:
+            loss = loss + cfg.reward_weight * losses["reward_nll"]
+        return loss
 
     def _discard_interrupted_episodes(self) -> None:
         """

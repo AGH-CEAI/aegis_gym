@@ -149,6 +149,13 @@ policy:
     # training only: each modality left out with this probability per sample / chunk (at least one stays)
     modality_dropout: 0.0
     modality_dropout_names: []  # camera_<i>, state_obs entries; empty: all
+    # the MVDeepMDP latent world model (poe / gpoe + a memory): per expert + joint transitions and rewards
+    dynamics:
+      enabled: False
+      kl_weight: 1.0  # beta, the dynamics KL
+      reward_weight: 1.0  # the reward decoders' NLL; 0: none
+      hidden_dims: [512, 512]
+      detach_policy: False  # the encoders trained only by the world model
 # training settings
 buffer_size: 1000
 save_freq: 50

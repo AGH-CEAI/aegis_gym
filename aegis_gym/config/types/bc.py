@@ -52,6 +52,22 @@ class MemoryCfg(BaseCfg):
 
 
 @dataclass(slots=True)
+class DynamicsCfg(BaseCfg):
+    # the latent world model of MVDeepMDP (Bartyzel, RA-L 2024) on the multimodal experts: per expert and
+    # for the joint latent a Gaussian transition p(z_t+1 | z_t, a_t) (the executed action) and a reward
+    # decoder, trained on the memory's chunks; needs poe / gpoe, a memory and enc_mem_dec's `dynamics`
+    enabled: bool = False
+    kl_weight: float = 1.0  # beta of the dynamics KL (J_DYN)
+    reward_weight: float = (
+        1.0  # of the reward decoders' NLL (J_REW); 0: no reward decoders
+    )
+    hidden_dims: list[int] = field(default_factory=lambda: [512, 512])
+    # the encoders trained only by the world model (the paper's stopped policy gradient): the action
+    # head and the latent pose decoder get the features detached
+    detach_policy: bool = False
+
+
+@dataclass(slots=True)
 class MultimodalCfg(BaseCfg):
     # the enc_mem_dec multimodal fusion in place of the vision encoder + fusion + the concatenated
     # `state_obs`: each camera and each `state_obs` entry gets its own encoder, then "concat" (their
@@ -75,6 +91,7 @@ class MultimodalCfg(BaseCfg):
     modality_dropout: float = 0.0
     # the fusion's names that may drop (camera_<i>, the state_obs entries); empty: all
     modality_dropout_names: list[str] = field(default_factory=list)
+    dynamics: DynamicsCfg = field(default_factory=DynamicsCfg)
 
 
 @dataclass(slots=True)

@@ -238,6 +238,7 @@ class Policy(nn.Module):
         self.multimodal: nn.Module | None = None
         # the multimodal fusion's output of the last `_features()` call (its experts' KL, weights)
         self.last_fusion = None
+        self._last_presence: dict[str, th.Tensor] | None = None  # its modality dropout
         if self._cfg.multimodal.fusion != "none":
             self.multimodal = self._build_multimodal(state_obs_dim, state_obs_dims)
             features_dim = self.multimodal.output_dim
@@ -285,6 +286,31 @@ class Policy(nn.Module):
             logger.info(
                 f"Latent pose decoder, loss weight {self._cfg.latent_pose_loss_weight}, "
                 f"{self.latent_pose_frame} frame"
+            )
+
+        self.dynamics: nn.Module | None = None
+        cfg_dyn = self._cfg.multimodal.dynamics
+        if cfg_dyn.enabled:
+            if (
+                self.multimodal is None
+                or self._cfg.multimodal.fusion == "concat"
+                or self.memory is None
+            ):
+                raise ValueError(
+                    "multimodal.dynamics needs the poe / gpoe fusion and a memory (chunks)"
+                )
+            from enc_mem_dec.multimodal import MultimodalDynamics
+
+            self.dynamics = MultimodalDynamics(
+                self.multimodal.encoders.names,
+                latent_dim=self._cfg.multimodal.latent_dim,
+                action_dim=action_dim,
+                hidden_dims=cfg_dyn.hidden_dims,
+                reward=cfg_dyn.reward_weight > 0,
+            )
+            logger.info(
+                f"Latent world model: KL weight {cfg_dyn.kl_weight}, reward weight "
+                f"{cfg_dyn.reward_weight}, detached policy {cfg_dyn.detach_policy}"
             )
 
         self.pose_head: nn.Sequential | None = None
@@ -373,6 +399,8 @@ class Policy(nn.Module):
                     features, state, episode_starts[:burn_in]
                 )
         features = self._chunk_features(rgb_obs[burn_in:], state_obs[burn_in:])
+        if self.dynamics is not None and self._cfg.multimodal.dynamics.detach_policy:
+            features = features.detach()
         y, _ = self.memory.sequence(features, state, episode_starts[burn_in:])
         actions = self.action_head(y)
         return (actions, y) if return_latents else actions
@@ -424,6 +452,7 @@ class Policy(nn.Module):
         )
         if present is None:
             present = self._modality_presence(rgb_obs.shape[0], rgb_obs.device)
+        self._last_presence = present
         out = (
             self.multimodal(inputs, present=present)
             if present is not None
@@ -435,6 +464,57 @@ class Policy(nn.Module):
         if out.joint is not None and not th.is_grad_enabled():
             return out.joint.mean
         return out.latent
+
+    def world_model_losses(
+        self, executed_actions: th.Tensor, rewards: th.Tensor, episode_starts: th.Tensor
+    ) -> dict[str, th.Tensor]:
+        """
+        The latent world model's losses (`MultimodalDynamics.losses()`: `dynamics_kl`, `reward_nll`) on
+        the last `sequence()` call's trained steps: their `executed_actions` [time, batch, action_dim],
+        `rewards` and `episode_starts` [time, batch]; a transition into an episode start isn't counted,
+        nor the experts of a dropped modality. {} without the world model.
+        """
+        out = self.last_fusion
+        if self.dynamics is None or out is None or out.experts is None:
+            return {}
+        num_steps, batch_size = executed_actions.shape[:2]
+        names = self.multimodal.encoders.names
+        M = len(names)
+        experts = out.experts
+        mean = experts.mean[..., :M, :].reshape(num_steps, batch_size, M, -1)
+        log_var = experts.log_var[..., :M, :].reshape(num_steps, batch_size, M, -1)
+        joint_mean = out.joint.mean.reshape(num_steps, batch_size, -1)
+        joint_log_var = out.joint.log_var.reshape(num_steps, batch_size, -1)
+        latent = out.latent.reshape(num_steps, batch_size, -1)
+        expert_latents = (
+            mean + (0.5 * log_var).exp() * th.randn_like(mean)
+            if self.training
+            else mean
+        )
+        expert_valid = None
+        if getattr(self, "_last_presence", None):
+            present = th.stack(
+                [
+                    self._last_presence.get(
+                        n, th.ones_like(out.latent[:, 0], dtype=th.bool)
+                    )
+                    for n in names
+                ],
+                dim=-1,
+            ).reshape(num_steps, batch_size, M)
+            expert_valid = present[:-1] & present[1:]
+        from enc_mem_dec.multimodal import Gaussian
+
+        return self.dynamics.losses(
+            expert_latents=expert_latents[:-1],
+            joint_latent=latent[:-1],
+            next_experts=Gaussian(mean[1:], log_var[1:]),
+            next_joint=Gaussian(joint_mean[1:], joint_log_var[1:]),
+            action=executed_actions[:-1],
+            reward=rewards[:-1] if self.dynamics.rewards is not None else None,
+            valid=~episode_starts[1:],
+            expert_valid=expert_valid,
+        )
 
     def expert_kl(self) -> th.Tensor | None:
         """The experts' KL to N(0, I) of the last features, None without experts."""
@@ -886,6 +966,10 @@ class ExperienceBuffer:
     @property
     def state_dim(self) -> int:
         return self._state_dim
+
+    @property
+    def action_dim(self) -> int:
+        return self._action_dim
 
     def is_full(self) -> bool:
         """Check if buffer is full."""
