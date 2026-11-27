@@ -214,6 +214,20 @@ def _stack_fusions(outs: list) -> Any:
     )
 
 
+def _observation_posterior(out: Any, num_modalities: int) -> Any:
+    """The (g)PoE of the `num_modalities` modality experts of a `FusionOutput` alone (its gate weights renormalized)."""
+    from enc_mem_dec.multimodal import Gaussian, product_of_experts
+
+    experts = Gaussian(
+        out.experts.mean[..., :num_modalities, :],
+        out.experts.log_var[..., :num_modalities, :],
+    )
+    log_weights = None
+    if out.log_weights is not None:
+        log_weights = th.log_softmax(out.log_weights[..., :num_modalities, :], dim=-2)
+    return product_of_experts(experts, log_weights)
+
+
 class ResetLastLayerTarget(StrEnum):
     ACTION = "action"
     POSE = "pose"
@@ -607,6 +621,11 @@ class Policy(nn.Module):
         chunk paths). Returns the latents, the last latent and validity.
         """
         num_steps, batch_size = rgb_obs.shape[:2]
+        if self.training and th.is_grad_enabled():
+            p = self._cfg.multimodal.dynamics.prior_dropout
+            keep_prior = th.rand(batch_size, device=rgb_obs.device) >= p
+        else:
+            keep_prior = None
         encoded = self._encode(rgb_obs.flatten(0, 1), state_obs.flatten(0, 1))
         encoded = {k: v.view(num_steps, batch_size, -1) for k, v in encoded.items()}
         self._last_presence = (
@@ -618,7 +637,11 @@ class Policy(nn.Module):
         for t in range(num_steps):
             valid = valid & ~episode_starts[t]
             latent = self._fuse_with_prior(
-                {k: v[t] for k, v in encoded.items()}, latent, action, valid, present
+                {k: v[t] for k, v in encoded.items()},
+                latent,
+                action,
+                valid if keep_prior is None else valid & keep_prior,
+                present,
             )
             latents.append(latent)
             outs.append(self._last_step_fusion)
@@ -714,8 +737,13 @@ class Policy(nn.Module):
         experts = out.experts
         mean = experts.mean[..., :M, :].reshape(num_steps, batch_size, M, -1)
         log_var = experts.log_var[..., :M, :].reshape(num_steps, batch_size, M, -1)
-        joint_mean = out.joint.mean.reshape(num_steps, batch_size, -1)
-        joint_log_var = out.joint.log_var.reshape(num_steps, batch_size, -1)
+        joint = out.joint
+        if self.has_prior_expert:
+            # the target is the posterior of the observations alone (the paper's q(z | x)): with the prior
+            # expert in it, the KL is minimized by ignoring the observations (a posterior collapse)
+            joint = _observation_posterior(out, M)
+        joint_mean = joint.mean.reshape(num_steps, batch_size, -1)
+        joint_log_var = joint.log_var.reshape(num_steps, batch_size, -1)
         latent = out.latent.reshape(num_steps, batch_size, -1)
         expert_latents = (
             mean + (0.5 * log_var).exp() * th.randn_like(mean)

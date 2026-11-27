@@ -157,6 +157,7 @@ policy:
       hidden_dims: [512, 512]
       detach_policy: False  # the encoders trained only by the world model
       prior_expert: False  # the joint transition's prediction as one more gPoE expert (a recurrent belief)
+      prior_dropout: 0.5  # training: the prior expert left out per chunk with this probability
 # training settings
 buffer_size: 1000
 save_freq: 50

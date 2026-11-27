@@ -68,6 +68,9 @@ class DynamicsCfg(BaseCfg):
     # the joint transition's prediction of this step, p(z_t | z_t-1, a_t-1), as one more gPoE expert
     # ("dynamics"; a recurrent belief, a memory as an expert); missing at an episode start
     prior_expert: bool = False
+    # in training, the prior expert left out per chunk with this probability (the gate must also work
+    # without the memory; against the posterior collapsing onto the prior)
+    prior_dropout: float = 0.5
 
 
 @dataclass(slots=True)

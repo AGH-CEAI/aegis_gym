@@ -483,3 +483,42 @@ def test_the_prior_expert_trains_with_the_world_model(tmp_path):
         for k in before
         if k.startswith("dynamics.transitions.joint.")
     )
+
+
+def test_the_world_model_target_excludes_the_prior_expert():
+    policy = _prior_policy().train()
+    rgb, state = th.rand(4, 3, 9, 16, 16), th.rand(4, 3, 9)
+    starts = th.zeros(4, 3, dtype=th.bool)
+    starts[0] = True
+
+    policy.sequence(rgb, state, starts, burn_in=0, executed_actions=th.rand(4, 3, 2))
+    losses = policy.world_model_losses(th.rand(4, 3, 2), th.rand(4, 3), starts)
+
+    # with the prior expert in the target, a collapse makes the KL ~0 at once; here it stays positive
+    assert losses["dynamics_kl"].item() > 0.0
+    losses["dynamics_kl"].backward()
+    assert _encoder_grad(policy) > 0.0
+
+
+def test_the_prior_expert_drops_out_per_chunk_in_training_only():
+    policy = _prior_policy()
+    policy._cfg.multimodal.dynamics.prior_dropout = 1.0
+    rgb, state = th.rand(4, 8, 9, 16, 16), th.rand(4, 8, 9)
+    starts = th.zeros(4, 8, dtype=th.bool)
+    dynamics = len(policy.multimodal.encoders.names)
+
+    policy.train().sequence(
+        rgb, state, starts, burn_in=0, executed_actions=th.rand(4, 8, 2)
+    )
+    trained = policy.last_fusion.weights.view(4, 8, policy.multimodal.num_experts, -1)[
+        1:, :, dynamics
+    ]
+    with th.no_grad():
+        policy.eval().sequence(
+            rgb, state, starts, burn_in=0, executed_actions=th.rand(4, 8, 2)
+        )
+    acting = policy.last_fusion.weights.view(4, 8, policy.multimodal.num_experts, -1)[
+        1:, :, dynamics
+    ]
+
+    assert (trained == 0).all() and (acting > 0).all()
