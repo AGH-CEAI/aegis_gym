@@ -121,7 +121,10 @@ class PushTEnv(BaseEnv):
         self.max_linear_speed = self._cfg_env.action_max_linear_speed
         self.max_angular_speed = self._cfg_env.action_max_angular_speed
 
-        env_dict = self._cfg_env.env_specific_dict
+        # the defaults under the given entries: a config stored before a key existed still works
+        env_dict = self.get_default_env_specific_dict() | dict(
+            self._cfg_env.env_specific_dict
+        )
 
         self.reward_scales = env_dict["reward_scales"]
 
