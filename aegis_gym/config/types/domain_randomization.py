@@ -45,11 +45,11 @@ class ArmDistractorCfg(BaseCfg):
     links: list[str] = field(
         default_factory=lambda: [
             "wrist_3_link",
-            "tool0",
-            "adapter_mount_left",
-            "adapter_mount_right",
-            "adapter_mount_front",
+            "tool_mount_link",
+            "adapter_from_sensor",
             "robotiq_hande_coupler",
+            "cam_tool_left",
+            "cam_tool_right",
         ]
     )
     length: list[float] = field(default_factory=lambda: [0.04, 0.15])  # [m]

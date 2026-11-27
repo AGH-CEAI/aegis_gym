@@ -32,8 +32,9 @@ image_aug:
         count: 1  # 1..count
         cameras: ["cam_scene"]
         # the anchor, one drawn: the tool's links and the camera mounts (local)
-        links: ["wrist_3_link", "tool0", "adapter_mount_left", "adapter_mount_right", "adapter_mount_front",
-                "robotiq_hande_coupler"]
+        # (the sim robot's links: the fixed ones of the URDF, e.g. tool0, are merged into these)
+        links: ["wrist_3_link", "tool_mount_link", "adapter_from_sensor", "robotiq_hande_coupler", "cam_tool_left",
+                "cam_tool_right"]
         length: [0.04, 0.15]  # [m], from the anchor in a random, mostly horizontal direction
         offset: 0.03  # [m], +- per axis from the link origin
         width: [6, 14]  # [px]
